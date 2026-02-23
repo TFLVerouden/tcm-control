@@ -226,7 +226,7 @@ RS-232 IN port pin numbering on the pump (front view):
 RJ12 to DB9 adapter pin numbering (front views):
 ![RJ12 to DB9 adapter](/docs/peripherals/pump_cable/L-COM_adapter_pinout.png)
 
-In the pump settings, make sure to set the correct syringe diameter. Commonly used Hamilton-Microliter Series Gastight syringes:
+In the pump settings, make sure to set the correct syringe diameter. Commonly used Hamilton-Microliter Series Gastight syringes. Table also callable by cough machine control software in [syringe_sizes.csv](/source_python/tcm_control/config/syringe_sizes.csv)[^2]:
 | Volume (mL) | Diameter (mm) |
 | ----------- | ------------- |
 | 1.0         | 4.61          |
@@ -234,6 +234,7 @@ In the pump settings, make sure to set the correct syringe diameter. Commonly us
 | 5.0         | 10.3          |
 
 [^1]: "[A straight cord] is principally used for data, while reverse cords are for voice services. Straight cords feature an exactly duplicated arrangement of wires to pin connections on either side of the cable, while in reverse cables, the order of connections is mirrored i.e. in reverse order on the second side", from [RS-online](https://uk.rs-online.com/web/content/discovery/ideas-and-advice/telephone-cable-guide).
+[^2]: Adapted from page 50 [in the manual](/docs/peripherals/Harvard_PHD2000_syringe_pump_manual.pdf): "Syringe Diameters in mm", section "Hamilton-Microliter Series Gastight".
 
 ### USB-RS232 hub
 *StarTech ICUSB2324I*
