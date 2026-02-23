@@ -94,11 +94,10 @@ class SyringePump(pumpy3.PumpPHD2000_Refill):
 
         # If not provided, ask user for syringe volume
         if syringe_volume_ml is None:
-            syringe_volume_ml = float(prompt_input(
-                f"Enter syringe volume in mL (press Enter to use current volume of {current_volume} mL): ", value_type=float, min_value=0.0005, max_value=50.0))
-
-            if not syringe_volume_ml:
-                syringe_volume_ml = current_volume
+            prompted_volume = prompt_input(
+                f"Enter syringe volume in mL (press Enter to use current volume of {current_volume} mL): ", value_type="float", min_value=0.0005, max_value=50.0)
+            syringe_volume_ml = float(
+                prompted_volume) if prompted_volume is not None else current_volume
 
         # Set to PuMP mode, and set diameter using the syringe volume lookup table.
         self.set_mode("PMP")
@@ -166,7 +165,7 @@ class SyringePump(pumpy3.PumpPHD2000_Refill):
 
 if __name__ == "__main__":
     pump = SyringePump()
-    pump.set_rate(2, "ml/mn")  # Set rate to 0.2 mL/min
+    pump.set_rate(0.2, "ml/mn")  # Set rate to 0.2 mL/min
     pump.run()
-    time.sleep(60)
+    time.sleep(2)
     pump.stop()
