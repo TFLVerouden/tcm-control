@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Optional
 
 from tcm_utils.file_dialogs import ask_open_file, find_repo_root
-from tcm_utils.cough_model import CoughModel
 
 from .base import PoFSerialDevice
 
