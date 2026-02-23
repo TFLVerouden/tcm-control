@@ -453,8 +453,7 @@ class CoughMachine(PoFSerialDevice):
         end_marker: str = "END_OF_FILE",
         timeout_s: float = 10.0,
         echo: Optional[bool] = None,
-        output_dir: Optional[str | Path] = None,
-    ) -> tuple[Optional[str], list[str], Optional[Path]]:
+    ) -> list[str]:
         # Read a single CSV log streamed between START_OF_FILE and END_OF_FILE.
         start_time = time.time()
         started = False
@@ -490,14 +489,4 @@ class CoughMachine(PoFSerialDevice):
         if not started:
             raise RuntimeError("Log stream did not start within timeout.")
 
-        saved_path: Optional[Path] = None
-        if output_dir is not None:
-            output_dir = Path(output_dir)
-            output_dir.mkdir(parents=True, exist_ok=True)
-            if filename is None:
-                filename = "experiment_log.csv"
-            saved_path = output_dir / filename
-            saved_path.write_text("".join(rows))
-            print(f"Saved log to {saved_path}")
-
-        return filename, rows, saved_path
+        return rows
