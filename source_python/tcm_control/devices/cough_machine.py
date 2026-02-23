@@ -4,8 +4,11 @@ from pathlib import Path
 from typing import Optional
 
 from tcm_utils.file_dialogs import ask_open_file, find_repo_root
+from tcm_utils.cough_model import CoughModel
 
 from .base import PoFSerialDevice
+
+DEFAULT_FLOWCURVE_DIR = Path("source_python/tcm_control/flow_curves")
 
 
 class CoughMachine(PoFSerialDevice):
@@ -258,18 +261,29 @@ class CoughMachine(PoFSerialDevice):
         timeout: float = 1.0,
     ) -> str:
         # If a path is passed here, it overrides any previously stored default.
+        # For string input that does not resolve to an existing path, try
+        # looking up a file with that name inside the default flow_curves folder.
         if csv_path is not None:
-            self._flowcurve_csv_path = Path(csv_path)
+            candidate = Path(csv_path)
+            if candidate.exists():
+                self._flowcurve_csv_path = candidate
+            elif isinstance(csv_path, str):
+                filename_candidate = DEFAULT_FLOWCURVE_DIR / \
+                    Path(csv_path).name
+                self._flowcurve_csv_path = (
+                    filename_candidate if filename_candidate.exists() else None
+                )
+            else:
+                self._flowcurve_csv_path = None
 
         # If no path was provided or stored, fall back to the file picker dialog.
         if self._flowcurve_csv_path is None:
-            repo_root = find_repo_root()
             self._flowcurve_csv_path = ask_open_file(
                 key="flow_curve_csv",
                 title="Select flow curve CSV",
                 filetypes=(("CSV files", "*.csv"), ("All files", "*.*")),
-                default_dir=repo_root / "source_python" / "tcm_control" / "flow_curves",
-                start=repo_root,
+                default_dir=DEFAULT_FLOWCURVE_DIR,
+                start=DEFAULT_FLOWCURVE_DIR,
             )
 
         if self._flowcurve_csv_path is None:

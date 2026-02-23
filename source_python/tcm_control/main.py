@@ -20,15 +20,14 @@ def ask_user_for_comments(experiment_dir: Path) -> str:
 
 
 def main() -> None:
+    # Config variables
+    FLOW_CURVE_CSV_PATH = None
+
     cough_machine = CoughMachine(debug=False)
-    # cough_machine.clear_memory()
+    cough_machine.clear_memory()
     cough_machine.set_pressure(1.5, timeout_s=10.0)
 
-    flow_curve = resources.files(
-        "tcm_control").joinpath("flow_curves/step.csv")
-    output_dir = Path.cwd() / "CoughMachineData" / "Tests"
-
-    cough_machine.load_flowcurve(csv_path=flow_curve)
+    cough_machine.load_flowcurve(csv_path=FLOW_CURVE_CSV_PATH)
     # cough_machine.detect_droplet(runs=2, output_dir=output_dir)
     cough_machine.manual_mode()
 
