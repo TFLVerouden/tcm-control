@@ -295,6 +295,7 @@ class CoughMachine(PoFSerialDevice):
         )
 
         self._dataset_loaded = True
+        print(f"Dataset loaded from {self._dataset_csv_path}")
         return reply or ""
 
     def get_dataset_status(self, *, echo: Optional[bool] = None) -> str:

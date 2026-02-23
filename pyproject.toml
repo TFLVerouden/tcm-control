@@ -11,6 +11,7 @@ requires-python = ">=3.9"
 
 dependencies = [
   "bronkhorst_propar",
+  "dvg-devices",
   "daltonlens",
   "h5py",
   "matplotlib",
