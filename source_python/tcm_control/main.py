@@ -14,7 +14,7 @@ def main() -> None:
         "tcm_control").joinpath("flow_curves/step.csv")
     output_dir = Path.cwd() / "CoughMachineData" / "Tests"
 
-    cough_machine.load_dataset(csv_path=flow_curve)
+    cough_machine.load_flowcurve(csv_path=flow_curve)
     # cough_machine.detect_droplet(runs=2, output_dir=output_dir)
     cough_machine.manual_mode()
 

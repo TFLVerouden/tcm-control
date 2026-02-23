@@ -31,7 +31,7 @@ class CoughMachine(PoFSerialDevice):
 
         self._wait_us: Optional[int] = None
         self._dataset_loaded = False
-        self._dataset_csv_path: Optional[Path] = None
+        self._flowcurve_csv_path: Optional[Path] = None
 
         # Set debug mode on device if requested
         self._set_debug(debug)
@@ -244,12 +244,12 @@ class CoughMachine(PoFSerialDevice):
         return reply or ""
 
     # DATASET HANDLING
-    def set_dataset_csv_path(self, csv_path: str | Path | None) -> None:
-        # Store a default path for later; load_dataset() will use this if no path is passed.
-        self._dataset_csv_path = Path(
+    def set_flowcurve_csv_path(self, csv_path: str | Path | None) -> None:
+        # Store a default path for later; load_flowcurve() will use this if no path is passed.
+        self._flowcurve_csv_path = Path(
             csv_path) if csv_path is not None else None
 
-    def load_dataset(
+    def load_flowcurve(
         self,
         csv_path: str | Path | None = None,
         *,
@@ -259,12 +259,12 @@ class CoughMachine(PoFSerialDevice):
     ) -> str:
         # If a path is passed here, it overrides any previously stored default.
         if csv_path is not None:
-            self._dataset_csv_path = Path(csv_path)
+            self._flowcurve_csv_path = Path(csv_path)
 
         # If no path was provided or stored, fall back to the file picker dialog.
-        if self._dataset_csv_path is None:
+        if self._flowcurve_csv_path is None:
             repo_root = find_repo_root()
-            self._dataset_csv_path = ask_open_file(
+            self._flowcurve_csv_path = ask_open_file(
                 key="flow_curve_csv",
                 title="Select flow curve CSV",
                 filetypes=(("CSV files", "*.csv"), ("All files", "*.*")),
@@ -272,11 +272,11 @@ class CoughMachine(PoFSerialDevice):
                 start=repo_root,
             )
 
-        if self._dataset_csv_path is None:
+        if self._flowcurve_csv_path is None:
             raise SystemExit("No flow curve CSV selected")
 
         time_arr, mA_arr, enable_arr = self._extract_csv(
-            self._dataset_csv_path, delimiter=delimiter
+            self._flowcurve_csv_path, delimiter=delimiter
         )
         serial_command = self._format_dataset(time_arr, mA_arr, enable_arr)
 
@@ -295,10 +295,10 @@ class CoughMachine(PoFSerialDevice):
         )
 
         self._dataset_loaded = True
-        print(f"Dataset loaded from {self._dataset_csv_path}")
+        print(f"Dataset loaded from {self._flowcurve_csv_path}")
         return reply or ""
 
-    def get_dataset_status(self, *, echo: Optional[bool] = None) -> str:
+    def get_flowcurve_status(self, *, echo: Optional[bool] = None) -> str:
         reply, _lines = self._query_and_drain("L?", echo=echo)
         return reply or ""
 
@@ -379,7 +379,7 @@ class CoughMachine(PoFSerialDevice):
         return results
 
     # -------------------------------------------------------------------
-    # Dataset read and upload
+    # Flowcurve read and upload
     # -------------------------------------------------------------------
 
     @staticmethod
