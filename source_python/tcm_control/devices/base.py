@@ -1,10 +1,17 @@
 import contextlib
 import os
 import time
+from pathlib import Path
 from typing import Optional
 
 from dvg_devices.BaseDevice import SerialDevice
-from tcm_utils.file_dialogs import get_config_path
+from tcm_utils.file_dialogs import (
+    read_repo_config_value,
+    write_repo_config_value,
+)
+
+CONNECTIONS_FILENAME = "connections.ini"
+COM_PORTS_SECTION = "com_ports"
 
 
 class PoFSerialDevice(SerialDevice):
@@ -24,8 +31,6 @@ class PoFSerialDevice(SerialDevice):
         self.serial_settings["baudrate"] = baudrate
         self.serial_settings["timeout"] = timeout
 
-        last_known_port_path = get_config_path(f"{name}_path.txt")
-
         def id_query() -> tuple[str, None]:
             _success, reply = self.query("id?")
             if isinstance(reply, str):
@@ -42,7 +47,7 @@ class PoFSerialDevice(SerialDevice):
         # Auto connect to device; suppress print of connection attempts
         if debug:
             connected = self.auto_connect(
-                filepath_last_known_port=str(last_known_port_path)
+                filepath_last_known_port=CONNECTIONS_FILENAME
             )
         else:
             with (
@@ -51,7 +56,7 @@ class PoFSerialDevice(SerialDevice):
                 contextlib.redirect_stderr(devnull),
             ):
                 connected = self.auto_connect(
-                    filepath_last_known_port=str(last_known_port_path)
+                    filepath_last_known_port=CONNECTIONS_FILENAME
                 )
 
         if not connected:
@@ -152,3 +157,22 @@ class PoFSerialDevice(SerialDevice):
                 )
 
         return reply if isinstance(reply, str) else None, lines
+
+    # ------------------------------------------------------------------
+    # SerialDevice storage customization
+    # ------------------------------------------------------------------
+    def _get_last_known_port(self, path: Path):
+        return read_repo_config_value(
+            self.name,
+            filename=CONNECTIONS_FILENAME,
+            section=COM_PORTS_SECTION,
+        )
+
+    def _store_last_known_port(self, path: Path, port_str: str) -> bool:
+        write_repo_config_value(
+            self.name,
+            port_str,
+            filename=CONNECTIONS_FILENAME,
+            section=COM_PORTS_SECTION,
+        )
+        return True
