@@ -24,10 +24,10 @@ def main() -> None:
     FLOW_CURVE_CSV_PATH = None
 
     cough_machine = CoughMachine(debug=False)
-    cough_machine.clear_memory()
-    cough_machine.set_pressure(1.5, timeout_s=10.0)
+    # cough_machine.clear_memory()
+    # cough_machine.set_pressure(1.5, timeout_s=10.0)
 
-    cough_machine.load_flowcurve(csv_path=FLOW_CURVE_CSV_PATH)
+    cough_machine.load_flowcurve(csv_path="step")
     # cough_machine.detect_droplet(runs=2, output_dir=output_dir)
     cough_machine.manual_mode()
 

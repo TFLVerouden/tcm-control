@@ -260,14 +260,18 @@ class CoughMachine(PoFSerialDevice):
         echo: Optional[bool] = None,
         timeout: float = 1.0,
     ) -> str:
-        # If a path is passed here, it overrides any previously stored default.
-        # For string input that does not resolve to an existing path, try
-        # looking up a file with that name inside the default flow_curves folder.
+        # If a path is passed here, it overrides any previously stored default
         if csv_path is not None:
             candidate = Path(csv_path)
             if candidate.exists():
                 self._flowcurve_csv_path = candidate
             elif isinstance(csv_path, str):
+
+                # Add ".csv" if the string does not already end with it
+                if not csv_path.lower().endswith(".csv"):
+                    csv_path += ".csv"
+
+                # Check for the file in the default flow_curves directory
                 filename_candidate = DEFAULT_FLOWCURVE_DIR / \
                     Path(csv_path).name
                 self._flowcurve_csv_path = (
