@@ -1,5 +1,6 @@
 import pumpy3
 import time
+import serial
 from pathlib import Path
 from tcm_utils.file_dialogs import read_repo_config_value, write_repo_config_value
 from tcm_utils.io_utils import prompt_input, load_two_column_numeric
@@ -19,18 +20,45 @@ class SyringePump(pumpy3.PumpPHD2000_Refill):
         timeout: float = 0.3,
         pump_address: int = 0
     ):
-        # If no port is provided, prompt the user to enter the COM port number
-        if port is None:
-            # port_number = prompt_input(
-            #     "Enter COM port number for syringe pump: COM")
-            # port = f"COM{port_number}"
-            port = "COM11"
 
-        # Initialise chain
-        chain = pumpy3.Chain(port, baudrate=baudrate, timeout=timeout)
+        # TODO: Test connection!!
+        connections_filename = "connections.ini"
+        com_ports_section = "com_ports"
+        port_key = "syringe_pump"
 
-        # Flush the serial buffer to prevent issues with leftover data from previous connections
-        chain.flush()
+        selected_port = port
+        if selected_port is None:
+            selected_port = read_repo_config_value(
+                port_key,
+                filename=connections_filename,
+                section=com_ports_section,
+            )
+
+        chain = None
+        if selected_port is not None:
+            chain = self._try_open_chain(selected_port, baudrate, timeout)
+
+        if chain is None:
+            prompted_raw = prompt_input(
+                "Enter COM port for syringe pump (e.g. 11 or COM11): "
+            )
+            prompted_text = "" if prompted_raw is None else str(prompted_raw)
+            selected_port = self._normalize_com_port(prompted_text)
+            chain = self._try_open_chain(selected_port, baudrate, timeout)
+            if chain is None:
+                raise RuntimeError(
+                    f"Could not open syringe pump chain at {selected_port}."
+                )
+
+        if selected_port is None:
+            raise RuntimeError("No COM port selected for syringe pump.")
+
+        write_repo_config_value(
+            port_key,
+            selected_port,
+            filename=connections_filename,
+            section=com_ports_section,
+        )
 
         # print(self.get_diameter())
 
@@ -43,6 +71,26 @@ class SyringePump(pumpy3.PumpPHD2000_Refill):
         super().__init__(chain, address=pump_address, name="PHD2000")
         self.set_mode("PMP")  # Set to PuMP mode
         self.set_diameter(diameter_mm)
+
+    @staticmethod
+    def _normalize_com_port(raw_value: str) -> str:
+        value = raw_value.strip().upper()
+        if value.startswith("COM"):
+            return value
+        return f"COM{value}"
+
+    @staticmethod
+    def _try_open_chain(
+        port: str,
+        baudrate: int,
+        timeout: float,
+    ) -> pumpy3.Chain | None:
+        try:
+            chain = pumpy3.Chain(port, baudrate=baudrate, timeout=timeout)
+            chain.flush()
+            return chain
+        except (serial.SerialException, OSError, ValueError):
+            return None
 
     # TODO: TEST BELOW FUNCTIONS
     @staticmethod
