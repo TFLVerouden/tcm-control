@@ -24,6 +24,7 @@ class PoFSerialDevice(SerialDevice):
         timeout: float = 1,
         debug: bool = False,
         echo: bool = False,
+        boot_drain_s: float = 0.0,
     ):
         super().__init__(name=name, long_name=long_name)
         self._debug = debug
@@ -32,6 +33,8 @@ class PoFSerialDevice(SerialDevice):
         self.serial_settings["timeout"] = timeout
 
         def id_query() -> tuple[str, None]:
+            if boot_drain_s > 0:
+                _ = self._read_lines(timeout=boot_drain_s)
             _success, reply = self.query("id?")
             if isinstance(reply, str):
                 reply_broad = reply.strip()

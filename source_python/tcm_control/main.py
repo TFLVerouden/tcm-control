@@ -2,7 +2,7 @@ from pathlib import Path
 
 from importlib import resources
 
-from tcm_control.devices import CoughMachine
+from tcm_control.devices import CoughMachine, SprayTecLift
 from tcm_control import logger
 from tcm_utils.io_utils import prompt_input
 
@@ -19,18 +19,17 @@ def ask_user_for_comments(experiment_dir: Path) -> str:
     return comments
 
 
-def main() -> None:
+if __name__ == "__main__":
     # Config variables
     FLOW_CURVE_CSV_PATH = None
 
-    cough_machine = CoughMachine(debug=False)
+    lift = SprayTecLift()
+    print("Current height:", lift.get_height(), " mm")
+    # lift.read_status(echo=True)
+    # cough_machine = CoughMachine(debug=False)
     # cough_machine.clear_memory()
     # cough_machine.set_pressure(1.5, timeout_s=10.0)
 
-    cough_machine.load_flowcurve(csv_path="step")
+    # cough_machine.load_flowcurve(csv_path="step")
     # cough_machine.detect_droplet(runs=2, output_dir=output_dir)
-    cough_machine.manual_mode()
-
-
-if __name__ == "__main__":
-    main()
+    # cough_machine.manual_mode()
