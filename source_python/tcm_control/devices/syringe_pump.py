@@ -4,7 +4,12 @@ import time
 import serial
 from pathlib import Path
 from tcm_utils.file_dialogs import read_repo_config_value, write_repo_config_value
-from tcm_utils.io_utils import prompt_input, load_two_column_numeric
+from tcm_utils.io_utils import prompt_input
+
+
+DEFAULT_SYRINGE_TABLE_PATH = (
+    Path(__file__).resolve().parents[1] / "config" / "syringe_sizes.csv"
+)
 
 # Source code and documentation: https://github.com/Wetenschaap/pumpy3
 # First ensure RS-232 settings on the PHD 2000 are configured.
@@ -46,8 +51,8 @@ class SyringePump(pumpy3.PumpPHD2000_Refill):
             if chain is None:
                 # If the stored port failed, ask for a new one and retry.
                 prompted_raw = prompt_input(
-                    "Enter COM port for syringe pump (e.g. 11 or COM11) or press Enter to quit: "
-                )
+                    "Enter COM port for syringe pump (e.g. 11 or COM11) or press Enter to quit: ",
+                    allow_empty=True)
                 prompted_text = "" if prompted_raw is None else str(
                     prompted_raw)
                 if not prompted_text:
@@ -89,13 +94,16 @@ class SyringePump(pumpy3.PumpPHD2000_Refill):
             # Surface the last failure if we exit without a working pump.
             raise last_error
 
+        # Print confirmation of successful connection.
+        print(f"Connected to serial device SyringePump at {selected_port}")
+
         # Get currently set diameter
         current_volume = self.get_syringe_volume(self.get_diameter())
 
         # If not provided, ask user for syringe volume
         if syringe_volume_ml is None:
             prompted_volume = prompt_input(
-                f"Enter syringe volume in mL (press Enter to use current volume of {current_volume} mL): ", value_type="float", min_value=0.0005, max_value=50.0)
+                f"Enter syringe volume in mL (press Enter to use current volume of {current_volume} mL): ", value_type="float", min_value=0.0005, max_value=50.0, allow_empty=True)
             syringe_volume_ml = float(
                 prompted_volume) if prompted_volume is not None else current_volume
 
@@ -123,16 +131,32 @@ class SyringePump(pumpy3.PumpPHD2000_Refill):
         except (serial.SerialException, OSError, ValueError, pumpy3.pump.PumpNoResponseError):
             return None
 
-    # TODO: TEST BELOW FUNCTIONS
     @staticmethod
     def _load_syringe_table(lookup_table_path: str | Path) -> list[tuple[float, float]]:
-        return [(row[0], row[1]) for row in load_two_column_numeric(Path(lookup_table_path))]
+        # Load the syringe volume-diameter lookup table from a CSV file, not using load_two_column_numeric to allow for debug printing.
+        output = []
+        with open(lookup_table_path, "r") as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#"):
+                    continue  # Skip empty lines and comments
+                parts = stripped.split(",")
+                if len(parts) != 2:
+                    continue  # Skip malformed lines
+                try:
+                    volume = float(parts[0].strip())
+                    diameter = float(parts[1].strip())
+                    output.append((volume, diameter))
+                except ValueError:
+                    continue  # Skip lines with non-numeric values
+
+        return output
 
     @staticmethod
     def get_syringe_diameter(
         volume_ml: float,
         type: str = "hamilton_microliter_gastight",
-        lookup_table_path: str | Path = "config/syringe_sizes.csv",
+        lookup_table_path: str | Path = DEFAULT_SYRINGE_TABLE_PATH,
     ) -> float:
         # Map volume -> diameter from the lookup table.
         if type != "hamilton_microliter_gastight":
@@ -147,7 +171,7 @@ class SyringePump(pumpy3.PumpPHD2000_Refill):
     def get_syringe_volume(
         diameter_mm: float,
         type: str = "hamilton_microliter_gastight",
-        lookup_table_path: str | Path = "config/syringe_sizes.csv",
+        lookup_table_path: str | Path = DEFAULT_SYRINGE_TABLE_PATH,
     ) -> float:
         # Map diameter -> volume from the lookup table.
         if type != "hamilton_microliter_gastight":
@@ -164,7 +188,7 @@ class SyringePump(pumpy3.PumpPHD2000_Refill):
 
 
 if __name__ == "__main__":
-    pump = SyringePump()
+    pump = SyringePump(syringe_volume_ml=2.5)
     pump.set_rate(0.2, "ml/mn")  # Set rate to 0.2 mL/min
     pump.run()
     time.sleep(2)
