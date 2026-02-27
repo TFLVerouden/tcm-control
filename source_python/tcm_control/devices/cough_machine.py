@@ -136,7 +136,7 @@ class CoughMachine(PoFSerialDevice):
 
                 deviation = reading - pressure_bar
                 print(
-                    f"\rPressure settling: {reading:.2f} bar (dev {deviation:+.2f})",
+                    f"\r{self.name} tank pressure settling: {reading:.2f} bar (dev {deviation:+.2f})",
                     end="",
                     flush=True,
                 )
@@ -147,7 +147,7 @@ class CoughMachine(PoFSerialDevice):
                         print()
                         return reply or ""
             else:
-                print("\rPressure settling: -.-- bar (dev ---)",
+                print(f"\r{self.name} pressure settling: -.-- bar (dev ---)",
                       end="", flush=True)
 
             time.sleep(poll_interval_s)
