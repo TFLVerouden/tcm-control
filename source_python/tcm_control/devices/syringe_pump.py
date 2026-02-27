@@ -211,12 +211,12 @@ class SyringePump(PumpPHD2000_Refill):
 
         if duration_s is None:
             print(
-                f"SyringePump is infusing at {effective_rate_ml_mn} mL/min indefinitely.")
+                f"SyringePump is infusing at {effective_rate_ml_mn} mL/min indefinitely")
             self.run()
             return
         else:
             print(
-                f"SyringePump infusing at {effective_rate_ml_mn} mL/min for {duration_s} s.")
+                f"SyringePump infusing at {effective_rate_ml_mn} mL/min for {duration_s} s")
             self.run()
             time.sleep(duration_s)
             self.stop()
