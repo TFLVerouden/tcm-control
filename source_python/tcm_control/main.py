@@ -26,11 +26,14 @@ if __name__ == "__main__":
     SYRINGE_VOLUME_ML = 2.5
     TANK_PRESSURE_BAR = 1.5
     DROPLET_PUMP_RATE_ML_PER_MIN = 0.1
+    EXPERIMENT_NAME = "test_run"
+
+    # Generate experiment directory based on current timestamp and experiment name
 
     # Initialise devices
-    lift = SprayTecLift()
+    # lift = SprayTecLift()
     # print("Current height:", lift.get_height(), " mm")
-    pump = SyringePump(syringe_volume_ml=SYRINGE_VOLUME_ML)
+    # pump = SyringePump(syringe_volume_ml=SYRINGE_VOLUME_ML)
     tcm = CoughMachine(debug=False)
 
     # Cough machine settings
@@ -38,15 +41,18 @@ if __name__ == "__main__":
     tcm.load_flowcurve(csv_path="step")
 
     # Turn on syringe pump
-    pump.infuse(pump_rate_ml_mn=DROPLET_PUMP_RATE_ML_PER_MIN)
-    time.sleep(2)  # Wait a bit for the pump to start infusing
+    # pump.infuse(pump_rate_ml_mn=DROPLET_PUMP_RATE_ML_PER_MIN)
+    # time.sleep(2)  # Wait a bit for the pump to start infusing
 
     # Go into droplet detection mode with a finite count
-    detections = tcm.count_droplets(runs=5)
-    print(f"Detected droplets: {detections}")
+    # detections = tcm.count_droplets(runs=5)
+    # print(f"Detected droplets: {detections}")
+
+    tcm.run()
+    ask_user_for_comments()
 
     # Ensure active modes are stopped
     tcm.quit()
 
     # Stop the pump after droplet detection is done
-    pump.stop()
+    # pump.stop()

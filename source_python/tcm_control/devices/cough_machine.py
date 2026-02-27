@@ -332,13 +332,12 @@ class CoughMachine(PoFSerialDevice):
         timeout_s: float = 10.0,
         echo: Optional[bool] = None,
         output_dir: Optional[str | Path] = None,
-    ) -> tuple[Optional[str], list[str], Optional[Path]]:
+    ) -> list[str]:
         if not self.write("R"):
             raise RuntimeError("Failed to send R command")
         return self._read_run_log(
             timeout_s=timeout_s,
             echo=echo,
-            output_dir=output_dir,
         )
 
     def _await_droplet_events(
@@ -432,11 +431,11 @@ class CoughMachine(PoFSerialDevice):
         results: list[list[str]] = []
 
         def handle_detection(_detections: int, _remaining: Optional[int]) -> None:
-                    result = self._read_run_log(
-                        timeout_s=log_timeout_s,
-                        echo=echo,
-                    )
-                    results.append(result)
+            result = self._read_run_log(
+                timeout_s=log_timeout_s,
+                echo=echo,
+            )
+            results.append(result)
 
         self._await_droplet_events(
             runs=runs,
