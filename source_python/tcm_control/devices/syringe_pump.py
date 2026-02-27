@@ -1,8 +1,8 @@
 import math
-import pumpy3
 import time
 import serial
 from pathlib import Path
+from pumpy3.pump import Chain, PumpNoResponseError, PumpPHD2000_Refill
 from tcm_utils.file_dialogs import read_repo_config_value, write_repo_config_value
 from tcm_utils.io_utils import prompt_input
 
@@ -17,7 +17,7 @@ DEFAULT_SYRINGE_TABLE_PATH = (
 #   > Enter (set baud rate) > Enter (confirm)
 
 
-class SyringePump(pumpy3.PumpPHD2000_Refill):
+class SyringePump(PumpPHD2000_Refill):
     def __init__(
         self,
         port: str | None = None,
@@ -27,7 +27,6 @@ class SyringePump(pumpy3.PumpPHD2000_Refill):
         pump_address: int = 0
     ):
 
-        # TODO: Test connection!!
         connections_filename = "connections.ini"
         com_ports_section = "com_ports"
         port_key = "syringe_pump"
@@ -74,7 +73,7 @@ class SyringePump(pumpy3.PumpPHD2000_Refill):
             try:
                 # Initialise PHD 2000 (this can raise if the pump is disconnected).
                 super().__init__(chain, address=pump_address, name="PHD2000")
-            except pumpy3.pump.PumpNoResponseError as exc:
+            except PumpNoResponseError as exc:
                 # Handshake failed; force a new port prompt.
                 last_error = exc
                 chain = None
@@ -123,12 +122,12 @@ class SyringePump(pumpy3.PumpPHD2000_Refill):
         port: str,
         baudrate: int,
         timeout: float,
-    ) -> pumpy3.Chain | None:
+    ) -> Chain | None:
         try:
-            chain = pumpy3.Chain(port, baudrate=baudrate, timeout=timeout)
+            chain = Chain(port, baudrate=baudrate, timeout=timeout)
             chain.flush()
             return chain
-        except (serial.SerialException, OSError, ValueError, pumpy3.pump.PumpNoResponseError):
+        except (serial.SerialException, OSError, ValueError, PumpNoResponseError):
             return None
 
     @staticmethod
@@ -186,10 +185,43 @@ class SyringePump(pumpy3.PumpPHD2000_Refill):
         diameter_mm = self.get_syringe_diameter(volume_ml, type=type)
         self.set_diameter(diameter_mm)
 
+    def infuse(self, pump_rate_ml_mn: float | None = None, duration_s: float | None = None):
+        if pump_rate_ml_mn is not None:
+            if pump_rate_ml_mn <= 0:
+                raise ValueError(
+                    "pump_rate_ml_mn must be positive when provided.")
+            self.set_rate(pump_rate_ml_mn, "ml/mn")
+            effective_rate_ml_mn = pump_rate_ml_mn
+        else:
+            current_rate, current_unit = self.get_rate()
+            if current_unit == "ml/mn":
+                effective_rate_ml_mn = current_rate
+            elif current_unit == "ul/mn":
+                effective_rate_ml_mn = current_rate / 1000.0
+            elif current_unit == "ml/hr":
+                effective_rate_ml_mn = current_rate / 60.0
+            elif current_unit == "ul/hr":
+                effective_rate_ml_mn = current_rate / 60000.0
+            else:
+                raise ValueError(
+                    f"Unknown pump rate unit returned by pump: {current_unit}")
+
+        if duration_s is not None and duration_s <= 0:
+            raise ValueError("duration_s must be positive when provided.")
+
+        if duration_s is None:
+            print(
+                f"SyringePump is infusing at {effective_rate_ml_mn} mL/min indefinitely.")
+            self.run()
+            return
+        else:
+            print(
+                f"SyringePump infusing at {effective_rate_ml_mn} mL/min for {duration_s} s.")
+            self.run()
+            time.sleep(duration_s)
+            self.stop()
+
 
 if __name__ == "__main__":
     pump = SyringePump(syringe_volume_ml=2.5)
-    pump.set_rate(0.2, "ml/mn")  # Set rate to 0.2 mL/min
-    pump.run()
-    time.sleep(2)
-    pump.stop()
+    pump.infuse(0.2, 2)
