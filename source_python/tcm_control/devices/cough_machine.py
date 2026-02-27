@@ -168,6 +168,12 @@ class CoughMachine(PoFSerialDevice):
         )
         return reply or ""
 
+    def quit(self, *, echo: Optional[bool] = None) -> str:
+        reply, _lines = self._query_and_drain(
+            "Q", expected="RETURNED_TO_IDLE", echo=echo
+        )
+        return reply or ""
+
     def laser_test(
         self,
         enabled: bool = True,
@@ -237,12 +243,12 @@ class CoughMachine(PoFSerialDevice):
 
     def clear_memory(self, *, echo: Optional[bool] = None) -> str:
         reply, _lines = self._query_and_drain(
-            "Q!", expected="MEMORY_CLEARED", echo=echo)
+            "X!", expected="MEMORY_CLEARED", echo=echo)
         return reply or ""
 
     def clear_logs(self, *, echo: Optional[bool] = None) -> str:
         reply, _lines = self._query_and_drain(
-            "Q", expected="LOGS_CLEARED", echo=echo)
+            "X", expected="LOGS_CLEARED", echo=echo)
         return reply or ""
 
     # DATASET HANDLING
@@ -344,7 +350,10 @@ class CoughMachine(PoFSerialDevice):
         log_timeout_s: float = 10.0,
         prompt_interval_s: float = 5.0,
     ) -> list[tuple[Optional[str], list[str], Optional[Path]]]:
-        cmd = "D" if runs is None else f"D {runs}"
+        if runs is not None and int(runs) <= 0:
+            raise ValueError("runs must be >= 1 when provided")
+
+        cmd = "D!" if runs is None else f"D! {runs}"
         reply, _lines = self._query_and_drain(
             cmd, expected="DROPLET_ARMED", echo=echo)
 
@@ -376,7 +385,6 @@ class CoughMachine(PoFSerialDevice):
                     result = self._read_run_log(
                         timeout_s=log_timeout_s,
                         echo=echo,
-                        output_dir=output_dir,
                     )
                     results.append(result)
                     if remaining is not None:
