@@ -272,7 +272,7 @@ class CoughMachine(PoFSerialDevice):
         delimiter: str = ",",
         echo: Optional[bool] = None,
         timeout: float = 1.0,
-        copy_path: Path | None = None,
+        experiment_dir: Optional[Path] | None = None,
     ) -> str:
         # If a path is passed here, it overrides any previously stored default
         if csv_path is not None:
@@ -328,8 +328,9 @@ class CoughMachine(PoFSerialDevice):
 
         self._dataset_loaded = True
         print(f"Dataset loaded from {self._flowcurve_csv_path}")
-        if copy_path is not None:
-            copy_flow_curve(self._flowcurve_csv_path, copy_path)
+        if experiment_dir is not None:
+            copy_flow_curve(experiment_dir=experiment_dir,
+                            flow_curve_path=self._flowcurve_csv_path)
         return reply or ""
 
     def get_flowcurve_status(self, *, echo: Optional[bool] = None) -> str:
