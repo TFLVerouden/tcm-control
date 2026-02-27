@@ -1,7 +1,7 @@
 import csv
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from tcm_utils.file_dialogs import ask_open_file, find_repo_root
 
@@ -341,32 +341,19 @@ class CoughMachine(PoFSerialDevice):
             output_dir=output_dir,
         )
 
-    def detect_droplet(
+    def _await_droplet_events(
         self,
-        runs: Optional[int] = None,
         *,
-        echo: Optional[bool] = None,
-        output_dir: Optional[str | Path] = None,
-        log_timeout_s: float = 10.0,
-        prompt_interval_s: float = 5.0,
-    ) -> list[tuple[Optional[str], list[str], Optional[Path]]]:
-        if runs is not None and int(runs) <= 0:
-            raise ValueError("runs must be >= 1 when provided")
-
-        cmd = "D!" if runs is None else f"D! {runs}"
-        reply, _lines = self._query_and_drain(
-            cmd, expected="DROPLET_ARMED", echo=echo)
-
+        runs: Optional[int],
+        on_detected: Optional[Callable[[int, Optional[int]], None]] = None,
+    ) -> int:
         remaining: Optional[int]
         if runs is None:
             remaining = None
         else:
             remaining = max(0, int(runs))
 
-        if reply != "DROPLET_ARMED":
-            raise RuntimeError(f"Unexpected reply to {cmd}: {reply!r}")
-
-        results: list[tuple[Optional[str], list[str], Optional[Path]]] = []
+        detections = 0
         last_prompt = time.time()
         while True:
             if remaining is not None and remaining <= 0:
@@ -382,24 +369,79 @@ class CoughMachine(PoFSerialDevice):
                     raise RuntimeError(clean_line)
 
                 if clean_line == "DROPLET_DETECTED":
+                    detections += 1
+                    if remaining is not None:
+                        remaining -= 1
+                    if on_detected is not None:
+                        on_detected(detections, remaining)
+                    continue
+
+        return detections
+
+    def count_droplets(
+        self,
+        runs: Optional[int] = None,
+        *,
+        echo: Optional[bool] = None,
+        prompt_interval_s: float = 5.0,
+    ) -> int:
+        if runs is not None and int(runs) <= 0:
+            raise ValueError("runs must be >= 1 when provided")
+
+        cmd = "D" if runs is None else f"D {runs}"
+        reply, _lines = self._query_and_drain(
+            cmd, expected="DROPLET_ARMED", echo=echo)
+
+        if reply != "DROPLET_ARMED":
+            raise RuntimeError(f"Unexpected reply to {cmd}: {reply!r}")
+
+        def handle_detection(detections: int, remaining: Optional[int]) -> None:
+            remaining_text = "∞" if remaining is None else str(remaining)
+            print(
+                f"\rDetected droplets: {detections} ({remaining_text} remaining)",
+                end="",
+                flush=True,
+            )
+
+        detections = self._await_droplet_events(
+            runs=runs,
+            on_detected=handle_detection,
+        )
+        print()
+        return detections
+
+    def detect_droplets_and_run(
+        self,
+        runs: Optional[int] = None,
+        *,
+        echo: Optional[bool] = None,
+        output_dir: Optional[str | Path] = None,
+        log_timeout_s: float = 10.0,
+        prompt_interval_s: float = 5.0,
+    ) -> list[list[str]]:
+        if runs is not None and int(runs) <= 0:
+            raise ValueError("runs must be >= 1 when provided")
+
+        cmd = "D!" if runs is None else f"D! {runs}"
+        reply, _lines = self._query_and_drain(
+            cmd, expected="DROPLET_ARMED", echo=echo)
+
+        if reply != "DROPLET_ARMED":
+            raise RuntimeError(f"Unexpected reply to {cmd}: {reply!r}")
+
+        results: list[list[str]] = []
+
+        def handle_detection(_detections: int, _remaining: Optional[int]) -> None:
                     result = self._read_run_log(
                         timeout_s=log_timeout_s,
                         echo=echo,
                     )
                     results.append(result)
-                    if remaining is not None:
-                        remaining -= 1
-                    continue
-            else:
-                now = time.time()
-                if now - last_prompt >= prompt_interval_s:
-                    if remaining is None:
-                        status = "Waiting for droplet..."
-                    else:
-                        status = f"Waiting for droplet... {remaining} remaining"
-                    print(f"\r{status}")
-                    last_prompt = now
-                time.sleep(0.05)
+
+        self._await_droplet_events(
+            runs=runs,
+            on_detected=handle_detection,
+        )
 
         return results
 
