@@ -9,7 +9,7 @@ from tcm_utils.time_utils import timestamp_str, timestamp_from_file
 
 
 def create_experiment_dir(
-    base_dir: Path,
+    experiment_dir: Path,
     experiment_name: str,
     start_time: str | None = None,
 ) -> Path:
@@ -20,7 +20,7 @@ def create_experiment_dir(
 
     # Create the experiment directory
     dir_name = f"{start_time}_{experiment_name}"
-    experiment_dir = base_dir / dir_name
+    experiment_dir = experiment_dir / dir_name
     experiment_dir.mkdir(parents=True, exist_ok=False)
 
     # Return path
