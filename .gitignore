@@ -41,7 +41,9 @@ htmlcov/
 # ============================================
 
 # VSCode
-**/.vscode/
+**/.vscode/*
+!/.vscode/
+!/.vscode/settings.json
 
 # PyCharm / IntelliJ
 .idea/
