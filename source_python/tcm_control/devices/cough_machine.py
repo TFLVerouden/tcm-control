@@ -6,8 +6,10 @@ from typing import Callable, Optional
 from tcm_utils.file_dialogs import ask_open_file, find_repo_root
 
 from .base import PoFSerialDevice
+from ..logger import copy_flow_curve
 
 DEFAULT_FLOWCURVE_DIR = Path("source_python/tcm_control/flow_curves")
+DEFAULT_RUN_LOG_DIR = Path(".logs")
 
 
 class CoughMachine(PoFSerialDevice):
@@ -264,6 +266,7 @@ class CoughMachine(PoFSerialDevice):
         delimiter: str = ",",
         echo: Optional[bool] = None,
         timeout: float = 1.0,
+        copy_path: Path | None = None,
     ) -> str:
         # If a path is passed here, it overrides any previously stored default
         if csv_path is not None:
@@ -319,6 +322,8 @@ class CoughMachine(PoFSerialDevice):
 
         self._dataset_loaded = True
         print(f"Dataset loaded from {self._flowcurve_csv_path}")
+        if copy_path is not None:
+            copy_flow_curve(self._flowcurve_csv_path, copy_path)
         return reply or ""
 
     def get_flowcurve_status(self, *, echo: Optional[bool] = None) -> str:
@@ -335,10 +340,12 @@ class CoughMachine(PoFSerialDevice):
     ) -> list[str]:
         if not self.write("R"):
             raise RuntimeError("Failed to send R command")
-        return self._read_run_log(
+        rows = self._read_run_log(
             timeout_s=timeout_s,
             echo=echo,
         )
+        self._save_run_logs(rows, output_dir=output_dir)
+        return rows
 
     def _await_droplet_events(
         self,
@@ -442,6 +449,7 @@ class CoughMachine(PoFSerialDevice):
             on_detected=handle_detection,
         )
 
+        self._save_run_logs(results, output_dir=output_dir)
         return results
 
     # -------------------------------------------------------------------
@@ -556,3 +564,63 @@ class CoughMachine(PoFSerialDevice):
             raise RuntimeError("Log stream did not start within timeout.")
 
         return rows
+
+    def _save_run_logs(
+        self,
+        logs: list[str] | list[list[str]],
+        *,
+        output_dir: Optional[str | Path] = None,
+    ) -> list[Path]:
+        # Save either one run log (list[str]) or multiple logs (list[list[str]]) as CSV files.
+        repo_root = find_repo_root()
+        if output_dir is None:
+            target_dir = (repo_root / DEFAULT_RUN_LOG_DIR).resolve()
+            print(
+                "WARNING: output_dir was not found. "
+                f"Run logs were saved to: {target_dir}. "
+                "Retrieve your files from this repo path."
+            )
+        else:
+            target_dir = Path(output_dir)
+            if not target_dir.is_absolute():
+                target_dir = repo_root / target_dir
+            target_dir = target_dir.resolve()
+
+        normalized_logs: list[list[str]] = []
+        if isinstance(logs, list) and logs:
+            if all(isinstance(line, str) for line in logs):
+                normalized_logs = [[str(line) for line in logs]]
+            elif all(isinstance(run_rows, list) for run_rows in logs):
+                normalized_logs = [
+                    [str(line) for line in run_rows] for run_rows in logs
+                ]
+            else:
+                raise TypeError(
+                    "logs must be either list[str] or list[list[str]]"
+                )
+        elif isinstance(logs, list):
+            normalized_logs = []
+        else:
+            raise TypeError("logs must be a list")
+
+        if not normalized_logs:
+            return []
+
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        timestamp = time.strftime("%y%m%d_%H%M%S")
+        saved_paths: list[Path] = []
+
+        for idx, rows in enumerate(normalized_logs, start=1):
+            if len(normalized_logs) == 1:
+                filename = f"run_{timestamp}.csv"
+            else:
+                filename = f"run_{idx}_{timestamp}.csv"
+
+            filepath = target_dir / filename
+            with open(filepath, "w", encoding="utf-8", newline="") as handle:
+                for row in rows:
+                    handle.write(row if row.endswith("\n") else f"{row}\n")
+            saved_paths.append(filepath)
+
+        return saved_paths

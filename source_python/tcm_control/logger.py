@@ -59,7 +59,7 @@ def write_comments(
 def copy_flow_curve(
         experiment_dir: Path,
         flow_curve_path: Path):
-    
+
     # Copy the flow curve file to the experiment directory for record-keeping
     dest_path = experiment_dir / f"flow_curve_{flow_curve_path.name}"
     with open(flow_curve_path, "r") as src, open(dest_path, "w") as dst:

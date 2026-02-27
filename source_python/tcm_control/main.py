@@ -6,16 +6,17 @@ import time
 from tcm_control.devices import CoughMachine, SprayTecLift, SyringePump
 from tcm_control import logger
 from tcm_utils.io_utils import prompt_input
+from tcm_utils.time_utils import timestamp_str
 
 
-def ask_user_for_comments(experiment_dir: Path) -> str:
+def ask_user_for_comments(output_dir: Path) -> str:
     # Ask user for comments about the run, which will be saved in a text file
     # in the experiment directory.
 
     print("Enter comments for this run (press Enter to confirm, leave empty to skip): ")
     comments = input(">> ")
     if comments:
-        logger.write_comments(experiment_dir, comments)
+        logger.write_comments(output_dir, comments)
 
     return comments
 
@@ -27,8 +28,13 @@ if __name__ == "__main__":
     TANK_PRESSURE_BAR = 1.5
     DROPLET_PUMP_RATE_ML_PER_MIN = 0.1
     EXPERIMENT_NAME = "test_run"
+    # Change to your desired base directory
+    EXPERIMENT_BASE_DIR = Path("C:\\CoughMachineData\\260226 Tests")
 
     # Generate experiment directory based on current timestamp and experiment name
+    start_time = timestamp_str()
+    output_dir = logger.create_experiment_dir(
+        EXPERIMENT_BASE_DIR, EXPERIMENT_NAME, start_time=start_time)
 
     # Initialise devices
     # lift = SprayTecLift()
@@ -38,7 +44,7 @@ if __name__ == "__main__":
 
     # Cough machine settings
     tcm.set_pressure(TANK_PRESSURE_BAR, timeout_s=10.0)
-    tcm.load_flowcurve(csv_path="step")
+    tcm.load_flowcurve(csv_path="step", copy_path=output_dir)
 
     # Turn on syringe pump
     # pump.infuse(pump_rate_ml_mn=DROPLET_PUMP_RATE_ML_PER_MIN)
@@ -48,8 +54,8 @@ if __name__ == "__main__":
     # detections = tcm.count_droplets(runs=5)
     # print(f"Detected droplets: {detections}")
 
-    tcm.run()
-    ask_user_for_comments()
+    tcm.run(output_dir=output_dir)
+    ask_user_for_comments(output_dir=output_dir)
 
     # Ensure active modes are stopped
     tcm.quit()

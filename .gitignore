@@ -61,15 +61,16 @@ Thumbs.db
 # Project Specific
 # ============================================
 
-# PlatformIO
-.pio/
-
 # Microsoft Visio temporary files
 *.~vsdx
 
 # Config files
 .config/
 
+# Default run log output
+.logs/
+
+# PlatformIO and VSCode files for source_mcu
 source_mcu/.pio
 source_mcu/.vscode
 source_mcu/logs/
