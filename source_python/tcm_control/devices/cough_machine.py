@@ -344,30 +344,34 @@ class CoughMachine(PoFSerialDevice):
         timeout_s: float = 10.0,
         echo: Optional[bool] = None,
         output_dir: Optional[str | Path] = None,
+        run_nr_start: Optional[int] = None,
     ) -> list[str]:
+
+        print("Starting cough")
         if not self.write("R"):
             raise RuntimeError("Failed to send R command")
-        rows = self._read_run_log(
+        rows = self._receive_run_log(
             timeout_s=timeout_s,
             echo=echo,
         )
-        self._save_run_logs(rows, output_dir=output_dir)
+        print("Cough completed")
+        self._save_run_logs(rows, output_dir=output_dir,
+                            run_nr_start=run_nr_start)
         return rows
 
     def _await_droplet_events(
         self,
         *,
-        runs: Optional[int],
+        nr_droplets: Optional[int],
         on_detected: Optional[Callable[[int, Optional[int]], None]] = None,
     ) -> int:
         remaining: Optional[int]
-        if runs is None:
+        if nr_droplets is None:
             remaining = None
         else:
-            remaining = max(0, int(runs))
+            remaining = max(0, int(nr_droplets))
 
         detections = 0
-        last_prompt = time.time()
         while True:
             if remaining is not None and remaining <= 0:
                 break
@@ -393,15 +397,14 @@ class CoughMachine(PoFSerialDevice):
 
     def count_droplets(
         self,
-        runs: Optional[int] = None,
+        nr_droplets: Optional[int] = None,
         *,
         echo: Optional[bool] = None,
-        prompt_interval_s: float = 5.0,
     ) -> int:
-        if runs is not None and int(runs) <= 0:
-            raise ValueError("runs must be >= 1 when provided")
+        if nr_droplets is not None and int(nr_droplets) <= 0:
+            raise ValueError("nr_droplets must be >= 1 when provided")
 
-        cmd = "D" if runs is None else f"D {runs}"
+        cmd = "D" if nr_droplets is None else f"D {nr_droplets}"
         reply, _lines = self._query_and_drain(
             cmd, expected="DROPLET_ARMED", echo=echo)
 
@@ -411,13 +414,13 @@ class CoughMachine(PoFSerialDevice):
         def handle_detection(detections: int, remaining: Optional[int]) -> None:
             remaining_text = "∞" if remaining is None else str(remaining)
             print(
-                f"\rDetected droplets: {detections} ({remaining_text} remaining)",
+                f"\rCounted droplets: {detections} ({remaining_text} remaining)",
                 end="",
                 flush=True,
             )
 
         detections = self._await_droplet_events(
-            runs=runs,
+            nr_droplets=nr_droplets,
             on_detected=handle_detection,
         )
         print()
@@ -425,17 +428,17 @@ class CoughMachine(PoFSerialDevice):
 
     def detect_droplets_and_run(
         self,
-        runs: Optional[int] = None,
+        nr_runs: Optional[int] = None,
+        run_nr_start: Optional[int] = None,
         *,
         echo: Optional[bool] = None,
         output_dir: Optional[str | Path] = None,
         log_timeout_s: float = 10.0,
-        prompt_interval_s: float = 5.0,
     ) -> list[list[str]]:
-        if runs is not None and int(runs) <= 0:
-            raise ValueError("runs must be >= 1 when provided")
+        if nr_runs is not None and int(nr_runs) <= 0:
+            raise ValueError("nr_runs must be >= 1 when provided")
 
-        cmd = "D!" if runs is None else f"D! {runs}"
+        cmd = "D!" if nr_runs is None else f"D! {nr_runs}"
         reply, _lines = self._query_and_drain(
             cmd, expected="DROPLET_ARMED", echo=echo)
 
@@ -445,18 +448,20 @@ class CoughMachine(PoFSerialDevice):
         results: list[list[str]] = []
 
         def handle_detection(_detections: int, _remaining: Optional[int]) -> None:
-            result = self._read_run_log(
+            result = self._receive_run_log(
                 timeout_s=log_timeout_s,
                 echo=echo,
             )
             results.append(result)
 
         self._await_droplet_events(
-            runs=runs,
+            nr_droplets=nr_runs,
             on_detected=handle_detection,
         )
 
-        self._save_run_logs(results, output_dir=output_dir)
+        print("Cough completed")
+        self._save_run_logs(results, output_dir=output_dir,
+                            run_nr_start=run_nr_start)
         return results
 
     # -------------------------------------------------------------------
@@ -527,7 +532,7 @@ class CoughMachine(PoFSerialDevice):
     # Run logging
     # -------------------------------------------------------------------
 
-    def _read_run_log(
+    def _receive_run_log(
         self,
         *,
         start_marker: str = "START_OF_FILE",
@@ -576,6 +581,7 @@ class CoughMachine(PoFSerialDevice):
         self,
         logs: list[str] | list[list[str]],
         *,
+        run_nr_start: Optional[int] = None,
         output_dir: Optional[str | Path] = None,
     ) -> list[Path]:
         # Save either one run log (list[str]) or multiple logs (list[list[str]]) as CSV files.
@@ -619,15 +625,23 @@ class CoughMachine(PoFSerialDevice):
         saved_paths: list[Path] = []
 
         for idx, rows in enumerate(normalized_logs, start=1):
-            if len(normalized_logs) == 1:
-                filename = f"run_{timestamp}.csv"
+            if run_nr_start is None:
+                if len(normalized_logs) == 1:
+                    label = ""
+                else:
+                    label = idx
             else:
-                filename = f"run_{idx}_{timestamp}.csv"
+                label = run_nr_start + idx - 1
+            filename = f"run{label}_{timestamp}.csv"
 
             filepath = target_dir / filename
             with open(filepath, "w", encoding="utf-8", newline="") as handle:
                 for row in rows:
+                    if run_nr_start is not None and row.startswith("run_nr"):
+                        row = f"run_nr,{label}\n"
                     handle.write(row if row.endswith("\n") else f"{row}\n")
             saved_paths.append(filepath)
+
+        print(f"Saved {len(saved_paths)} run log(s) to {target_dir}")
 
         return saved_paths
