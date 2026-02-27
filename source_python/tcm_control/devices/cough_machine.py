@@ -58,6 +58,7 @@ class CoughMachine(PoFSerialDevice):
                 self._query_and_drain(cmd, echo=True, raise_on_error=False)
         except KeyboardInterrupt:
             print("\nExiting manual mode.")
+            quit(1)
 
     # ------------------------------------------------------------------
     # Serial command wrappers
