@@ -10,6 +10,8 @@ from ..logger import copy_flow_curve
 
 DEFAULT_FLOWCURVE_DIR = Path("source_python/tcm_control/flow_curves")
 DEFAULT_RUN_LOG_DIR = Path(".logs")
+# TODO: double check this value
+MAX_PRESSURE_BAR = 5.0
 
 
 class CoughMachine(PoFSerialDevice):
@@ -114,6 +116,9 @@ class CoughMachine(PoFSerialDevice):
         )
 
         # Check parameters
+        if pressure_bar < 0 or pressure_bar > MAX_PRESSURE_BAR:
+            raise ValueError(
+                f"Pressure must be between 0 and {MAX_PRESSURE_BAR} bar")
         if timeout_s <= 0:
             return reply or ""
         if avg_window_s <= 0:
