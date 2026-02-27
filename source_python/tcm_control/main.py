@@ -21,15 +21,52 @@ def ask_user_for_comments(output_dir: Path) -> str:
     return comments
 
 
+def set_spraytec_xy(tcm_trachea_exit_to_ref_x_mm: float,
+                    tcm_trachea_exit_to_ref_y_mm: float,
+                    spraytec_to_ref_x_mm: float,
+                    spraytec_to_ref_y_mm: float,
+                    stage_position_x_mm: Optional[float] = None,
+                    stage_position_y_mm: Optional[float] = None) -> tuple[float, float]:
+
+    if stage_position_x_mm is None or stage_position_y_mm is None:
+        # Ask user to read off x and y position of the cough machine
+        print("Read off the x and y scale on the cough machine stage.")
+        # TODO: Set min and max values
+        x = prompt_input("x (cross-airflow) position in mm: ",
+                         value_type="float", min_value=0, max_value=100)
+        y = prompt_input("y (along-airflow) position in mm: ",
+                         value_type="float", min_value=0, max_value=100)
+    else:
+        x = stage_position_x_mm
+        y = stage_position_y_mm
+
+    return (x - tcm_trachea_exit_to_ref_x_mm - spraytec_to_ref_x_mm,
+            y - tcm_trachea_exit_to_ref_y_mm - spraytec_to_ref_y_mm)
+
+
 if __name__ == "__main__":
     # Config variables
     FLOW_CURVE_CSV_PATH = None
     SYRINGE_VOLUME_ML = 2.5
     TANK_PRESSURE_BAR = 1.5
     DROPLET_PUMP_RATE_ML_PER_MIN = 0.1
-    EXPERIMENT_NAME = "test_run"
-    # Change to your desired base directory
-    EXPERIMENT_BASE_DIR = Path("C:\\CoughMachineData\\260226 Tests")
+    # [SPRAYTEC] Following values only have to be set when recording droplet size using SprayTec
+    # TODO: Measure offsets and enter here
+    # Vertical position of the bottom of the cough machine trachea relative to floor
+    TCM_TRACHEA_BOTTOM_Z_MM = 100.0
+    # Height of the cough machine trachea
+    TCM_TRACHEA_HEIGHT_MM = 10.0
+    # Vertical position of lift platform top when it reports 0 mm, relative to floor
+    LIFT_ZERO_Z_MM = 0.0
+    # Vertical distance between lift platform and the centre of the SprayTec measurement volume
+    SPRAYTEC_TO_LIFT_Z_MM = 50.0
+
+    TCM_TRACHEA_EXIT_TO_REF_X_MM = 50.0
+    TCM_TRACHEA_EXIT_TO_REF_Y_MM = 50.0
+    SPRAYTEC_TO_REF_X_MM = 10.0
+    SPRAYTEC_TO_REF_Y_MM = 10.0
+    STAGE_POSITION_X_MM = None  # can be None, is then prompted
+    STAGE_POSITION_Y_MM = None  # can be None, is then prompted
 
     # Generate experiment directory based on current timestamp and experiment name
     start_time = timestamp_str()
