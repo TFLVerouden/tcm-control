@@ -6,7 +6,7 @@ from typing import Callable, Optional
 from tcm_utils.file_dialogs import ask_open_file, find_repo_root
 
 from .base import PoFSerialDevice
-from ..logger import copy_flow_curve
+from ..logger import copy_flow_curve, create_labeled_csv_filename
 
 DEFAULT_FLOWCURVE_DIR = Path("source_python/tcm_control/flow_curves")
 DEFAULT_RUN_LOG_DIR = Path(".logs")
@@ -747,7 +747,11 @@ class CoughMachine(PoFSerialDevice):
                     label = idx
             else:
                 label = run_nr_start + idx - 1
-            filename = f"run{label}_{timestamp}.csv"
+            filename = create_labeled_csv_filename(
+                prefix="run",
+                label=label,
+                timestamp=timestamp,
+            )
 
             filepath = target_dir / filename
             with open(filepath, "w", encoding="utf-8", newline="") as handle:

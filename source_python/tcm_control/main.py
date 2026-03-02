@@ -5,6 +5,7 @@ import time
 from typing import Optional
 
 from tcm_control.devices import CoughMachine, SprayTecLift, SyringePump
+from tcm_control.devices.spraytec_output import save_spraytec_data
 from tcm_control import logger
 from tcm_utils.io_utils import prompt_input, prompt_yes_no
 from tcm_utils.time_utils import timestamp_str
@@ -74,6 +75,9 @@ if __name__ == "__main__":
     NR_DROPLETS_TO_SKIP = 5
 
     # [SPRAYTEC] Following values only have to be set when recording droplet size using SprayTec
+    SPRAYTEC_APPEND_FILE_PATH = None  # set to Path(...) to avoid file dialog
+    DEBUG_MODE = False
+
     # TODO: Measure offsets and enter here
     # Vertical position of the bottom of the cough machine trachea relative to floor
     TCM_TRACHEA_BOTTOM_Z_MM = 100.0
@@ -110,7 +114,7 @@ if __name__ == "__main__":
         SERIES_DIR, EXPERIMENT_NAME, start_time=time_start)
 
     # Initialise cough machine
-    tcm = CoughMachine()
+    tcm = CoughMachine(debug=DEBUG_MODE)
     tcm.set_pressure(TANK_PRESSURE_BAR, timeout_s=60.0)
     tcm.set_wait_us(wait_us=wait_before_run_us)
     tcm.load_flowcurve(csv_path=FLOW_CURVE_CSV_PATH, experiment_dir=output_dir)
@@ -182,8 +186,8 @@ if __name__ == "__main__":
                 pump.infuse(pump_rate_ml_mn=DROPLET_PUMP_RATE_ML_PER_MIN)
 
                 # Let the pump run for a bit to ensure proper infusion before starting the next cough
-                tcm.count_droplets(nr_droplets=5)
-                # TODO: Maybe this should be in indefinite mode in case a droplet is not detected properly?
+                tcm.count_droplets(nr_droplets=5, let_drip=True)
+                # TODO: test this let_drip mode
 
                 # Then go into droplet detection mode
                 tcm.detect_droplets_and_run(nr_runs=1, output_dir=output_dir,
@@ -222,5 +226,17 @@ if __name__ == "__main__":
     print("Experiment completed, all data saved to ", output_dir)
 
     # TODO: Post-processing
+    if RECORD_DROPLET_SIZE:
+        prompt_yes_no(
+            "Press Enter if the SprayTec has finished processing the measurement(s)...",
+            default=True,
+        )
+        save_spraytec_data(
+            append_file_path=SPRAYTEC_APPEND_FILE_PATH,
+            experiment_dir=output_dir,
+            start_time=time_start,
+            debug=DEBUG_MODE,
+        )
+    
 
     print("Exiting.")

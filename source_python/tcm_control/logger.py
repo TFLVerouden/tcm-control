@@ -1,4 +1,5 @@
 from pathlib import Path
+import time
 from tcm_utils.io_utils import create_timestamped_filename, save_metadata_json
 from tcm_utils.time_utils import timestamp_str, timestamp_from_file
 
@@ -66,3 +67,14 @@ def copy_flow_curve(
         dst.write(src.read())
 
     print(f"Flow curve copied to {dest_path}")
+
+
+def create_labeled_csv_filename(
+        prefix: str,
+        label: int | str | None,
+        timestamp: str | None = None) -> str:
+    if timestamp is None:
+        timestamp = time.strftime("%y%m%d_%H%M%S")
+
+    safe_label = "" if label is None else str(label)
+    return f"{prefix}{safe_label}_{timestamp}.csv"
