@@ -25,6 +25,12 @@ class CoughMachine(PoFSerialDevice):
         debug: bool = False,
         echo: bool = False,
     ):
+        """Initialize the cough machine serial device wrapper.
+
+        Parameters map to the underlying serial connection and expected MCU identity
+        (`id?` -> `TCM_control`). If `debug` is True, device debug mode is enabled
+        immediately via command `B 1`.
+        """
         super().__init__(
             name=name,
             long_name=long_name,
@@ -48,6 +54,11 @@ class CoughMachine(PoFSerialDevice):
 
     # Allow user to type commands directly to the device
     def manual_mode(self) -> None:
+        """Start an interactive terminal pass-through to the MCU.
+
+        User-entered lines are sent directly over serial and responses are drained
+        and printed. Exit with `exit`, `quit`, or Ctrl+C.
+        """
         print("Entering manual mode. Type commands to send to the device. Ctrl+C to exit.")
         try:
             while True:
@@ -66,10 +77,15 @@ class CoughMachine(PoFSerialDevice):
 
     # CONNECTION & DEBUGGING
     def _identify(self, *, echo: Optional[bool] = None) -> str:
+        """Query device identity using `id?` and return the reply string."""
         reply, _lines = self._query_and_drain("id?", echo=echo)
         return reply or ""
 
     def _set_debug(self, enabled: bool) -> None:
+        """Enable or disable MCU debug output using `B <0|1>`.
+
+        Expects `DEBUG_ON` when enabled and `DEBUG_OFF` when disabled.
+        """
         cmd = "B 1" if enabled else "B 0"
         expected = "DEBUG_ON" if enabled else "DEBUG_OFF"
         self._query_and_drain(cmd, expected=expected, echo=enabled)
@@ -79,6 +95,11 @@ class CoughMachine(PoFSerialDevice):
     def read_status(
         self, *, echo: Optional[bool] = None, timeout: float = 1.0
     ) -> list[str]:
+        """Read debug status block using `S?`.
+
+        This command is only available when debug mode is active on the host and MCU.
+        Returns all lines read from the status response.
+        """
         if not self._debug:
             raise RuntimeError("read_status is only available in debug mode.")
         if not self.write("S?"):
@@ -92,11 +113,16 @@ class CoughMachine(PoFSerialDevice):
         return lines
 
     def help(self, *, echo: Optional[bool] = None) -> str:
+        """Request the on-device help menu using `?`."""
         reply, _lines = self._query_and_drain("?", echo=echo)
         return reply or ""
 
     # CONTROL HARDWARE
     def set_valve_current(self, current_ma: float, *, echo: Optional[bool] = None) -> str:
+        """Set proportional valve current in mA using `V <mA>`.
+
+        Expects a reply beginning with `SET_VALVE`.
+        """
         reply, _lines = self._query_and_drain(
             f"V {current_ma}", expected_prefix="SET_VALVE", echo=echo
         )
@@ -112,6 +138,11 @@ class CoughMachine(PoFSerialDevice):
         poll_interval_s: float = 0.2,
         echo: Optional[bool] = None,
     ) -> str:
+        """Set target pressure with `P <bar>` and wait for stable measured pressure.
+
+        After issuing the set command, pressure is polled via `P?` until the rolling
+        average over `avg_window_s` is within `tolerance_bar` or `timeout_s` elapses.
+        """
         reply, _lines = self._query_and_drain(
             f"P {pressure_bar}", expected_prefix="SET_PRESSURE", echo=echo
         )
@@ -165,18 +196,30 @@ class CoughMachine(PoFSerialDevice):
             "Could not reach setpoint value or pressure too unstable.")
 
     def open_solenoid(self, *, echo: Optional[bool] = None) -> str:
+        """Open the solenoid valve using `O`.
+
+        Expects `SOLENOID_OPENED`.
+        """
         reply, _lines = self._query_and_drain(
             "O", expected="SOLENOID_OPENED", echo=echo
         )
         return reply or ""
 
     def close_solenoid(self, *, echo: Optional[bool] = None) -> str:
+        """Close the solenoid valve using `C`.
+
+        Expects `SOLENOID_CLOSED`.
+        """
         reply, _lines = self._query_and_drain(
             "C", expected="SOLENOID_CLOSED", echo=echo
         )
         return reply or ""
 
     def quit(self, *, echo: Optional[bool] = None) -> str:
+        """Abort active MCU modes and return to idle using `Q`.
+
+        Expects `RETURNED_TO_IDLE`.
+        """
         reply, _lines = self._query_and_drain(
             "Q", expected="RETURNED_TO_IDLE", echo=echo
         )
@@ -189,6 +232,11 @@ class CoughMachine(PoFSerialDevice):
         duration_s: Optional[float] = None,
         echo: Optional[bool] = None,
     ) -> str:
+        """Toggle laser test mode with `A <0|1>`.
+
+        When `duration_s` is provided and `enabled` is True, test mode is enabled,
+        held for the duration, and then automatically disabled.
+        """
         if duration_s is not None and enabled:
             reply_on, _lines_on = self._query_and_drain(
                 "A 1", expected="LASER_TEST_ON", echo=echo
@@ -207,6 +255,7 @@ class CoughMachine(PoFSerialDevice):
 
     # READ OUT SENSORS
     def read_pressure(self, *, echo: Optional[bool] = None) -> Optional[float]:
+        """Read instantaneous pressure using `P?` and parse `P<bar>` reply."""
         reply, _lines = self._query_and_drain(
             "P?", expected_prefix="P", echo=echo)
         if reply is None:
@@ -219,6 +268,10 @@ class CoughMachine(PoFSerialDevice):
     def read_temperature_humidity(
         self, *, echo: Optional[bool] = None
     ) -> tuple[Optional[float], Optional[float]]:
+        """Read temperature and humidity using `T?`.
+
+        Parses replies formatted like `T<degC> H<%RH>` and returns `(temp, hum)`.
+        """
         reply, _lines = self._query_and_drain(
             "T?", expected_prefix="T", echo=echo)
         if reply is None:
@@ -233,6 +286,10 @@ class CoughMachine(PoFSerialDevice):
 
     # CONFIGURATION
     def set_wait_us(self, wait_us: int, *, echo: Optional[bool] = None) -> str:
+        """Set pre-run wait in microseconds using `W <us>`.
+
+        This wait applies before `R` runs and after droplet detection in `D!` mode.
+        """
         reply, _lines = self._query_and_drain(
             f"W {wait_us}", expected_prefix="SET_WAIT", echo=echo
         )
@@ -240,6 +297,7 @@ class CoughMachine(PoFSerialDevice):
         return reply or ""
 
     def get_wait_us(self, *, echo: Optional[bool] = None) -> Optional[int]:
+        """Read configured pre-run wait using `W?` and parse `W<us>` reply."""
         reply, _lines = self._query_and_drain(
             "W?", expected_prefix="W", echo=echo)
         if reply is None:
@@ -250,17 +308,26 @@ class CoughMachine(PoFSerialDevice):
             return None
 
     def clear_memory(self, *, echo: Optional[bool] = None) -> str:
+        """Clear logs and persisted state using `X!`.
+
+        Expects `MEMORY_CLEARED`.
+        """
         reply, _lines = self._query_and_drain(
             "X!", expected="MEMORY_CLEARED", echo=echo)
         return reply or ""
 
     def clear_logs(self, *, echo: Optional[bool] = None) -> str:
+        """Delete stored experiment log files using `X`.
+
+        Expects `LOGS_CLEARED`.
+        """
         reply, _lines = self._query_and_drain(
             "X", expected="LOGS_CLEARED", echo=echo)
         return reply or ""
 
     # DATASET HANDLING
     def set_flowcurve_csv_path(self, csv_path: str | Path | None) -> None:
+        """Set or clear the default flow-curve CSV path used by `load_flowcurve`."""
         # Store a default path for later; load_flowcurve() will use this if no path is passed.
         self._flowcurve_csv_path = Path(
             csv_path) if csv_path is not None else None
@@ -274,6 +341,12 @@ class CoughMachine(PoFSerialDevice):
         timeout: float = 1.0,
         experiment_dir: Optional[Path] | None = None,
     ) -> str:
+        """Load and upload a flow-curve dataset using serial command `L`.
+
+        The selected CSV is converted to protocol payload format
+        `<N> <duration_ms> <ms0>,<mA0>,<e0>,...` and sent as one `L` command.
+        Waits for upload confirmation ending with `DATASET_SAVED`.
+        """
         # If a path is passed here, it overrides any previously stored default
         if csv_path is not None:
             candidate = Path(csv_path)
@@ -334,6 +407,7 @@ class CoughMachine(PoFSerialDevice):
         return reply or ""
 
     def get_flowcurve_status(self, *, echo: Optional[bool] = None) -> str:
+        """Query loaded dataset state with `L?` and return first reply line."""
         reply, _lines = self._query_and_drain("L?", echo=echo)
         return reply or ""
 
@@ -346,6 +420,11 @@ class CoughMachine(PoFSerialDevice):
         output_dir: Optional[str | Path] = None,
         run_nr_start: Optional[int] = None,
     ) -> list[str]:
+        """Run the loaded dataset immediately using `R` and save streamed log CSV.
+
+        Expects a log stream wrapped by `START_OF_FILE ...` and `END_OF_FILE`.
+        Returns collected CSV lines for the run.
+        """
 
         print("Starting cough")
         if not self.write("R"):
@@ -365,6 +444,11 @@ class CoughMachine(PoFSerialDevice):
         nr_droplets: Optional[int],
         on_detected: Optional[Callable[[int, Optional[int]], None]] = None,
     ) -> int:
+        """Wait for `DROPLET_DETECTED` events and invoke callback per detection.
+
+        Stops after `nr_droplets` detections when provided, otherwise runs
+        indefinitely until external interruption.
+        """
         remaining: Optional[int]
         if nr_droplets is None:
             remaining = None
@@ -402,6 +486,10 @@ class CoughMachine(PoFSerialDevice):
         *,
         echo: Optional[bool] = None,
     ) -> int:
+        """Arm droplet detection mode (`D` or `D <n>`) and count detections.
+
+        Returns the number of `DROPLET_DETECTED` events observed before completion.
+        """
         if nr_droplets is not None and int(nr_droplets) <= 0:
             raise ValueError("nr_droplets must be >= 1 when provided")
 
@@ -437,6 +525,11 @@ class CoughMachine(PoFSerialDevice):
         output_dir: Optional[str | Path] = None,
         log_timeout_s: float = 10.0,
     ) -> list[list[str]]:
+        """Arm droplet-triggered run mode (`D!` or `D! <n>`) and collect run logs.
+
+        For each detected droplet, waits for and captures one streamed run log,
+        then saves all captured logs to disk.
+        """
         if nr_runs is not None and int(nr_runs) <= 0:
             raise ValueError("nr_runs must be >= 1 when provided")
 
@@ -474,6 +567,11 @@ class CoughMachine(PoFSerialDevice):
     def _extract_csv(
         filename: str | Path, delimiter: str = ","
     ) -> tuple[list[str], list[str], list[str]]:
+        """Read flow-curve CSV into arrays for time, current, and enable columns.
+
+        CSV rows must contain at least three non-empty values in the order
+        `time_ms,current_mA,enable`.
+        """
         # Parse a CSV file into time, current, enable arrays for the L command.
         time_arr: list[str] = []
         mA_arr: list[str] = []
@@ -507,6 +605,10 @@ class CoughMachine(PoFSerialDevice):
         handshake_delim: str = " ",
         data_delim: str = ",",
     ) -> str:
+        """Build the dataset upload string in MCU `L` command format.
+
+        Output format is `L <N> <duration_ms> <ms0>,<mA0>,<e0>,...`.
+        """
         # Format the arrays into the serial protocol for dataset upload.
         if (
             not time_array
@@ -542,6 +644,11 @@ class CoughMachine(PoFSerialDevice):
         timeout_s: float = 10.0,
         echo: Optional[bool] = None,
     ) -> list[str]:
+        """Receive one streamed log file delimited by file transfer markers.
+
+        Reads serial lines after `START_OF_FILE` until `END_OF_FILE` and returns
+        the CSV body lines.
+        """
         # Read a single CSV log streamed between START_OF_FILE and END_OF_FILE.
         start_time = time.time()
         started = False
@@ -586,6 +693,12 @@ class CoughMachine(PoFSerialDevice):
         run_nr_start: Optional[int] = None,
         output_dir: Optional[str | Path] = None,
     ) -> list[Path]:
+        """Persist one or more captured run logs as timestamped CSV files.
+
+        Accepts either a single run (`list[str]`) or multiple runs
+        (`list[list[str]]`). Optionally rewrites `run_nr` rows when
+        `run_nr_start` is provided.
+        """
         # Save either one run log (list[str]) or multiple logs (list[list[str]]) as CSV files.
         repo_root = find_repo_root()
         if output_dir is None:

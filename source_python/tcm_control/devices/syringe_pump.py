@@ -26,7 +26,9 @@ class SyringePump(PumpPHD2000_Refill):
         timeout: float = 0.3,
         pump_address: int = 0
     ):
-
+        """Initialise the syringe pump by connecting to the specified COM port
+        using pumpy3, and setting the syringe volume.
+        """
         connections_filename = "connections.ini"
         com_ports_section = "com_ports"
         port_key = "syringe_pump"
@@ -112,6 +114,10 @@ class SyringePump(PumpPHD2000_Refill):
 
     @staticmethod
     def _normalize_com_port(raw_value: str) -> str:
+        """Format user input for COM port.
+
+        Accept inputs like "11" or "COM11" and normalize to "COM11".
+        """
         value = raw_value.strip().upper()
         if value.startswith("COM"):
             return value
@@ -123,6 +129,10 @@ class SyringePump(PumpPHD2000_Refill):
         baudrate: int,
         timeout: float,
     ) -> Chain | None:
+        """Try to open a pumpy3 Chain on the specified COM port.
+
+        Returns None on failure, rather than raising errors.
+        """
         try:
             chain = Chain(port, baudrate=baudrate, timeout=timeout)
             chain.flush()
@@ -131,8 +141,10 @@ class SyringePump(PumpPHD2000_Refill):
             return None
 
     @staticmethod
-    def _load_syringe_table(lookup_table_path: str | Path) -> list[tuple[float, float]]:
-        # Load the syringe volume-diameter lookup table from a CSV file, not using load_two_column_numeric to allow for debug printing.
+    def _load_syringe_table(
+        lookup_table_path: str | Path
+    ) -> list[tuple[float, float]]:
+        """ Load the syringe volume-diameter lookup table from a CSV file."""
         output = []
         with open(lookup_table_path, "r") as f:
             for line in f:
@@ -155,37 +167,52 @@ class SyringePump(PumpPHD2000_Refill):
     def get_syringe_diameter(
         volume_ml: float,
         type: str = "hamilton_microliter_gastight",
-        lookup_table_path: str | Path = DEFAULT_SYRINGE_TABLE_PATH,
+        lut_path: str | Path = DEFAULT_SYRINGE_TABLE_PATH,
     ) -> float:
-        # Map volume -> diameter from the lookup table.
+        """Map syringe volume to diameter using the lookup table."""
         if type != "hamilton_microliter_gastight":
             raise NotImplementedError(f"Syringe type {type} not implemented.")
-        for row_volume, row_diameter in SyringePump._load_syringe_table(lookup_table_path):
-            if row_volume == volume_ml:
-                return row_diameter
-        raise ValueError(
-            f"No diameter found for syringe type {type} and volume {volume_ml} mL.")
+        for row_vol, row_diam in SyringePump._load_syringe_table(lut_path):
+            if row_vol == volume_ml:
+                return row_diam
+        raise ValueError(f"No diameter found for syringe type {type}\
+                          and volume {volume_ml} mL.")
 
     @staticmethod
     def get_syringe_volume(
         diameter_mm: float,
         type: str = "hamilton_microliter_gastight",
-        lookup_table_path: str | Path = DEFAULT_SYRINGE_TABLE_PATH,
+        lut_path: str | Path = DEFAULT_SYRINGE_TABLE_PATH,
     ) -> float:
-        # Map diameter -> volume from the lookup table.
+        """Map syringe diameter to volume using the lookup table.
+
+        Approximates for floating point comparison."""
         if type != "hamilton_microliter_gastight":
             raise NotImplementedError(f"Syringe type {type} not implemented.")
-        for row_volume, row_diameter in SyringePump._load_syringe_table(lookup_table_path):
-            if math.isclose(row_diameter, diameter_mm, rel_tol=0.0, abs_tol=1e-6):
-                return row_volume
-        raise ValueError(
-            f"No volume found for syringe type {type} and diameter {diameter_mm} mm.")
+        for row_vol, row_diam in SyringePump._load_syringe_table(lut_path):
+            if math.isclose(row_diam, diameter_mm, rel_tol=0.0, abs_tol=1e-6):
+                return row_vol
+        raise ValueError(f"No volume found for syringe type {type}\
+                          and diameter {diameter_mm} mm.")
 
-    def set_syringe_volume(self, volume_ml: float, type: str = "hamilton_microliter_gastight"):
+    def set_syringe_volume(
+        self,
+        volume_ml: float,
+        type: str = "hamilton_microliter_gastight"
+    ):
+        """Set the syringe diameter based on volume from the lookup table."""
         diameter_mm = self.get_syringe_diameter(volume_ml, type=type)
         self.set_diameter(diameter_mm)
 
-    def infuse(self, pump_rate_ml_mn: float | None = None, duration_s: float | None = None):
+    def infuse(self,
+               pump_rate_ml_mn: float | None = None,
+               duration_s: float | None = None
+               ):
+        """Start infusion at the specified rate and duration.
+
+        If pump_rate_ml_mn is None, will use the currently set rate on the pump.
+        If duration_s is None, will infuse indefinitely until stop() is called.
+        """
         if pump_rate_ml_mn is not None:
             if pump_rate_ml_mn <= 0:
                 raise ValueError(
@@ -223,5 +250,6 @@ class SyringePump(PumpPHD2000_Refill):
 
 
 if __name__ == "__main__":
+    # Small testing script
     pump = SyringePump(syringe_volume_ml=2.5)
     pump.infuse(0.2, 2)
