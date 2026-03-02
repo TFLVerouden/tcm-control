@@ -398,13 +398,15 @@ class CoughMachine(PoFSerialDevice):
     def count_droplets(
         self,
         nr_droplets: Optional[int] = None,
+        let_drip: bool = False,
         *,
         echo: Optional[bool] = None,
     ) -> int:
         if nr_droplets is not None and int(nr_droplets) <= 0:
             raise ValueError("nr_droplets must be >= 1 when provided")
 
-        cmd = "D" if nr_droplets is None else f"D {nr_droplets}"
+        # TODO: Test let_drip mode
+        cmd = "D" if (nr_droplets is None or let_drip) else f"D {nr_droplets}"
         reply, _lines = self._query_and_drain(
             cmd, expected="DROPLET_ARMED", echo=echo)
 
@@ -423,7 +425,7 @@ class CoughMachine(PoFSerialDevice):
             nr_droplets=nr_droplets,
             on_detected=handle_detection,
         )
-        print()
+
         return detections
 
     def detect_droplets_and_run(
