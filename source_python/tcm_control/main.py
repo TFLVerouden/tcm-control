@@ -223,8 +223,6 @@ if __name__ == "__main__":
     temperature_finish, humidity_finish = tcm.read_temperature_humidity()
     time_finish = timestamp_str()
 
-    print("Experiment completed, all data saved to ", output_dir)
-
     # TODO: Post-processing
     if RECORD_DROPLET_SIZE:
         prompt_yes_no(
@@ -236,7 +234,8 @@ if __name__ == "__main__":
             experiment_dir=output_dir,
             start_time=time_start,
             debug=DEBUG_MODE,
+            offer_archive_if_large=True,
         )
     
-
+    print("Experiment completed, all data saved to ", output_dir)
     print("Exiting.")

@@ -5,12 +5,15 @@ import shutil
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from tcm_utils.io_utils import ask_open_file
+from tcm_utils.io_utils import ask_open_file, prompt_yes_no
+from tcm_utils.time_utils import timestamp_str
 from pathlib import Path
 
 
 AUDIT_FILENAME = "spraytec_parsing_audit.csv"
 REDUNDANCY_DIRNAME = "spraytec_individual_measurements"
+ARCHIVE_DIRNAME = "archive"
+DEFAULT_APPEND_MAX_FILE_SIZE_BYTES = 500 * 1024 * 1024
 
 
 def _resolve_append_file_path(append_file_path: str | Path | None) -> Path:
@@ -32,6 +35,19 @@ def _resolve_append_file_path(append_file_path: str | Path | None) -> Path:
             f"SprayTec append file not found: {append_path}")
 
     return append_path
+
+
+def archive_spraytec_append_file(
+    append_file_path: str | Path | None = None,
+) -> Path:
+    append_path = _resolve_append_file_path(append_file_path)
+    archive_dir = append_path.parent / ARCHIVE_DIRNAME
+    archive_dir.mkdir(parents=True, exist_ok=True)
+
+    archived_name = f"archived_{timestamp_str()}_{append_path.name}"
+    archive_target = _next_available_path(archive_dir / archived_name)
+    shutil.move(str(append_path), str(archive_target))
+    return archive_target
 
 
 @dataclass
@@ -334,8 +350,16 @@ def save_spraytec_data(
         experiment_dir: str | Path | None = None,
         start_time: str | None = None,
         debug: bool = False,
+        max_append_file_size_bytes: int = DEFAULT_APPEND_MAX_FILE_SIZE_BYTES,
+        offer_archive_if_large: bool = True,
 ) -> Path:
     append_path = _resolve_append_file_path(append_file_path)
+    append_file_size_bytes = append_path.stat().st_size
+    should_offer_archive = (
+        offer_archive_if_large
+        and max_append_file_size_bytes > 0
+        and append_file_size_bytes > max_append_file_size_bytes
+    )
 
     header_row, blocks = _build_blocks(append_path)
     audit_path = append_path.parent / AUDIT_FILENAME
@@ -427,6 +451,18 @@ def save_spraytec_data(
             f"detected={len(blocks)}, extracted={extracted_count}, copied={copied_count}, "
             f"audit={audit_path}"
         )
+
+    if should_offer_archive:
+        max_size_mb = max_append_file_size_bytes / (1024 * 1024)
+        current_size_mb = append_file_size_bytes / (1024 * 1024)
+        archive_now = prompt_yes_no(
+            "SprayTec append file is large "
+            f"({current_size_mb:.1f} MB > {max_size_mb:.1f} MB). Archive now?",
+            default=False,
+        )
+        if archive_now:
+            archived_path = archive_spraytec_append_file(append_path)
+            print(f"SprayTec: append file archived to {archived_path}")
 
     return audit_path
 
