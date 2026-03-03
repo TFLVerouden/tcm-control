@@ -143,6 +143,7 @@ class CoughMachine(PoFSerialDevice):
         After issuing the set command, pressure is polled via `P?` until the rolling
         average over `avg_window_s` is within `tolerance_bar` or `timeout_s` elapses.
         """
+        # TODO: Consider increasing pressure first before settling if the target value is almost equal to current pressure
         reply, _lines = self._query_and_drain(
             f"P {pressure_bar}", expected_prefix="SET_PRESSURE", echo=echo
         )

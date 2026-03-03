@@ -23,7 +23,7 @@ nr_droplets_to_skip_before_recording = 5
 record_droplet_size = true
 
 [devices.spraytec.inputs]
-append_file_path = "C:\CoughMachineData\SprayTec\SPRAYTEC_APPEND_FILE_3.txt" # keep empty to trigger file dialog
+append_file_path = "C:/CoughMachineData/SprayTec/SPRAYTEC_APPEND_FILE_3.txt" # keep empty to trigger file dialog
 tcm_trachea_bottom_z_mm = 100.0
 tcm_trachea_height_mm = 10.0
 lift_zero_z_mm = 0.0
