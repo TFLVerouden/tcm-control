@@ -3,6 +3,10 @@
 Install tcm-utilities:
 pip install -e ../tcm-utils
 
+## VS Code workspace settings
+This repository tracks only `.vscode/settings.json` for shared Python run/interpreter behavior.
+Keep other `.vscode` files local (they are ignored by `.gitignore`) unless the team explicitly decides to share them.
+
 ## Troubleshooting
 ### How to change the display name of a COM port on Windows?
 Source: https://superuser.com/questions/1511278/how-to-change-com-port-name-in-device-manager-while-inserting-external-device

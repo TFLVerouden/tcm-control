@@ -1,0 +1,18 @@
+{
+  "timestamp": "260213_102812",
+  "timestamp_source": "file_creation_time",
+  "analysis_run_time": "260213_104633",
+  "input_file_original": "docs\\calibration\\raw_data\\Rclick_calibration_new.txt",
+  "output_files": {
+    "plot_pdf": "docs\\calibration\\Rclick_calibration_new_260213_102812_plot.pdf",
+    "calibration_csv": "docs\\calibration\\Rclick_calibration_new_260213_102812_calibration.csv"
+  },
+  "fit": {
+    "slope_bar_per_mA": 0.6151645155919202,
+    "intercept_bar": -2.5128908254187095,
+    "r_value": 0.9999934220032372,
+    "p_value": 1.1696281391251657e-30,
+    "std_err": 0.0006441167920568371,
+    "r_squared": 0.9999868440497444
+  }
+}

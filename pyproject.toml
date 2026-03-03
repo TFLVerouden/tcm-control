@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tcm-control"
+version = "0.1.0"
+description = "Control software for the Twente Cough Machine"
+readme = "README.md"
+requires-python = ">=3.12"
+
+dependencies = [
+  "bronkhorst_propar",
+  "dvg-devices",
+  "daltonlens",
+  "h5py",
+  "matplotlib",
+  "matplotlib_scalebar",
+  "natsort",
+  "networkx",
+  "numba",
+  "numpy",
+  "opencv_python",
+  "pandas",
+  "Pillow",
+  "pyserial",
+  "SciencePlots",
+  "scipy",
+  "scikit-image",
+  "tifffile",
+  "tqdm",
+  "pipreqs",
+  "pumpy3 @ git+https://github.com/WetenSchaap/pumpy3.git",
+]
+
+[tool.setuptools]
+package-dir = {"" = "source_python"}
+
+[tool.setuptools.packages.find]
+where = ["source_python"]
+include = ["tcm_control*"]
+
+[tool.setuptools.package-data]
+tcm_control = ["flow_curves/*.csv", "config/*.toml"]
