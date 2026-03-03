@@ -752,7 +752,7 @@ class CoughMachine(PoFSerialDevice):
             else:
                 label = run_nr_start + idx - 1
             filename = create_labeled_csv_filename(
-                prefix="run",
+                prefix="log",
                 label=label,
                 timestamp=timestamp,
             )

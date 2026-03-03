@@ -107,7 +107,7 @@ def _to_jsonable(value: Any) -> Any:
 def write_run_metadata(
         experiment_dir: Path,
         metadata: dict[str, Any],
-        filename: str = "run_metadata.json") -> Path:
+        filename: str = "metadata.json") -> Path:
     """Write the final experiment metadata payload to disk as JSON."""
     file_path = experiment_dir / filename
     save_metadata_json(_to_jsonable(metadata), file_path)

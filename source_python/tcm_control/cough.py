@@ -51,15 +51,15 @@ def set_spraytec_xy(tcm_trachea_exit_to_ref_x_mm: float,
                     tcm_trachea_exit_to_ref_y_mm: float,
                     spraytec_to_ref_x_mm: float,
                     spraytec_to_ref_y_mm: float,
-                    stage_position_x_mm: Optional[float] = None,
-                    stage_position_y_mm: Optional[float] = None
+                    stage_pos_x_mm: Optional[float] = None,
+                    stage_pos_y_mm: Optional[float] = None
                     ) -> tuple[float, float, float, float]:
     """Return SprayTec x/y from stage position and known geometry offsets.
 
     If stage positions are not provided, they are prompted from the user.
     """
 
-    if stage_position_x_mm is None or stage_position_y_mm is None:
+    if stage_pos_x_mm is None or stage_pos_y_mm is None:
         # Ask user to read off x and y position of the cough machine
         print("Read off the x and y scale on the cough machine stage.")
         # TODO: Set min and max values
@@ -76,8 +76,8 @@ def set_spraytec_xy(tcm_trachea_exit_to_ref_x_mm: float,
             max_value=100,
         )
     else:
-        stage_pos_x_mm = stage_position_x_mm
-        stage_pos_y_mm = stage_position_y_mm
+        stage_pos_x_mm = stage_pos_x_mm
+        stage_pos_y_mm = stage_pos_y_mm
 
     spraytec_x = stage_pos_x_mm - tcm_trachea_exit_to_ref_x_mm - spraytec_to_ref_x_mm
     spraytec_y = stage_pos_y_mm - tcm_trachea_exit_to_ref_y_mm - spraytec_to_ref_y_mm
@@ -148,16 +148,16 @@ def cough(config_path: Path | str | None = None) -> Path:
             lift_zero_z_mm=spraytec_inputs["lift_zero_z_mm"],
             spraytec_to_lift_z_mm=spraytec_inputs["spraytec_to_lift_z_mm"],
         )
-        spraytec_x, spraytec_y, stage_position_x_mm, stage_position_y_mm = set_spraytec_xy(
+        spraytec_x, spraytec_y, stage_pos_x_mm, stage_pos_y_mm = set_spraytec_xy(
             spraytec_inputs["tcm_trachea_exit_to_ref_x_mm"],
             spraytec_inputs["tcm_trachea_exit_to_ref_y_mm"],
             spraytec_inputs["spraytec_to_ref_x_mm"],
             spraytec_inputs["spraytec_to_ref_y_mm"],
-            stage_position_x_mm=spraytec_inputs["stage_pos_x_mm"],
-            stage_position_y_mm=spraytec_inputs["stage_pos_y_mm"],
+            stage_pos_x_mm=spraytec_inputs["stage_pos_x_mm"],
+            stage_pos_y_mm=spraytec_inputs["stage_pos_y_mm"],
         )
-        spraytec_inputs["stage_pos_x_mm"] = stage_position_x_mm
-        spraytec_inputs["stage_pos_y_mm"] = stage_position_y_mm
+        spraytec_inputs["stage_pos_x_mm"] = stage_pos_x_mm
+        spraytec_inputs["stage_pos_y_mm"] = stage_pos_y_mm
 
         spraytec_inputs["append_file_path"] = resolve_append_file_path(
             spraytec_inputs["append_file_path"]
@@ -169,9 +169,9 @@ def cough(config_path: Path | str | None = None) -> Path:
 
         # TODO: Check here for the existence of the SprayTec append file
 
-        # TODO: Check name of this "ready" mode on the SprayTec and update the prompt accordingly
         prompt_yes_no(
-            "Press Enter to confirm that SprayTec is in ready mode...", default=True)
+            "Press Enter to confirm that SprayTec SOP has been started...",
+            default=True)
 
     # ------------------------------------------------------------------
     # Run mode-specific experiment behavior
