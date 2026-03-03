@@ -332,6 +332,10 @@ class CoughMachine(PoFSerialDevice):
         self._flowcurve_csv_path = Path(
             csv_path) if csv_path is not None else None
 
+    def get_flowcurve_csv_path(self) -> Optional[Path]:
+        """Return the resolved flow-curve CSV path used by `load_flowcurve`."""
+        return self._flowcurve_csv_path
+
     def load_flowcurve(
         self,
         csv_path: str | Path | None = None,

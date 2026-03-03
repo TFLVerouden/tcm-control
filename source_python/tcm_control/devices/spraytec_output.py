@@ -16,7 +16,7 @@ ARCHIVE_DIRNAME = "archive"
 DEFAULT_APPEND_MAX_FILE_SIZE_BYTES = 500 * 1024 * 1024
 
 
-def _resolve_append_file_path(append_file_path: str | Path | None) -> Path:
+def resolve_append_file_path(append_file_path: str | Path | None) -> Path:
     if append_file_path is None:
         selected_path = ask_open_file(
             key="spraytec_append_file",
@@ -40,7 +40,7 @@ def _resolve_append_file_path(append_file_path: str | Path | None) -> Path:
 def archive_spraytec_append_file(
     append_file_path: str | Path | None = None,
 ) -> Path:
-    append_path = _resolve_append_file_path(append_file_path)
+    append_path = resolve_append_file_path(append_file_path)
     archive_dir = append_path.parent / ARCHIVE_DIRNAME
     archive_dir.mkdir(parents=True, exist_ok=True)
 
@@ -330,7 +330,7 @@ def _build_blocks(append_path: Path) -> tuple[list[str], list[SpraytecBlock]]:
 def list_spraytec_runs(
         append_file_path: str | Path | None = None,
 ) -> list[dict[str, str]]:
-    append_path = _resolve_append_file_path(append_file_path)
+    append_path = resolve_append_file_path(append_file_path)
 
     _header, blocks = _build_blocks(append_path)
     audit_path = append_path.parent / AUDIT_FILENAME
@@ -353,7 +353,7 @@ def save_spraytec_data(
         max_append_file_size_bytes: int = DEFAULT_APPEND_MAX_FILE_SIZE_BYTES,
         offer_archive_if_large: bool = True,
 ) -> Path:
-    append_path = _resolve_append_file_path(append_file_path)
+    append_path = resolve_append_file_path(append_file_path)
     append_file_size_bytes = append_path.stat().st_size
     should_offer_archive = (
         offer_archive_if_large

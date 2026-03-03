@@ -7,7 +7,7 @@ name = "tcm-control"
 version = "0.1.0"
 description = "Control software for the Twente Cough Machine"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.12"
 
 dependencies = [
   "bronkhorst_propar",
@@ -41,4 +41,4 @@ where = ["source_python"]
 include = ["tcm_control*"]
 
 [tool.setuptools.package-data]
-tcm_control = ["flow_curves/*.csv", "config/*.json"]
+tcm_control = ["flow_curves/*.csv", "config/*.toml"]

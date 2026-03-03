@@ -33,6 +33,10 @@ class SyringePump(PumpPHD2000_Refill):
         com_ports_section = "com_ports"
         port_key = "syringe_pump"
 
+        self.baudrate = baudrate
+        self.timeout_s = timeout
+        self.pump_address = pump_address
+
         selected_port = port
         if selected_port is None:
             selected_port = read_repo_config_value(
@@ -89,6 +93,7 @@ class SyringePump(PumpPHD2000_Refill):
                 filename=connections_filename,
                 section=com_ports_section,
             )
+            self.port = selected_port
             break
 
         if last_error is not None and chain is None:
@@ -107,6 +112,8 @@ class SyringePump(PumpPHD2000_Refill):
                 f"Enter syringe volume in mL (press Enter to use current volume of {current_volume} mL): ", value_type="float", min_value=0.0005, max_value=50.0, allow_empty=True)
             syringe_volume_ml = float(
                 prompted_volume) if prompted_volume is not None else current_volume
+        syringe_volume_ml = float(syringe_volume_ml)
+        self.syringe_volume_ml = syringe_volume_ml
 
         # Set to PuMP mode, and set diameter using the syringe volume lookup table.
         self.set_mode("PMP")
