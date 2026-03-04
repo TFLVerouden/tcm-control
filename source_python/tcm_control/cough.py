@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-import time
 from typing import Optional
 
 from tcm_control.devices import CoughMachine, SprayTecLift, SyringePump
@@ -12,7 +11,7 @@ from tcm_control.devices.spraytec_output import (
 )
 from tcm_control import logger
 from tcm_control.init_config import load_experiment_config
-from tcm_utils.io_utils import prompt_input, prompt_yes_no
+from tcm_utils.io_utils import prompt_input, prompt_yes_no, wait_with_progress
 from tcm_utils.time_utils import timestamp_str
 
 
@@ -211,30 +210,14 @@ def cough(config_path: Path | str | None = None) -> Path:
             for run_idx in range(core_inputs["nr_runs"]):
                 # Wait between coughs if needed
                 if run_idx > 0 and core_inputs["multi_run_interval_s"] > 0:
-                    start_loop_time = time.time()
-                    last_printed_seconds = None
-                    while True:
-                        elapsed = time.time() - start_loop_time
-                        seconds_remaining = max(
-                            0, int(core_inputs["multi_run_interval_s"] - elapsed))
-                        if seconds_remaining != last_printed_seconds:
-                            print(
-                                (
-                                    f"Waiting for {seconds_remaining} "
-                                    "seconds before starting next run\r"
-                                ),
-                                end="",
-                                flush=True,
-                            )
-                            last_printed_seconds = seconds_remaining
-                        if elapsed >= core_inputs["multi_run_interval_s"]:
-                            break
-                        time.sleep(0.05)
+                    wait_with_progress(
+                        float(core_inputs["multi_run_interval_s"]),
+                        label="Waiting before starting next run",
+                    )
 
                     # Ask confirmation to continue (CAN BE COMMENTED OUT)
                     prompt_yes_no(
-                        "\rPress Enter to continue..."
-                        "                                        ",
+                        "Press Enter to continue...",
                         default=True,
                     )
 
@@ -247,6 +230,7 @@ def cough(config_path: Path | str | None = None) -> Path:
                     "nr_droplets_to_skip_before_recording"
                 ]
                 if nr_droplets_to_skip > 0:
+                    print("Flushing before starting recording")
                     tcm.count_droplets(
                         nr_droplets=nr_droplets_to_skip, let_drip=True)
 

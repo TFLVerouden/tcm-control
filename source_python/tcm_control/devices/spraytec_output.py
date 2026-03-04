@@ -488,7 +488,7 @@ def save_spraytec_data(
                     and first_experiment_row is not None
                 ):
                     first_labeled_filename = create_labeled_csv_filename(
-                        prefix="spraytec_",
+                        prefix="spraytec",
                         label=1,
                         timestamp=first_experiment_timestamp,
                     )
@@ -502,7 +502,7 @@ def save_spraytec_data(
 
                 label = next_copy_index if next_copy_index > 1 else None
                 experiment_filename = create_labeled_csv_filename(
-                    prefix="spraytec_",
+                    prefix="spraytec",
                     label=label,
                     timestamp=timestamp_label,
                 )

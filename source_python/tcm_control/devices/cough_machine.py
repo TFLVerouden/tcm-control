@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from tcm_utils.file_dialogs import ask_open_file, find_repo_root
+from tcm_utils.io_utils import make_minimal_progress_bar
 
 from .base import PoFSerialDevice
 from ..logger import copy_flow_curve, create_labeled_csv_filename
@@ -463,22 +464,20 @@ class CoughMachine(PoFSerialDevice):
         self,
         *,
         nr_droplets: Optional[int],
-        on_detected: Optional[Callable[[int, Optional[int]], None]] = None,
+        on_detected: Optional[Callable[[int], None]] = None,
     ) -> int:
         """Wait for `DROPLET_DETECTED` events and invoke callback per detection.
 
         Stops after `nr_droplets` detections when provided, otherwise runs
         indefinitely until external interruption.
         """
-        remaining: Optional[int]
-        if nr_droplets is None:
-            remaining = None
-        else:
-            remaining = max(0, int(nr_droplets))
+        target_droplets: Optional[int] = (
+            None if nr_droplets is None else max(0, int(nr_droplets))
+        )
 
         detections = 0
         while True:
-            if remaining is not None and remaining <= 0:
+            if target_droplets is not None and detections >= target_droplets:
                 break
 
             if self.ser is not None and self.ser.in_waiting > 0:
@@ -492,10 +491,8 @@ class CoughMachine(PoFSerialDevice):
 
                 if clean_line == "DROPLET_DETECTED":
                     detections += 1
-                    if remaining is not None:
-                        remaining -= 1
                     if on_detected is not None:
-                        on_detected(detections, remaining)
+                        on_detected(detections)
                     continue
 
         return detections
@@ -511,28 +508,42 @@ class CoughMachine(PoFSerialDevice):
 
         Returns the number of `DROPLET_DETECTED` events observed before completion.
         """
-        if nr_droplets is not None and int(nr_droplets) <= 0:
+        target_droplets = None if nr_droplets is None else int(nr_droplets)
+        if target_droplets is not None and target_droplets <= 0:
             raise ValueError("nr_droplets must be >= 1 when provided")
 
-        cmd = "D" if (nr_droplets is None or let_drip) else f"D {nr_droplets}"
+        cmd = "D" if (
+            target_droplets is None or let_drip) else f"D {target_droplets}"
         reply, _lines = self._query_and_drain(
             cmd, expected="DROPLET_ARMED", echo=echo)
 
         if reply != "DROPLET_ARMED":
             raise RuntimeError(f"Unexpected reply to {cmd}: {reply!r}")
 
-        def handle_detection(detections: int, remaining: Optional[int]) -> None:
-            remaining_text = "∞" if remaining is None else str(remaining)
-            print(
-                f"\rCounted droplets: {detections} ({remaining_text} remaining)",
-                end="",
-                flush=True,
-            )
+        if target_droplets is None:
+            def handle_detection(detections: int) -> None:
+                message = f"\rCounted droplets: {detections}"
+                print(message, end="", flush=True)
 
-        detections = self._await_droplet_events(
-            nr_droplets=nr_droplets,
-            on_detected=handle_detection,
-        )
+            detections = self._await_droplet_events(
+                nr_droplets=target_droplets,
+                on_detected=handle_detection,
+            )
+            print()  # Newline after final count
+        else:
+            with make_minimal_progress_bar(
+                total=target_droplets,
+                label="Counting droplets",
+                unit_label="drops",
+            ) as pbar:
+                def handle_detection(detections: int) -> None:
+                    if detections > pbar.n:
+                        pbar.update(detections - pbar.n)
+
+                detections = self._await_droplet_events(
+                    nr_droplets=target_droplets,
+                    on_detected=handle_detection,
+                )
 
         return detections
 
@@ -560,9 +571,10 @@ class CoughMachine(PoFSerialDevice):
         if reply != "DROPLET_ARMED":
             raise RuntimeError(f"Unexpected reply to {cmd}: {reply!r}")
 
+        print("Ready for cough; awaiting droplet")
         results: list[list[str]] = []
 
-        def handle_detection(_detections: int, _remaining: Optional[int]) -> None:
+        def handle_detection(_detections: int) -> None:
             result = self._receive_run_log(
                 timeout_s=log_timeout_s,
                 echo=echo,
