@@ -250,6 +250,7 @@ def cough(config_path: Path | str | None = None) -> Path:
             if core_inputs["nr_runs"] > 1:
                 raise NotImplementedError(
                     "Multi-run is not implemented for film mode yet.")
+                # TODO: Implement multi-run for film mode
 
             # Ask user to start the experiment
             ask_start_confirmation(experiment_name=experiment_name)
