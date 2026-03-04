@@ -40,6 +40,7 @@ class SprayTecLift(PoFSerialDevice):
                             tcm_trachea_bottom_z_mm: float,
                             tcm_trachea_height_mm: float,
                             lift_zero_z_mm: float,
+                            table_height_mm: float,
                             spraytec_to_lift_z_mm: float) -> Optional[float]:
         """Calculate the height of the SprayTec measurement volume based on the lift height and known geometry.
         The height is calculated as:
@@ -53,7 +54,7 @@ class SprayTecLift(PoFSerialDevice):
                 "Failed to get lift height, cannot calculate SprayTec height.")
 
         return (lift_height + lift_zero_z_mm + spraytec_to_lift_z_mm
-                - tcm_trachea_bottom_z_mm - (tcm_trachea_height_mm / 2))
+                - table_height_mm - tcm_trachea_bottom_z_mm - tcm_trachea_height_mm)
 
     def read_status(
         self, *, echo: Optional[bool] = None, timeout: float = 2.0

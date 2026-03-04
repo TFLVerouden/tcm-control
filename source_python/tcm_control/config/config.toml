@@ -24,13 +24,16 @@ record_droplet_size = true
 
 [devices.spraytec.inputs]
 append_file_path = "C:/CoughMachineData/SprayTec/SPRAYTEC_APPEND_FILE_3.txt" # keep empty to trigger file dialog
-tcm_trachea_bottom_z_mm = 100.0
-tcm_trachea_height_mm = 10.0
-lift_zero_z_mm = 0.0
-spraytec_to_lift_z_mm = 50.0
-tcm_trachea_exit_to_ref_x_mm = 50.0
-tcm_trachea_exit_to_ref_y_mm = 50.0
-spraytec_to_ref_x_mm = 10.0
-spraytec_to_ref_y_mm = 10.0
+tcm_trachea_bottom_z_mm = 326
+tcm_trachea_height_mm = 15.15   
+lift_zero_z_mm = 172.7 #lift actually at 1.3mm, so 174-1.3 =172.7
+spraytec_to_lift_z_mm = 739  
+tcm_trachea_exit_to_ref_x_mm = 44.5
+tcm_trachea_exit_to_ref_y_mm = 200
+spraytec_to_ref_x_mm = 44
+spraytec_to_ref_y_mm = 483
+stage_pos_x_zero_mm = 96
+stage_pos_y_zero_mm = 655 
 stage_pos_x_mm = "" # keep empty to prompt
 stage_pos_y_mm = "" # keep empty to prompt
+table_height_mm = 920

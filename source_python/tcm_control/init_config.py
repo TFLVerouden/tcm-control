@@ -109,7 +109,8 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
     series_directory_raw = _nested_get(raw, "experiment", "series_directory")
 
     if not isinstance(experiment_name, str) or not experiment_name.strip():
-        raise ValueError("Config [experiment].name must be a non-empty string.")
+        raise ValueError(
+            "Config [experiment].name must be a non-empty string.")
 
     if not isinstance(experiment_mode, str) or experiment_mode not in VALID_EXPERIMENT_MODES:
         raise ValueError(
@@ -130,10 +131,12 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
         ),
         "nr_runs": int(_nested_get(raw, "inputs", "core", "nr_runs", default=1)),
         "multi_run_interval_s": float(
-            _nested_get(raw, "inputs", "core", "multi_run_interval_s", default=0.0)
+            _nested_get(raw, "inputs", "core",
+                        "multi_run_interval_s", default=0.0)
         ),
         "wait_before_run_ms": float(
-            _nested_get(raw, "inputs", "core", "wait_before_run_ms", default=0.0)
+            _nested_get(raw, "inputs", "core",
+                        "wait_before_run_ms", default=0.0)
         ),
     }
     if core_inputs["nr_runs"] < 1:
@@ -212,7 +215,8 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
         }
 
     record_droplet_size = bool(
-        _nested_get(raw, "devices", "spraytec", "record_droplet_size", default=False)
+        _nested_get(raw, "devices", "spraytec",
+                    "record_droplet_size", default=False)
     )
 
     # ------------------------------------------------------------------
@@ -220,37 +224,57 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
     # ------------------------------------------------------------------
     spraytec_inputs = {
         "append_file_path": _normalize_optional_string(
-            _nested_get(raw, "devices", "spraytec", "inputs", "append_file_path")
+            _nested_get(raw, "devices", "spraytec",
+                        "inputs", "append_file_path")
         ),
         "tcm_trachea_bottom_z_mm": _optional_float(
-            _nested_get(raw, "devices", "spraytec", "inputs", "tcm_trachea_bottom_z_mm")
+            _nested_get(raw, "devices", "spraytec",
+                        "inputs", "tcm_trachea_bottom_z_mm")
         ),
         "tcm_trachea_height_mm": _optional_float(
-            _nested_get(raw, "devices", "spraytec", "inputs", "tcm_trachea_height_mm")
+            _nested_get(raw, "devices", "spraytec",
+                        "inputs", "tcm_trachea_height_mm")
         ),
         "lift_zero_z_mm": _optional_float(
             _nested_get(raw, "devices", "spraytec", "inputs", "lift_zero_z_mm")
         ),
         "spraytec_to_lift_z_mm": _optional_float(
-            _nested_get(raw, "devices", "spraytec", "inputs", "spraytec_to_lift_z_mm")
+            _nested_get(raw, "devices", "spraytec",
+                        "inputs", "spraytec_to_lift_z_mm")
         ),
         "tcm_trachea_exit_to_ref_x_mm": _optional_float(
-            _nested_get(raw, "devices", "spraytec", "inputs", "tcm_trachea_exit_to_ref_x_mm")
+            _nested_get(raw, "devices", "spraytec", "inputs",
+                        "tcm_trachea_exit_to_ref_x_mm")
         ),
         "tcm_trachea_exit_to_ref_y_mm": _optional_float(
-            _nested_get(raw, "devices", "spraytec", "inputs", "tcm_trachea_exit_to_ref_y_mm")
+            _nested_get(raw, "devices", "spraytec", "inputs",
+                        "tcm_trachea_exit_to_ref_y_mm")
         ),
         "spraytec_to_ref_x_mm": _optional_float(
-            _nested_get(raw, "devices", "spraytec", "inputs", "spraytec_to_ref_x_mm")
+            _nested_get(raw, "devices", "spraytec",
+                        "inputs", "spraytec_to_ref_x_mm")
         ),
         "spraytec_to_ref_y_mm": _optional_float(
-            _nested_get(raw, "devices", "spraytec", "inputs", "spraytec_to_ref_y_mm")
+            _nested_get(raw, "devices", "spraytec",
+                        "inputs", "spraytec_to_ref_y_mm")
+        ),
+        "stage_pos_x_zero_mm": _optional_float(
+            _nested_get(raw, "devices", "spraytec",
+                        "inputs", "stage_pos_x_zero_mm")
+        ),
+        "stage_pos_y_zero_mm": _optional_float(
+            _nested_get(raw, "devices", "spraytec",
+                        "inputs", "stage_pos_y_zero_mm")
         ),
         "stage_pos_x_mm": _optional_float(
             _nested_get(raw, "devices", "spraytec", "inputs", "stage_pos_x_mm")
         ),
         "stage_pos_y_mm": _optional_float(
             _nested_get(raw, "devices", "spraytec", "inputs", "stage_pos_y_mm")
+        ),
+        "table_height_mm": _optional_float(
+            _nested_get(raw, "devices", "spraytec",
+                        "inputs", "table_height_mm")
         ),
     }
 

@@ -51,6 +51,8 @@ def set_spraytec_xy(tcm_trachea_exit_to_ref_x_mm: float,
                     tcm_trachea_exit_to_ref_y_mm: float,
                     spraytec_to_ref_x_mm: float,
                     spraytec_to_ref_y_mm: float,
+                    stage_pos_x_zero_mm: float,
+                    stage_pos_y_zero_mm: float,
                     stage_pos_x_mm: Optional[float] = None,
                     stage_pos_y_mm: Optional[float] = None
                     ) -> tuple[float, float, float, float]:
@@ -66,21 +68,23 @@ def set_spraytec_xy(tcm_trachea_exit_to_ref_x_mm: float,
         stage_pos_x_mm = prompt_input(
             "x (cross-airflow) position in mm: ",
             value_type="float",
-            min_value=0,
-            max_value=100,
+            min_value=2,
+            max_value=200,
         )
         stage_pos_y_mm = prompt_input(
             "y (along-airflow) position in mm: ",
             value_type="float",
             min_value=0,
-            max_value=100,
+            max_value=784,
         )
     else:
         stage_pos_x_mm = stage_pos_x_mm
         stage_pos_y_mm = stage_pos_y_mm
 
-    spraytec_x = stage_pos_x_mm - tcm_trachea_exit_to_ref_x_mm - spraytec_to_ref_x_mm
-    spraytec_y = stage_pos_y_mm - tcm_trachea_exit_to_ref_y_mm - spraytec_to_ref_y_mm
+    spraytec_x = stage_pos_x_zero_mm - stage_pos_x_mm - \
+        tcm_trachea_exit_to_ref_x_mm + spraytec_to_ref_x_mm
+    spraytec_y = stage_pos_y_zero_mm - stage_pos_y_mm - \
+        tcm_trachea_exit_to_ref_y_mm + spraytec_to_ref_y_mm
     return spraytec_x, spraytec_y, stage_pos_x_mm, stage_pos_y_mm
 
 
@@ -146,6 +150,7 @@ def cough(config_path: Path | str | None = None) -> Path:
             tcm_trachea_bottom_z_mm=spraytec_inputs["tcm_trachea_bottom_z_mm"],
             tcm_trachea_height_mm=spraytec_inputs["tcm_trachea_height_mm"],
             lift_zero_z_mm=spraytec_inputs["lift_zero_z_mm"],
+            table_height_mm=spraytec_inputs["table_height_mm"],
             spraytec_to_lift_z_mm=spraytec_inputs["spraytec_to_lift_z_mm"],
         )
         spraytec_x, spraytec_y, stage_pos_x_mm, stage_pos_y_mm = set_spraytec_xy(
@@ -153,6 +158,8 @@ def cough(config_path: Path | str | None = None) -> Path:
             spraytec_inputs["tcm_trachea_exit_to_ref_y_mm"],
             spraytec_inputs["spraytec_to_ref_x_mm"],
             spraytec_inputs["spraytec_to_ref_y_mm"],
+            spraytec_inputs["stage_pos_x_zero_mm"],
+            spraytec_inputs["stage_pos_y_zero_mm"],
             stage_pos_x_mm=spraytec_inputs["stage_pos_x_mm"],
             stage_pos_y_mm=spraytec_inputs["stage_pos_y_mm"],
         )
