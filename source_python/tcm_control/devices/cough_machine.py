@@ -10,8 +10,7 @@ from ..logger import copy_flow_curve, create_labeled_csv_filename
 
 DEFAULT_FLOWCURVE_DIR = Path("source_python/tcm_control/flow_curves")
 DEFAULT_RUN_LOG_DIR = Path(".logs")
-# TODO: double check this value
-MAX_PRESSURE_BAR = 5.0
+MAX_PRESSURE_BAR = 4.3
 
 
 class CoughMachine(PoFSerialDevice):
@@ -136,6 +135,8 @@ class CoughMachine(PoFSerialDevice):
         avg_window_s: float = 5.0,
         tolerance_bar: float = 0.05,
         poll_interval_s: float = 0.2,
+        interm_press_diff_bar: Optional[float] = None,
+        interm_press_time_s: Optional[float] = None,
         echo: Optional[bool] = None,
     ) -> str:
         """Set target pressure with `P <bar>` and wait for stable measured pressure.
@@ -143,23 +144,38 @@ class CoughMachine(PoFSerialDevice):
         After issuing the set command, pressure is polled via `P?` until the rolling
         average over `avg_window_s` is within `tolerance_bar` or `timeout_s` elapses.
         """
-        # TODO: Consider increasing pressure first before settling if the target value is almost equal to current pressure
-        reply, _lines = self._query_and_drain(
-            f"P {pressure_bar}", expected_prefix="SET_PRESSURE", echo=echo
-        )
 
         # Check parameters
         if pressure_bar < 0 or pressure_bar > MAX_PRESSURE_BAR:
             raise ValueError(
                 f"Pressure must be between 0 and {MAX_PRESSURE_BAR} bar")
         if timeout_s <= 0:
-            return reply or ""
+            raise ValueError("timeout_s must be > 0")
         if avg_window_s <= 0:
             raise ValueError("avg_window_s must be > 0")
         if poll_interval_s <= 0:
             raise ValueError("poll_interval_s must be > 0")
         if timeout_s <= avg_window_s:
             avg_window_s = timeout_s / 2
+        if (interm_press_diff_bar is not None) != (interm_press_time_s is not None):
+            raise ValueError(
+                "Both interm_press_diff_bar and interm_press_time_s must be provided together")
+
+        # If a (relative) intermediate value is given, first set that value
+        if interm_press_diff_bar is not None and interm_press_time_s is not None:
+            interm_press_bar = pressure_bar + interm_press_diff_bar
+            # Check whether value makes sense
+            if interm_press_bar < 0 or interm_press_bar > MAX_PRESSURE_BAR:
+                raise ValueError(
+                    f"Intermediate pressure must be between 0 and {MAX_PRESSURE_BAR} bar")
+            # Set to intermediate pressure and wait
+            reply, _lines = self._query_and_drain(
+                f"P {interm_press_bar}", expected_prefix="SET_PRESSURE", echo=echo)
+            time.sleep(interm_press_time_s)
+
+        # Set final pressure
+        reply, _lines = self._query_and_drain(
+            f"P {pressure_bar}", expected_prefix="SET_PRESSURE", echo=echo)
 
         # Loop until we reach the setpoint within tolerance,
         # using a rolling average to smooth out noise
@@ -498,7 +514,6 @@ class CoughMachine(PoFSerialDevice):
         if nr_droplets is not None and int(nr_droplets) <= 0:
             raise ValueError("nr_droplets must be >= 1 when provided")
 
-        # TODO: Test let_drip mode
         cmd = "D" if (nr_droplets is None or let_drip) else f"D {nr_droplets}"
         reply, _lines = self._query_and_drain(
             cmd, expected="DROPLET_ARMED", echo=echo)

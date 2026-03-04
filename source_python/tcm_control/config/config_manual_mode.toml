@@ -1,23 +1,23 @@
 [experiment]
-name = "firmware_test"
-mode = "droplet" # droplet | film | piv | manual
+name = "test"
+mode = "manual" # droplet | film | piv | manual
 series_directory = "C:/CoughMachineData/260303_tests"
 
 [inputs.core]
 debug_mode = false
-nr_runs = 2
+nr_runs = 1
 multi_run_interval_s = 5.0
 wait_before_run_ms = 67.5
 
 [devices.cough_machine.inputs]
 flow_curve_csv_path = "default_curve_new"
-tank_pressure_bar = 1.0
+tank_pressure_bar = 1.5
 tank_pressure_settling_time_s = 60.0
 tank_pressure_avg_window_s = 5.0
 tank_pressure_tolerance_bar = 0.05
 tank_pressure_poll_interval_s = 0.2
-tank_pressure_intermediate_diff_bar = "" # set together with tank_pressure_intermediate_time_s (empty disables)
-tank_pressure_intermediate_time_s = ""    # set together with tank_pressure_intermediate_diff_bar (empty disables)
+tank_pressure_intermediate_diff_bar = -0.1 # set together with tank_pressure_intermediate_time_s (empty disables)
+tank_pressure_intermediate_time_s = 2    # set together with tank_pressure_intermediate_diff_bar (empty disables)
 
 [devices.pump.inputs]
 syringe_volume_ml = 2.5
@@ -25,7 +25,7 @@ droplet_pump_rate_ml_per_min = 0.1
 nr_droplets_to_skip_before_recording = 5
 
 [devices.spraytec]
-record_droplet_size = true
+record_droplet_size = false
 
 [devices.spraytec.inputs]
 append_file_path = "C:/CoughMachineData/SprayTec/SPRAYTEC_APPEND_FILE_3.txt" # keep empty to trigger file dialog
@@ -39,6 +39,6 @@ spraytec_to_ref_x_mm = 44
 spraytec_to_ref_y_mm = 483
 stage_pos_x_zero_mm = 96
 stage_pos_y_zero_mm = 655 
-stage_pos_x_mm = "" # keep empty to prompt
-stage_pos_y_mm = "" # keep empty to prompt
+stage_pos_x_mm = 95.5 # keep empty to prompt
+stage_pos_y_mm = 660 # keep empty to prompt
 table_height_mm = 920

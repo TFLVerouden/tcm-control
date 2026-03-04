@@ -134,6 +134,15 @@ def cough(config_path: Path | str | None = None) -> Path:
     tcm.set_pressure(
         cough_machine_inputs["tank_pressure_bar"],
         timeout_s=cough_machine_inputs["tank_pressure_settling_time_s"],
+        avg_window_s=cough_machine_inputs["tank_pressure_avg_window_s"],
+        tolerance_bar=cough_machine_inputs["tank_pressure_tolerance_bar"],
+        poll_interval_s=cough_machine_inputs["tank_pressure_poll_interval_s"],
+        interm_press_diff_bar=cough_machine_inputs[
+            "tank_pressure_intermediate_diff_bar"
+        ],
+        interm_press_time_s=cough_machine_inputs[
+            "tank_pressure_intermediate_time_s"
+        ],
     )
     tcm.set_wait_us(wait_us=wait_before_run_us)
     tcm.load_flowcurve(

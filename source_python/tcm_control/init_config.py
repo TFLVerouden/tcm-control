@@ -178,7 +178,68 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
                 default=60.0,
             )
         ),
+        "tank_pressure_avg_window_s": float(
+            _nested_get(
+                raw,
+                "devices",
+                "cough_machine",
+                "inputs",
+                "tank_pressure_avg_window_s",
+                default=5.0,
+            )
+        ),
+        "tank_pressure_tolerance_bar": float(
+            _nested_get(
+                raw,
+                "devices",
+                "cough_machine",
+                "inputs",
+                "tank_pressure_tolerance_bar",
+                default=0.05,
+            )
+        ),
+        "tank_pressure_poll_interval_s": float(
+            _nested_get(
+                raw,
+                "devices",
+                "cough_machine",
+                "inputs",
+                "tank_pressure_poll_interval_s",
+                default=0.2,
+            )
+        ),
+        "tank_pressure_intermediate_diff_bar": _optional_float(
+            _nested_get(
+                raw,
+                "devices",
+                "cough_machine",
+                "inputs",
+                "tank_pressure_intermediate_diff_bar",
+            )
+        ),
+        "tank_pressure_intermediate_time_s": _optional_float(
+            _nested_get(
+                raw,
+                "devices",
+                "cough_machine",
+                "inputs",
+                "tank_pressure_intermediate_time_s",
+            )
+        ),
     }
+
+    has_intermediate_diff = (
+        cough_machine_inputs["tank_pressure_intermediate_diff_bar"] is not None
+    )
+    has_intermediate_time = (
+        cough_machine_inputs["tank_pressure_intermediate_time_s"] is not None
+    )
+    if has_intermediate_diff != has_intermediate_time:
+        raise ValueError(
+            "Config [devices.cough_machine.inputs] must define both "
+            "tank_pressure_intermediate_diff_bar and "
+            "tank_pressure_intermediate_time_s together."
+        )
 
     # ------------------------------------------------------------------
     # Pump inputs (required in droplet/piv mode only)
