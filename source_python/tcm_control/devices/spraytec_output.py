@@ -11,21 +11,62 @@ This module handles four main tasks:
 """
 
 import csv
+import re
 import shutil
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from tcm_utils.io_utils import ask_open_file, prompt_yes_no
+from collections import OrderedDict
+from natsort import natsorted
+from tcm_utils.io_utils import ask_open_file, prompt_yes_no, save_metadata_json
 from tcm_utils.time_utils import timestamp_str
 from pathlib import Path
+from typing import Any
+
+import pandas as pd
 from tcm_control.logger import create_labeled_csv_filename
 
+
+# =============================================================================
+# Constants
+# =============================================================================
 
 # File and folder names used beside the append file.
 AUDIT_FILENAME = "spraytec_parsing_audit.csv"
 REDUNDANCY_DIRNAME = "spraytec_individual_measurements"
 ARCHIVE_DIRNAME = "archive"
 DEFAULT_APPEND_MAX_FILE_SIZE_BYTES = 500 * 1024 * 1024
+
+DEFAULT_SPRAYTEC_CSV_GLOB = "spraytec*.csv"
+
+_MISSING_MARKERS = {
+    "",
+    "---",
+    "nan",
+    "none",
+    "na",
+    "n/a",
+}
+
+_CATEGORY_SORT_ORDER = [
+    "general",
+    "Trans",
+    "Dn",
+    "D",
+    "Cv",
+    "Span",
+    "%N < 10�",
+    "Sc",
+    "Sr",
+    "Bl",
+    "Bd",
+    "Dc",
+]
+
+
+# =============================================================================
+# Append file path + archiving
+# =============================================================================
 
 
 def resolve_append_file_path(append_file_path: str | Path | None) -> Path:
@@ -82,6 +123,26 @@ class SpraytecBlock:
     header_mode: str
     header_row: list[str]
     rows: list[list[str]]
+
+
+@dataclass
+class SpraytecCsvData:
+    """Typed result for one loaded SprayTec CSV file."""
+
+    file_path: Path
+    data_df: pd.DataFrame
+    measurement_df: pd.DataFrame
+    measurement_columns: list[str]
+    metadata_flat: dict[str, Any]
+    metadata_by_category: dict[str, dict[str, Any]]
+    bin_edges_um: list[float]
+    bin_centers_um: list[float]
+    absurd_values_converted_count: int
+
+
+# =============================================================================
+# Helpers used by append parsing/saving
+# =============================================================================
 
 
 def _row_is_header(row: list[str]) -> bool:
@@ -152,6 +213,426 @@ def _parse_lot_value(value: str) -> float | None:
 def _measurement_id(start_line: int, timestamp_raw: str, lot_value: str) -> str:
     """Build a stable block identifier used by the audit CSV."""
     return f"L{start_line}|T{timestamp_raw.strip()}|V{lot_value.strip()}"
+
+
+# =============================================================================
+# SprayTec CSV loading helpers
+# =============================================================================
+
+
+def _try_parse_float(value: str) -> float | None:
+    """Return float(value) when parseable, else None."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_absurd_negative_sentinel(value: str) -> bool:
+    """Detect extremely negative numeric sentinels used as overflow placeholders."""
+    parsed = _try_parse_float(value)
+    return parsed is not None and parsed < -1e20
+
+
+def _is_bin_edge_column(column_name: str) -> bool:
+    """Identify bin-edge columns by numeric headers (e.g., 0.10000020, 0.1165...)."""
+    parsed = _try_parse_float(column_name.strip())
+    return parsed is not None and parsed > 0
+
+
+def _normalize_missing_value(value: Any) -> str | None:
+    """Normalize blanks/sentinels to None, otherwise return stripped string."""
+    if value is None:
+        return None
+
+    cleaned = str(value).strip()
+    if cleaned.lower() in _MISSING_MARKERS or _is_absurd_negative_sentinel(cleaned):
+        return None
+    return cleaned
+
+
+def _parse_scalar(value: str | None) -> Any:
+    """Convert scalar text values to Python primitives where safe."""
+    if value is None:
+        return None
+
+    numeric_pattern = re.compile(
+        r"^[+-]?(?:\d+\.?\d*|\d*\.\d+)(?:[eE][+-]?\d+)?$")
+    if numeric_pattern.match(value):
+        numeric_value = float(value)
+        if numeric_value.is_integer() and "e" not in value.lower() and "." not in value:
+            return int(numeric_value)
+        return numeric_value
+
+    return value
+
+
+def _extract_prefix_category(column_name: str) -> str:
+    """Extract prefix category from column names using delimiter-based grouping."""
+    stripped = column_name.strip()
+    if not stripped:
+        return "general"
+
+    for delimiter in ("(", "["):
+        delimiter_pos = stripped.find(delimiter)
+        if delimiter_pos > 0:
+            prefix = stripped[:delimiter_pos].strip()
+            return prefix if prefix else "general"
+
+    return "general"
+
+
+def _group_metadata_by_prefix(metadata_flat: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Group metadata columns by prefix-derived category with deterministic ordering."""
+    grouped: dict[str, dict[str, Any]] = {}
+    for column_name, value in metadata_flat.items():
+        category = _extract_prefix_category(column_name)
+        grouped.setdefault(category, {})[column_name] = value
+
+    ordered = OrderedDict()
+    sorted_categories = natsorted(
+        grouped.keys(),
+        key=lambda name: (
+            _CATEGORY_SORT_ORDER.index(name)
+            if name in _CATEGORY_SORT_ORDER
+            else len(_CATEGORY_SORT_ORDER),
+            name.lower(),
+        ),
+    )
+
+    for category in sorted_categories:
+        ordered[category] = dict(
+            natsorted(grouped[category].items(),
+                      key=lambda item: item[0].lower())
+        )
+    return dict(ordered)
+
+
+def _coerce_numeric_if_possible(series: pd.Series) -> pd.Series:
+    """Return numeric series only when most non-missing values are numeric."""
+    raw = series.astype(str).str.strip()
+    missing_mask = raw.str.lower().isin(
+        _MISSING_MARKERS) | raw.apply(_is_absurd_negative_sentinel)
+    cleaned = raw.mask(missing_mask, pd.NA)
+
+    numeric = pd.to_numeric(cleaned, errors="coerce")
+    non_missing_count = cleaned.notna().sum()
+    if non_missing_count == 0:
+        return cleaned
+
+    numeric_non_missing_count = numeric.notna().sum()
+    if numeric_non_missing_count / non_missing_count >= 0.90:
+        return numeric
+    return cleaned
+
+
+def _read_spraytec_csv_dataframe(file_path: Path) -> pd.DataFrame:
+    """Read SprayTec CSV robustly while preserving column ordering."""
+    dataframe = pd.read_csv(
+        file_path,
+        dtype=str,
+        keep_default_na=False,
+        encoding="utf-8",
+        encoding_errors="replace",
+    )
+
+    dataframe.columns = [str(column).strip() for column in dataframe.columns]
+    dataframe = dataframe.apply(lambda series: series.astype(str).str.strip())
+    return dataframe
+
+
+def _count_absurd_negative_sentinels(dataframe: pd.DataFrame) -> int:
+    """Count absurdly negative numeric sentinel values in a dataframe."""
+    count = 0
+    for column_name in dataframe.columns:
+        count += int(
+            dataframe[column_name]
+            .astype(str)
+            .str.strip()
+            .apply(_is_absurd_negative_sentinel)
+            .sum()
+        )
+    return count
+
+
+def _compute_bin_edges_from_columns(columns: list[str]) -> list[float]:
+    """Extract bin-edge values from numeric column headers in file order."""
+    bin_edges: list[float] = []
+    for column_name in columns:
+        if not _is_bin_edge_column(column_name):
+            continue
+        parsed = _try_parse_float(column_name)
+        if parsed is not None:
+            bin_edges.append(parsed)
+    return bin_edges
+
+
+def _compute_bin_centers(bin_edges_um: list[float]) -> list[float]:
+    """Compute consecutive bin centers from ordered edge values."""
+    if len(bin_edges_um) < 2:
+        return []
+    return [
+        (bin_edges_um[idx - 1] + bin_edges_um[idx]) / 2.0
+        for idx in range(1, len(bin_edges_um))
+    ]
+
+
+def resolve_spraytec_csv_file_path(file_path: str | Path | None) -> Path:
+    """Return a validated SprayTec measurement CSV path."""
+    if file_path is None:
+        selected_path = ask_open_file(
+            key="spraytec_csv_file",
+            title="Select SprayTec CSV file",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
+        if selected_path is None:
+            raise ValueError("No SprayTec CSV file selected.")
+        resolved_path = Path(selected_path)
+    else:
+        resolved_path = Path(file_path)
+
+    if not resolved_path.exists():
+        raise FileNotFoundError(
+            f"SprayTec CSV file not found: {resolved_path}")
+    if not resolved_path.is_file():
+        raise ValueError(f"Path is not a file: {resolved_path}")
+    return resolved_path
+
+
+def load_spraytec_csv(file_path: str | Path | None = None) -> SpraytecCsvData:
+    """Load one SprayTec CSV and split constant metadata vs measurement data.
+
+    Metadata columns are detected as columns containing at most one effective
+    non-missing value over all rows.
+    """
+    resolved_path = resolve_spraytec_csv_file_path(file_path)
+    dataframe = _read_spraytec_csv_dataframe(resolved_path)
+    absurd_values_converted_count = _count_absurd_negative_sentinels(dataframe)
+
+    if dataframe.empty:
+        raise ValueError(
+            f"SprayTec CSV contains no data rows: {resolved_path}")
+
+    print(
+        "SprayTec warning: converted "
+        f"{absurd_values_converted_count} absurdly large negative value(s) to NaN "
+        f"while loading {resolved_path.name}."
+    )
+
+    metadata_flat: dict[str, Any] = {}
+    measurement_columns: list[str] = []
+    bin_edges_um = _compute_bin_edges_from_columns(list(dataframe.columns))
+    bin_centers_um = _compute_bin_centers(bin_edges_um)
+
+    for column_name in dataframe.columns:
+        # Bin-edge columns belong to time-dependent spray size data even when
+        # a specific edge column has no recorded values.
+        if _is_bin_edge_column(column_name):
+            measurement_columns.append(column_name)
+            continue
+
+        normalized_values = [
+            _normalize_missing_value(value) for value in dataframe[column_name].tolist()
+        ]
+        unique_non_missing_values = {
+            value for value in normalized_values if value is not None
+        }
+
+        if len(unique_non_missing_values) <= 1:
+            only_value = next(iter(unique_non_missing_values), None)
+            metadata_flat[column_name] = _parse_scalar(only_value)
+        else:
+            measurement_columns.append(column_name)
+
+    if bin_edges_um:
+        metadata_flat["bin_edges_um"] = bin_edges_um
+    if bin_centers_um:
+        metadata_flat["bin_centers_um"] = bin_centers_um
+
+    measurement_df = dataframe[measurement_columns].copy()
+    for column_name in measurement_df.columns:
+        measurement_df[column_name] = _coerce_numeric_if_possible(
+            measurement_df[column_name]
+        )
+
+    metadata_by_category = _group_metadata_by_prefix(metadata_flat)
+
+    return SpraytecCsvData(
+        file_path=resolved_path,
+        data_df=dataframe,
+        measurement_df=measurement_df,
+        measurement_columns=list(measurement_df.columns),
+        metadata_flat=metadata_flat,
+        metadata_by_category=metadata_by_category,
+        bin_edges_um=bin_edges_um,
+        bin_centers_um=bin_centers_um,
+        absurd_values_converted_count=absurd_values_converted_count,
+    )
+
+
+def load_spraytec_csvs(
+    folder_path: str | Path,
+    pattern: str = DEFAULT_SPRAYTEC_CSV_GLOB,
+) -> list[SpraytecCsvData]:
+    """Load all SprayTec CSV files in a folder and return typed results."""
+    folder = Path(folder_path)
+    if not folder.exists():
+        raise FileNotFoundError(f"SprayTec folder not found: {folder}")
+    if not folder.is_dir():
+        raise ValueError(f"Path is not a folder: {folder}")
+
+    csv_paths = natsorted(
+        path for path in folder.glob(pattern) if path.is_file())
+    if not csv_paths:
+        raise ValueError(
+            f"No SprayTec CSV files found in {folder} with pattern '{pattern}'")
+
+    return [load_spraytec_csv(path) for path in csv_paths]
+
+
+def _to_jsonable(value: Any) -> Any:
+    """Recursively convert values to JSON-safe primitives."""
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(key): _to_jsonable(val) for key, val in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_to_jsonable(val) for val in value]
+    return value
+
+
+def export_spraytec_metadata_json(
+    spraytec_data: SpraytecCsvData,
+    output_dir: str | Path,
+    filename: str | None = None,
+) -> Path:
+    """Export one loaded SprayTec metadata payload as JSON."""
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    resolved_filename = (
+        filename
+        if filename is not None
+        else f"{spraytec_data.file_path.stem}_metadata.json"
+    )
+    json_path = output_path / resolved_filename
+
+    payload = {
+        "source_csv": spraytec_data.file_path,
+        "metadata_by_category": spraytec_data.metadata_by_category,
+        "time_dependent_columns": spraytec_data.measurement_columns,
+        "bin_edges_um": spraytec_data.bin_edges_um,
+        "bin_centers_um": spraytec_data.bin_centers_um,
+    }
+
+    save_metadata_json(_to_jsonable(payload), json_path)
+    return json_path
+
+
+def export_spraytec_metadata_jsons(
+    spraytec_data_list: list[SpraytecCsvData],
+    output_dir: str | Path,
+) -> list[Path]:
+    """Export metadata JSON files for multiple loaded SprayTec CSV files."""
+    return [
+        export_spraytec_metadata_json(
+            spraytec_data=data, output_dir=output_dir)
+        for data in spraytec_data_list
+    ]
+
+
+def _merge_metadata_values(values: list[Any]) -> Any:
+    """Return shared scalar when all equal; otherwise keep per-file list."""
+    if not values:
+        return None
+    first_value = values[0]
+    if all(value == first_value for value in values[1:]):
+        return first_value
+    return values
+
+
+def _build_combined_metadata_by_category(
+    spraytec_data_list: list[SpraytecCsvData],
+) -> dict[str, dict[str, Any]]:
+    """Merge categorized metadata across files, listing differing values."""
+    all_categories: set[str] = set()
+    for data in spraytec_data_list:
+        all_categories.update(data.metadata_by_category.keys())
+
+    combined: dict[str, dict[str, Any]] = {}
+    for category in natsorted(all_categories):
+        all_keys: set[str] = set()
+        for data in spraytec_data_list:
+            category_dict = data.metadata_by_category.get(category, {})
+            all_keys.update(category_dict.keys())
+
+        combined_category: dict[str, Any] = {}
+        for key in natsorted(all_keys):
+            values = [
+                data.metadata_by_category.get(category, {}).get(key)
+                for data in spraytec_data_list
+            ]
+            combined_category[key] = _merge_metadata_values(values)
+
+        combined[category] = combined_category
+
+    return combined
+
+
+def build_combined_spraytec_metadata(
+    spraytec_data_list: list[SpraytecCsvData],
+) -> dict[str, Any]:
+    """Build one combined metadata dict across multiple SprayTec CSV files."""
+    if not spraytec_data_list:
+        raise ValueError("spraytec_data_list is empty")
+
+    source_csvs = [str(data.file_path) for data in spraytec_data_list]
+    file_names = [data.file_path.name for data in spraytec_data_list]
+
+    all_time_dependent_columns: set[str] = set()
+    for data in spraytec_data_list:
+        all_time_dependent_columns.update(data.measurement_columns)
+
+    all_bin_edges = [data.bin_edges_um for data in spraytec_data_list]
+    all_bin_centers = [data.bin_centers_um for data in spraytec_data_list]
+    absurd_counts = [
+        data.absurd_values_converted_count for data in spraytec_data_list]
+    combined_metadata_by_category = _build_combined_metadata_by_category(
+        spraytec_data_list
+    )
+
+    return {
+        "source_csvs": source_csvs,
+        "source_file_names": file_names,
+        "metadata_by_category": combined_metadata_by_category,
+        "time_dependent_columns": natsorted(all_time_dependent_columns),
+        "bin_edges_um": _merge_metadata_values(all_bin_edges),
+        "bin_centers_um": _merge_metadata_values(all_bin_centers),
+        "absurd_values_converted_count": {
+            "per_file": dict(zip(file_names, absurd_counts, strict=True)),
+            "total": sum(absurd_counts),
+        },
+    }
+
+
+def export_combined_spraytec_metadata_json(
+    spraytec_data_list: list[SpraytecCsvData],
+    output_dir: str | Path,
+    filename: str = "spraytec_metadata.json",
+) -> Path:
+    """Export one combined metadata JSON for multiple loaded SprayTec CSV files."""
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    json_path = output_path / filename
+
+    payload = build_combined_spraytec_metadata(spraytec_data_list)
+    save_metadata_json(_to_jsonable(payload), json_path)
+    return json_path
+
+
+# =============================================================================
+# Append parsing + audit persistence helpers
+# =============================================================================
 
 
 def _next_available_path(path: Path) -> Path:
