@@ -51,6 +51,8 @@ def set_spraytec_xy(tcm_trachea_exit_to_ref_x_mm: float,
                     tcm_trachea_exit_to_ref_y_mm: float,
                     spraytec_to_ref_x_mm: float,
                     spraytec_to_ref_y_mm: float,
+                    stage_pos_x_zero_mm: float,
+                    stage_pos_y_zero_mm: float,
                     stage_pos_x_mm: Optional[float] = None,
                     stage_pos_y_mm: Optional[float] = None
                     ) -> tuple[float, float, float, float]:
@@ -62,25 +64,26 @@ def set_spraytec_xy(tcm_trachea_exit_to_ref_x_mm: float,
     if stage_pos_x_mm is None or stage_pos_y_mm is None:
         # Ask user to read off x and y position of the cough machine
         print("Read off the x and y scale on the cough machine stage.")
-        # TODO: Set min and max values
         stage_pos_x_mm = prompt_input(
             "x (cross-airflow) position in mm: ",
             value_type="float",
-            min_value=0,
-            max_value=100,
+            min_value=2,
+            max_value=200,
         )
         stage_pos_y_mm = prompt_input(
             "y (along-airflow) position in mm: ",
             value_type="float",
             min_value=0,
-            max_value=100,
+            max_value=784,
         )
     else:
         stage_pos_x_mm = stage_pos_x_mm
         stage_pos_y_mm = stage_pos_y_mm
 
-    spraytec_x = stage_pos_x_mm - tcm_trachea_exit_to_ref_x_mm - spraytec_to_ref_x_mm
-    spraytec_y = stage_pos_y_mm - tcm_trachea_exit_to_ref_y_mm - spraytec_to_ref_y_mm
+    spraytec_x = stage_pos_x_zero_mm - stage_pos_x_mm - \
+        tcm_trachea_exit_to_ref_x_mm + spraytec_to_ref_x_mm
+    spraytec_y = stage_pos_y_zero_mm - stage_pos_y_mm - \
+        tcm_trachea_exit_to_ref_y_mm + spraytec_to_ref_y_mm
     return spraytec_x, spraytec_y, stage_pos_x_mm, stage_pos_y_mm
 
 
@@ -130,6 +133,15 @@ def cough(config_path: Path | str | None = None) -> Path:
     tcm.set_pressure(
         cough_machine_inputs["tank_pressure_bar"],
         timeout_s=cough_machine_inputs["tank_pressure_settling_time_s"],
+        avg_window_s=cough_machine_inputs["tank_pressure_avg_window_s"],
+        tolerance_bar=cough_machine_inputs["tank_pressure_tolerance_bar"],
+        poll_interval_s=cough_machine_inputs["tank_pressure_poll_interval_s"],
+        interm_press_diff_bar=cough_machine_inputs[
+            "tank_pressure_intermediate_diff_bar"
+        ],
+        interm_press_time_s=cough_machine_inputs[
+            "tank_pressure_intermediate_time_s"
+        ],
     )
     tcm.set_wait_us(wait_us=wait_before_run_us)
     tcm.load_flowcurve(
@@ -146,6 +158,7 @@ def cough(config_path: Path | str | None = None) -> Path:
             tcm_trachea_bottom_z_mm=spraytec_inputs["tcm_trachea_bottom_z_mm"],
             tcm_trachea_height_mm=spraytec_inputs["tcm_trachea_height_mm"],
             lift_zero_z_mm=spraytec_inputs["lift_zero_z_mm"],
+            table_height_mm=spraytec_inputs["table_height_mm"],
             spraytec_to_lift_z_mm=spraytec_inputs["spraytec_to_lift_z_mm"],
         )
         spraytec_x, spraytec_y, stage_pos_x_mm, stage_pos_y_mm = set_spraytec_xy(
@@ -153,6 +166,8 @@ def cough(config_path: Path | str | None = None) -> Path:
             spraytec_inputs["tcm_trachea_exit_to_ref_y_mm"],
             spraytec_inputs["spraytec_to_ref_x_mm"],
             spraytec_inputs["spraytec_to_ref_y_mm"],
+            spraytec_inputs["stage_pos_x_zero_mm"],
+            spraytec_inputs["stage_pos_y_zero_mm"],
             stage_pos_x_mm=spraytec_inputs["stage_pos_x_mm"],
             stage_pos_y_mm=spraytec_inputs["stage_pos_y_mm"],
         )
@@ -166,8 +181,6 @@ def cough(config_path: Path | str | None = None) -> Path:
         print("SprayTec measurement volume position (x, y, z) in mm: ",
               spraytec_x, spraytec_y, spraytec_z)
         print(f"SprayTec append file: {spraytec_inputs['append_file_path']}")
-
-        # TODO: Check here for the existence of the SprayTec append file
 
         prompt_yes_no(
             "Press Enter to confirm that SprayTec SOP has been started...",
@@ -236,7 +249,6 @@ def cough(config_path: Path | str | None = None) -> Path:
                 if nr_droplets_to_skip > 0:
                     tcm.count_droplets(
                         nr_droplets=nr_droplets_to_skip, let_drip=True)
-                # TODO: test this let_drip mode
 
                 # Then go into droplet detection mode
                 tcm.detect_droplets_and_run(
@@ -267,58 +279,62 @@ def cough(config_path: Path | str | None = None) -> Path:
         case "piv":
             raise NotImplementedError("PIV mode not implemented yet.")
 
-    # Collect comments
-    comments = ask_user_for_comments(output_dir=output_dir)
+    # Finish off
+    if experiment_mode != "manual":
+        # Collect comments
+        comments = ask_user_for_comments(output_dir=output_dir)
 
-    # Record temperature and humidity
-    temperature_finish, humidity_finish = tcm.read_temperature_humidity()
-    time_finish = timestamp_str()
+        # Record temperature and humidity
+        temperature_finish, humidity_finish = tcm.read_temperature_humidity()
+        time_finish = timestamp_str()
 
-    # Optional SprayTec post-processing.
-    if record_droplet_size:
-        prompt_yes_no(
-            "Press Enter if the SprayTec has finished processing the measurement(s)...",
-            default=True,
+        # Optional SprayTec post-processing.
+        if record_droplet_size:
+            prompt_yes_no(
+                "Press Enter if the SprayTec has finished processing the measurement(s)...",
+                default=True,
+            )
+            spraytec_audit_path = save_spraytec_data(
+                append_file_path=spraytec_inputs["append_file_path"],
+                experiment_dir=output_dir,
+                start_time=time_start,
+                debug=core_inputs["debug_mode"],
+                offer_archive_if_large=True,
+            )
+
+        metadata = logger.build_run_metadata(
+            time_start=time_start,
+            time_finish=time_finish,
+            experiment_name=experiment_name,
+            experiment_mode=experiment_mode,
+            output_dir=output_dir,
+            wait_before_run_us=wait_before_run_us,
+            temperature_start=temperature_start,
+            humidity_start=humidity_start,
+            temperature_finish=temperature_finish,
+            humidity_finish=humidity_finish,
+            comments=comments,
+            core_inputs=core_inputs,
+            tcm=tcm,
+            cough_machine_inputs=cough_machine_inputs,
+            pump=pump,
+            pump_inputs=pump_inputs,
+            record_droplet_size=record_droplet_size,
+            spraytec_inputs=spraytec_inputs,
+            spraytec_x=spraytec_x,
+            spraytec_y=spraytec_y,
+            spraytec_z=spraytec_z,
+            spraytec_audit_path=spraytec_audit_path,
+            lift=lift,
         )
-        spraytec_audit_path = save_spraytec_data(
-            append_file_path=spraytec_inputs["append_file_path"],
-            experiment_dir=output_dir,
-            start_time=time_start,
-            debug=core_inputs["debug_mode"],
-            offer_archive_if_large=True,
-        )
+        # Persist full run metadata snapshot.
+        logger.write_run_metadata(experiment_dir=output_dir, metadata=metadata)
 
-    metadata = logger.build_run_metadata(
-        time_start=time_start,
-        time_finish=time_finish,
-        experiment_name=experiment_name,
-        experiment_mode=experiment_mode,
-        output_dir=output_dir,
-        wait_before_run_us=wait_before_run_us,
-        temperature_start=temperature_start,
-        humidity_start=humidity_start,
-        temperature_finish=temperature_finish,
-        humidity_finish=humidity_finish,
-        comments=comments,
-        core_inputs=core_inputs,
-        tcm=tcm,
-        cough_machine_inputs=cough_machine_inputs,
-        pump=pump,
-        pump_inputs=pump_inputs,
-        record_droplet_size=record_droplet_size,
-        spraytec_inputs=spraytec_inputs,
-        spraytec_x=spraytec_x,
-        spraytec_y=spraytec_y,
-        spraytec_z=spraytec_z,
-        spraytec_audit_path=spraytec_audit_path,
-        lift=lift,
-    )
-    # Persist full run metadata snapshot.
-    logger.write_run_metadata(experiment_dir=output_dir, metadata=metadata)
+        print("Experiment completed, all data saved to ", output_dir)
+        # TODO: Number spraytec files in case of multiple runs
+        print("Exiting.")
 
-    print("Experiment completed, all data saved to ", output_dir)
-    # TODO: Number spraytec files in case of multiple runs
-    print("Exiting.")
+    # Return output directory
     return output_dir
 
 
