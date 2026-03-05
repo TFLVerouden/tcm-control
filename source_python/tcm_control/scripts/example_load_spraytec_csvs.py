@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
-import re
 import sys
 
 import matplotlib.pyplot as plt
@@ -79,112 +78,144 @@ def _column_float(value: object) -> float:
     return float(str(value).strip())
 
 
-def _is_number_distribution_column(column_name: str) -> bool:
-    stripped = str(column_name).strip()
-    if not stripped:
-        return False
-    try:
-        return float(stripped) > 0
-    except ValueError:
-        return False
+def _find_required_column(measurement_df: pd.DataFrame, expected_names: list[str]) -> str:
+    normalized_to_column = {
+        column_name.strip().lower(): column_name for column_name in measurement_df.columns
+    }
+    for expected_name in expected_names:
+        resolved = normalized_to_column.get(expected_name.strip().lower())
+        if resolved is not None:
+            return resolved
+    raise KeyError(f"Required column not found: any of {expected_names}")
 
 
-def _is_excluded_time_series_column(column_name: str) -> bool:
-    stripped = str(column_name).strip()
-    return (
-        stripped.startswith("Sc[")
-        or stripped.startswith("Sr[")
-        or _is_number_distribution_column(stripped)
-        or stripped == ""
-    )
-
-
-def _sanitize_filename(value: str) -> str:
-    sanitized = re.sub(r"[^A-Za-z0-9._-]+", "_", value.strip())
-    sanitized = sanitized.strip("._")
-    return sanitized or "unnamed"
-
-
-def _resolve_time_axis_relative_to_trigger(measurement_df: pd.DataFrame) -> tuple[pd.Series, str]:
-    if "Date-Time" in measurement_df.columns:
-        time_series = pd.to_datetime(
-            measurement_df["Date-Time"],
-            errors="coerce",
-            format="%d %b %Y %H:%M:%S.%f",
-        )
-        if time_series.notna().any():
-            trigger_timestamp = None
-            if "Trigger" in measurement_df.columns:
-                trigger_values = pd.to_numeric(
-                    measurement_df["Trigger"], errors="coerce")
-                trigger_rows = (trigger_values > 0).fillna(False)
-                if trigger_rows.any():
-                    trigger_idx = trigger_rows[trigger_rows].index[0]
-                    trigger_timestamp = time_series.loc[trigger_idx]
-
-            if pd.isna(trigger_timestamp):
-                trigger_timestamp = time_series.dropna().iloc[0]
-
-            relative_seconds = (
-                time_series - trigger_timestamp).dt.total_seconds()
-            return relative_seconds, "Time relative to trigger (s)"
-
-    if "Time (relative)" in measurement_df.columns:
-        relative_values = pd.to_numeric(
-            measurement_df["Time (relative)"], errors="coerce")
-        if relative_values.notna().any():
-            trigger_reference = None
-            if "Trigger" in measurement_df.columns:
-                trigger_values = pd.to_numeric(
-                    measurement_df["Trigger"], errors="coerce")
-                trigger_rows = (trigger_values > 0).fillna(False)
-                if trigger_rows.any():
-                    trigger_idx = trigger_rows[trigger_rows].index[0]
-                    trigger_reference = relative_values.loc[trigger_idx]
-
-            if pd.isna(trigger_reference):
-                trigger_reference = relative_values.dropna().iloc[0]
-
-            return relative_values - trigger_reference, "Time relative to trigger (s)"
-
-    return pd.Series(range(len(measurement_df))), "Sample index"
+def _find_n_lt_10_value_column(measurement_df: pd.DataFrame) -> str:
+    for column_name in measurement_df.columns:
+        normalized = column_name.replace("�", "").strip()
+        if normalized.startswith("%N < 10") and normalized.endswith("(Value)"):
+            return column_name
+    raise KeyError("Required column not found: %N < 10(Value)")
 
 
 def _plot_time_dependent_columns(result, plots_root: Path) -> None:
     measurement_df = result.measurement_df.copy()
-    time_axis, x_label = _resolve_time_axis_relative_to_trigger(measurement_df)
+    time_axis = pd.to_numeric(
+        measurement_df["Time (relative)"], errors="coerce")
+    if not time_axis.notna().any():
+        raise ValueError(
+            f"Time (relative) contains no numeric values in {result.file_path}"
+        )
+
+    trans_value_col = _find_required_column(measurement_df, ["Trans(Value)"])
+    cv_percent_col = _find_required_column(measurement_df, ["Cv", "Cv(%)"])
+    cv_value_col = _find_required_column(measurement_df, ["Cv(Value)"])
+    d32_value_col = _find_required_column(measurement_df, ["D[3][2](Value)"])
+    d43_value_col = _find_required_column(measurement_df, ["D[4][3](Value)"])
+    dn10_value_col = _find_required_column(measurement_df, ["Dn(10)(Value)"])
+    dn50_value_col = _find_required_column(measurement_df, ["Dn(50)(Value)"])
+    dn90_value_col = _find_required_column(measurement_df, ["Dn(90)(Value)"])
+    n_lt_10_value_col = _find_n_lt_10_value_column(measurement_df)
+    scatter_start_col = _find_required_column(
+        measurement_df, ["Scatter start"])
+    scatter_end_col = _find_required_column(measurement_df, ["Scatter end"])
+
     csv_name = result.file_path.stem
     csv_plots_dir = plots_root / csv_name
     csv_plots_dir.mkdir(parents=True, exist_ok=True)
 
-    columns_to_plot = [
-        column_name
-        for column_name in result.measurement_columns
-        if column_name != "Date-Time" and not _is_excluded_time_series_column(column_name)
-    ]
-
     print(
-        f"\n{result.file_path.name}: saving {len(columns_to_plot)} per-quantity time-dependent plots "
-        "(excluded Sc*, Sr*, and numeric distribution-bin columns)."
+        f"\n{result.file_path.name}: saving 6 hardcoded time-dependent plots."
     )
 
-    for column_name in columns_to_plot:
-        numeric_values = pd.to_numeric(
-            measurement_df[column_name], errors="coerce")
-        if not numeric_values.notna().any():
-            continue
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(time_axis, pd.to_numeric(
+        measurement_df[trans_value_col], errors="coerce"), linewidth=1.2)
+    ax.set_title(f"{result.file_path.name} - Transmission")
+    ax.set_xlabel("Time (relative) (s)")
+    ax.set_ylabel("Transmission (%)")
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(csv_plots_dir / "transmission_value.pdf")
+    plt.close(fig)
 
-        fig, ax = plt.subplots(figsize=(10, 6))
-        ax.plot(time_axis, numeric_values, linewidth=1.2, alpha=0.9)
-        ax.set_title(f"{result.file_path.name} — {column_name}")
-        ax.set_xlabel(x_label)
-        ax.set_ylabel(column_name)
-        ax.grid(True, alpha=0.3)
-        fig.tight_layout()
+    fig, ax_left = plt.subplots(figsize=(10, 6))
+    cv_percent = pd.to_numeric(measurement_df[cv_percent_col], errors="coerce")
+    cv_value = pd.to_numeric(measurement_df[cv_value_col], errors="coerce")
+    ax_left.plot(time_axis, cv_percent, linewidth=1.2,
+                 color="C0", label=cv_percent_col)
+    ax_left.set_title(f"{result.file_path.name} - Cv")
+    ax_left.set_xlabel("Time (relative) (s)")
+    ax_left.set_ylabel("Cv (%)", color="C0")
+    ax_left.tick_params(axis="y", labelcolor="C0")
+    ax_left.grid(True, alpha=0.3)
 
-        output_path = csv_plots_dir / f"{_sanitize_filename(column_name)}.pdf"
-        fig.savefig(output_path)
-        plt.close(fig)
+    ax_right = ax_left.twinx()
+    ax_right.plot(time_axis, cv_value, linewidth=1.2,
+                  color="C1", label=cv_value_col)
+    ax_right.set_ylabel("Cv(Value) (ppm)", color="C1")
+    ax_right.tick_params(axis="y", labelcolor="C1")
+
+    lines = ax_left.get_lines() + ax_right.get_lines()
+    labels = [str(line.get_label()) for line in lines]
+    ax_left.legend(lines, labels, loc="best")
+    fig.tight_layout()
+    fig.savefig(csv_plots_dir / "cv_and_cv_value.pdf")
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(time_axis, pd.to_numeric(
+        measurement_df[d32_value_col], errors="coerce"), linewidth=1.2, label=d32_value_col)
+    ax.plot(time_axis, pd.to_numeric(
+        measurement_df[d43_value_col], errors="coerce"), linewidth=1.2, label=d43_value_col)
+    ax.set_title(f"{result.file_path.name} - Mean Diameters")
+    ax.set_xlabel("Time (relative) (s)")
+    ax.set_ylabel("Diameter (um)")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="best")
+    fig.tight_layout()
+    fig.savefig(csv_plots_dir / "d32_d43_value.pdf")
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(time_axis, pd.to_numeric(
+        measurement_df[dn10_value_col], errors="coerce"), linewidth=1.2, label=dn10_value_col)
+    ax.plot(time_axis, pd.to_numeric(
+        measurement_df[dn50_value_col], errors="coerce"), linewidth=1.2, label=dn50_value_col)
+    ax.plot(time_axis, pd.to_numeric(
+        measurement_df[dn90_value_col], errors="coerce"), linewidth=1.2, label=dn90_value_col)
+    ax.set_title(f"{result.file_path.name} - Dn Percentiles")
+    ax.set_xlabel("Time (relative) (s)")
+    ax.set_ylabel("Diameter (um)")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="best")
+    fig.tight_layout()
+    fig.savefig(csv_plots_dir / "dn10_dn50_dn90_value.pdf")
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(time_axis, pd.to_numeric(
+        measurement_df[n_lt_10_value_col], errors="coerce"), linewidth=1.2)
+    ax.set_title(f"{result.file_path.name} - %N < 10")
+    ax.set_xlabel("Time (relative) (s)")
+    ax.set_ylabel("%N < 10 (%)")
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(csv_plots_dir / "n_lt_10_value.pdf")
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(time_axis, pd.to_numeric(
+        measurement_df[scatter_start_col], errors="coerce"), linewidth=1.2, label=scatter_start_col)
+    ax.plot(time_axis, pd.to_numeric(
+        measurement_df[scatter_end_col], errors="coerce"), linewidth=1.2, label=scatter_end_col)
+    ax.set_title(f"{result.file_path.name} - Scatter Start/End")
+    ax.set_xlabel("Time (relative) (s)")
+    ax.set_ylabel("Scatter channel")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="best")
+    fig.tight_layout()
+    fig.savefig(csv_plots_dir / "scatter_start_end.pdf")
+    plt.close(fig)
 
 
 def _plot_average_number_distributions(loaded_results: list, plots_root: Path) -> None:
