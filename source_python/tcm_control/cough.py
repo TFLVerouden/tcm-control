@@ -182,8 +182,9 @@ def cough(config_path: Path | str | None = None) -> Path:
         print(f"SprayTec append file: {spraytec_inputs['append_file_path']}")
 
         prompt_yes_no(
-            "Press Enter to confirm that SprayTec SOP has been started...",
+            "Press Enter to confirm that SprayTec SOP is waiting for a trigger...",
             default=True)
+        # TODO: Merge this prompt with the start experiment prompt in certain cases. Probably involves making a separate pump if statement before
 
     # ------------------------------------------------------------------
     # Run mode-specific experiment behavior
@@ -209,11 +210,12 @@ def cough(config_path: Path | str | None = None) -> Path:
 
             for run_idx in range(core_inputs["nr_runs"]):
                 # Wait between coughs if needed
-                if run_idx > 0 and core_inputs["multi_run_interval_s"] > 0:
-                    wait_with_progress(
-                        float(core_inputs["multi_run_interval_s"]),
-                        label="Waiting before starting next run",
-                    )
+                if run_idx > 0:
+                    if core_inputs["multi_run_interval_s"] > 0:
+                        wait_with_progress(
+                            float(core_inputs["multi_run_interval_s"]),
+                            label="Waiting before starting next run",
+                        )
 
                     if core_inputs["confirm_before_starting_next_run"]:
                         prompt_yes_no(

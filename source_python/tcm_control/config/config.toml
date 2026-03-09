@@ -1,24 +1,24 @@
 [experiment]
 name = "firmware_test"
 mode = "droplet" # droplet | film | piv | manual
-series_directory = "C:/CoughMachineData/260303_tests"
+series_directory = "C:/CoughMachineData/260309_tests"
 
 [inputs.core]
 debug_mode = false
-nr_runs = 2
-multi_run_interval_s = 5.0
+nr_runs = 3
+multi_run_interval_s = 10.0
 confirm_before_starting_next_run = false
 wait_before_run_ms = 67.5
 
 [devices.cough_machine.inputs]
-flow_curve_csv_path = "default_curve_new"
-tank_pressure_bar = 1.0
+flow_curve_csv_path = "step"
+tank_pressure_bar = 1.5
 tank_pressure_settling_time_s = 60.0
 tank_pressure_avg_window_s = 5.0
 tank_pressure_tolerance_bar = 0.05
 tank_pressure_poll_interval_s = 0.2
-tank_pressure_intermediate_diff_bar = "" # set together with tank_pressure_intermediate_time_s (empty disables)
-tank_pressure_intermediate_time_s = ""    # set together with tank_pressure_intermediate_diff_bar (empty disables)
+tank_pressure_intermediate_diff_bar = -0.1 # set together with tank_pressure_intermediate_time_s (empty disables)
+tank_pressure_intermediate_time_s = 2    # set together with tank_pressure_intermediate_diff_bar (empty disables)
 
 [devices.pump.inputs]
 syringe_volume_ml = 2.5
@@ -29,7 +29,7 @@ nr_droplets_to_skip_before_recording = 5
 record_droplet_size = true
 
 [devices.spraytec.inputs]
-append_file_path = "C:/CoughMachineData/SprayTec/SPRAYTEC_APPEND_FILE_3.txt" # keep empty to trigger file dialog
+append_file_path = "C:/Users/Public/Documents/Malvern Instruments/Spraytec/Export Data/SPRAYTEC_APPEND_FILE.txt" # keep empty to trigger file dialog
 tcm_trachea_bottom_z_mm = 326
 tcm_trachea_height_mm = 15.15   
 lift_zero_z_mm = 172.7 #lift actually at 1.3mm, so 174-1.3 =172.7
