@@ -138,6 +138,7 @@ def build_run_metadata(
     spraytec_x: float | None,
     spraytec_y: float | None,
     spraytec_z: float | None,
+    lift_height: float | None,
     spraytec_audit_path: str | Path | None,
     lift: Any,
 ) -> dict[str, Any]:
@@ -216,6 +217,11 @@ def build_run_metadata(
                         None
                         if lift is None
                         else lift.serial_settings.get("timeout")
+                    ),
+                    "lift_height_mm": (
+                        None
+                        if lift is None
+                        else lift_height
                     ),
                 },
             },

@@ -153,7 +153,7 @@ def cough(config_path: Path | str | None = None) -> Path:
     # Optional SprayTec setup and geometry resolution.
     if record_droplet_size:
         lift = SprayTecLift()
-        spraytec_z = lift.get_spraytec_height(
+        spraytec_z, lift_height = lift.get_spraytec_height(
             tcm_trachea_bottom_z_mm=spraytec_inputs["tcm_trachea_bottom_z_mm"],
             tcm_trachea_height_mm=spraytec_inputs["tcm_trachea_height_mm"],
             lift_zero_z_mm=spraytec_inputs["lift_zero_z_mm"],
@@ -310,6 +310,7 @@ def cough(config_path: Path | str | None = None) -> Path:
             spraytec_y=spraytec_y,
             spraytec_z=spraytec_z,
             spraytec_audit_path=spraytec_audit_path,
+            lift_height=lift_height,
             lift=lift,
         )
         # Persist full run metadata snapshot.
