@@ -215,11 +215,11 @@ def cough(config_path: Path | str | None = None) -> Path:
                         label="Waiting before starting next run",
                     )
 
-                    # Ask confirmation to continue (CAN BE COMMENTED OUT)
-                    prompt_yes_no(
-                        "Press Enter to continue...",
-                        default=True,
-                    )
+                    if core_inputs["confirm_before_starting_next_run"]:
+                        prompt_yes_no(
+                            "Press Enter to continue...",
+                            default=True,
+                        )
 
                 # Turn on syringe pump
                 pump.infuse(
@@ -276,7 +276,7 @@ def cough(config_path: Path | str | None = None) -> Path:
         # Optional SprayTec post-processing.
         if record_droplet_size:
             prompt_yes_no(
-                "Press Enter if the SprayTec has finished processing the measurement(s)...",
+                "Press Enter if the SprayTec has finished processing and exporting the measurement(s)...",
                 default=True,
             )
             spraytec_audit_path = save_spraytec_data(

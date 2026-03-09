@@ -7,6 +7,7 @@ series_directory = "C:/CoughMachineData/260303_tests"
 debug_mode = false
 nr_runs = 1
 multi_run_interval_s = 5.0
+confirm_before_starting_next_run = true
 wait_before_run_ms = 67.5
 
 [devices.cough_machine.inputs]

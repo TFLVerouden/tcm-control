@@ -134,6 +134,15 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             _nested_get(raw, "inputs", "core",
                         "multi_run_interval_s", default=0.0)
         ),
+        "confirm_before_starting_next_run": bool(
+            _nested_get(
+                raw,
+                "inputs",
+                "core",
+                "confirm_before_starting_next_run",
+                default=True,
+            )
+        ),
         "wait_before_run_ms": float(
             _nested_get(raw, "inputs", "core",
                         "wait_before_run_ms", default=0.0)
