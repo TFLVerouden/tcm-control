@@ -1,6 +1,7 @@
 from __future__ import annotations
 """Load and validate experiment input configuration from TOML."""
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,39 @@ def _normalize_optional_string(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text if text else None
+
+
+def _normalize_optional_path_string(value: Any) -> str | None:
+    """Normalize optional path-like strings to use forward slashes."""
+    text = _normalize_optional_string(value)
+    if text is None:
+        return None
+    return text.replace("\\", "/")
+
+
+def _sanitize_windows_path_separators_in_toml(raw_text: str) -> str:
+    """Normalize Windows backslashes for selected TOML path keys.
+
+    This targets only basic string assignments for:
+    - series_directory
+    - append_file_path
+
+    It converts backslashes to forward slashes so TOML parsing remains robust
+    when users provide Windows-style paths.
+    """
+
+    pattern = re.compile(
+        r'(^\s*(series_directory|append_file_path)\s*=\s*")([^"\n]*)(")',
+        flags=re.MULTILINE,
+    )
+
+    def _replace(match: re.Match[str]) -> str:
+        prefix = match.group(1)
+        path_value = match.group(3)
+        suffix = match.group(4)
+        return f"{prefix}{path_value.replace('\\', '/')}{suffix}"
+
+    return pattern.sub(_replace, raw_text)
 
 
 def _optional_float(value: Any) -> float | None:
@@ -98,8 +132,14 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
     if not config_file.exists():
         raise FileNotFoundError(f"Config file not found: {config_file}")
 
-    with open(config_file, "rb") as handle:
-        raw = tomllib.load(handle)
+    raw_text = config_file.read_text(encoding="utf-8")
+    try:
+        raw = tomllib.loads(raw_text)
+    except tomllib.TOMLDecodeError:
+        sanitized_text = _sanitize_windows_path_separators_in_toml(raw_text)
+        if sanitized_text == raw_text:
+            raise
+        raw = tomllib.loads(sanitized_text)
 
     # ------------------------------------------------------------------
     # Experiment-level settings
@@ -118,7 +158,7 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             + ", ".join(sorted(VALID_EXPERIMENT_MODES))
         )
 
-    series_directory = _normalize_optional_string(series_directory_raw)
+    series_directory = _normalize_optional_path_string(series_directory_raw)
     if series_directory is None:
         raise ValueError("Config [experiment].series_directory must be set.")
 
@@ -293,7 +333,7 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
     # SprayTec inputs (validated only when enabled)
     # ------------------------------------------------------------------
     spraytec_inputs = {
-        "append_file_path": _normalize_optional_string(
+        "append_file_path": _normalize_optional_path_string(
             _nested_get(raw, "devices", "spraytec",
                         "inputs", "append_file_path")
         ),
