@@ -1,7 +1,7 @@
 {
   "source_csvs": [
-    "/Users/tommieverouden/Developer/tcm-control/source_python/tcm_control/example_spraytec_data/spraytec1_260304_115013_741600.csv",
-    "/Users/tommieverouden/Developer/tcm-control/source_python/tcm_control/example_spraytec_data/spraytec2_260304_115045_245800.csv"
+    "C:\\Users\\local2\\Documents\\GitHub\\tcm-control\\source_python\\tcm_control\\example_spraytec_data\\spraytec1_260304_115013_741600.csv",
+    "C:\\Users\\local2\\Documents\\GitHub\\tcm-control\\source_python\\tcm_control\\example_spraytec_data\\spraytec2_260304_115045_245800.csv"
   ],
   "source_file_names": [
     "spraytec1_260304_115013_741600.csv",

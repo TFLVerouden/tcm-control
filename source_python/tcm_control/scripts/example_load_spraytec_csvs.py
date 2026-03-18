@@ -280,7 +280,8 @@ def main() -> int:
     example_dir = SOURCE_PYTHON / "tcm_control" / "example_spraytec_data"
     file_paths = [
         example_dir / "spraytec1_260304_115013_741600.csv",
-        example_dir / "spraytec2_260304_115045_245800.csv",
+        example_dir / "spraytec2_260304_115045_245800.csv"
+
     ]
 
     loaded_results = [load_spraytec_csv(path) for path in file_paths]
