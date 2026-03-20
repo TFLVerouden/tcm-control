@@ -35,6 +35,7 @@ from tcm_control.logger import create_labeled_csv_filename
 AUDIT_FILENAME = "spraytec_parsing_audit.csv"
 REDUNDANCY_DIRNAME = "spraytec_individual_measurements"
 ARCHIVE_DIRNAME = "archive"
+EXPERIMENT_SPRAYTEC_SUBDIR = "spraytec"
 DEFAULT_APPEND_MAX_FILE_SIZE_BYTES = 500 * 1024 * 1024
 
 DEFAULT_SPRAYTEC_CSV_GLOB = "spraytec*.csv"
@@ -909,6 +910,7 @@ def save_spraytec_data(
     experiment_path = Path(experiment_dir).resolve(
     ) if experiment_dir is not None else None
     if experiment_path is not None:
+        experiment_path = experiment_path / EXPERIMENT_SPRAYTEC_SUBDIR
         experiment_path.mkdir(parents=True, exist_ok=True)
 
     audit_rows: list[dict[str, str]] = []

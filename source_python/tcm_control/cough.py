@@ -345,7 +345,6 @@ def cough(config_path: Path | str | None = None) -> Path:
         logger.write_run_metadata(experiment_dir=output_dir, metadata=metadata)
 
         print("Experiment completed, all data saved to ", output_dir)
-        # TODO: Number spraytec files in case of multiple runs
         print("Exiting.")
 
     # Return output directory

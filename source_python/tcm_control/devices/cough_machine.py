@@ -11,6 +11,7 @@ from ..logger import copy_flow_curve, create_labeled_csv_filename
 
 DEFAULT_FLOWCURVE_DIR = Path("source_python/tcm_control/flow_curves")
 DEFAULT_RUN_LOG_DIR = Path(".logs")
+EXPERIMENT_RUN_LOG_SUBDIR = "run_logs"
 MAX_PRESSURE_BAR = 4.3
 
 
@@ -745,6 +746,7 @@ class CoughMachine(PoFSerialDevice):
             if not target_dir.is_absolute():
                 target_dir = repo_root / target_dir
             target_dir = target_dir.resolve()
+            target_dir = target_dir / EXPERIMENT_RUN_LOG_SUBDIR
 
         normalized_logs: list[list[str]] = []
         if isinstance(logs, list) and logs:

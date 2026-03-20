@@ -7,6 +7,9 @@ from typing import Any
 from tcm_utils.io_utils import create_timestamped_filename, save_metadata_json
 from tcm_utils.time_utils import timestamp_str, timestamp_from_file
 
+
+RUN_LOGS_SUBDIR = "run_logs"
+
 # In the destination folder, put several files: metadata (json),
 # cough machine event log (csv, multiple in case of droplet detection),
 # a copy of the flow curve (csv), comments about the run (txt),
@@ -49,7 +52,9 @@ def write_run_log(
             break
 
     # Set the file path and write the log
-    file_path = experiment_dir / f"run_log_{run_nr}.txt"
+    run_logs_dir = experiment_dir / RUN_LOGS_SUBDIR
+    run_logs_dir.mkdir(parents=True, exist_ok=True)
+    file_path = run_logs_dir / f"run_log_{run_nr}.txt"
     with open(file_path, "w") as f:
         for row in rows:
             f.write(f"{row}\n")
