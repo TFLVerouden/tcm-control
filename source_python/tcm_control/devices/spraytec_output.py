@@ -880,6 +880,8 @@ def save_spraytec_data(
         debug: bool = False,
         max_append_file_size_bytes: int = DEFAULT_APPEND_MAX_FILE_SIZE_BYTES,
         offer_archive_if_large: bool = True,
+        export_combined_metadata: bool = True,
+        combined_metadata_filename: str = "spraytec_metadata.json",
 ) -> Path:
     """Extract new SprayTec measurements and optionally copy them to experiment folder.
 
@@ -889,6 +891,7 @@ def save_spraytec_data(
     3) Cache each new block in redundancy folder.
     4) Optionally copy to experiment folder.
     5) Persist updated audit and emit summary messages.
+    6) Optionally export combined SprayTec metadata JSON for copied CSVs.
     """
     # Resolve append file and determine whether the archive prompt should be shown.
     append_path = resolve_append_file_path(append_file_path)
@@ -1034,6 +1037,24 @@ def save_spraytec_data(
             f"detected={len(blocks)}, extracted={extracted_count}, copied={copied_count}, "
             f"audit={audit_path}"
         )
+
+    if export_combined_metadata and experiment_path is not None:
+        try:
+            spraytec_data_list = load_spraytec_csvs(experiment_path)
+            spraytec_metadata_json_path = export_combined_spraytec_metadata_json(
+                spraytec_data_list=spraytec_data_list,
+                output_dir=experiment_path.parent,
+                filename=combined_metadata_filename,
+            )
+            print(
+                "SprayTec combined metadata JSON exported to "
+                f"{spraytec_metadata_json_path}"
+            )
+        except ValueError:
+            print(
+                "SprayTec combined metadata JSON export skipped: "
+                f"no SprayTec CSV files found in {experiment_path}."
+            )
 
     if should_offer_archive:
         # Optionally archive oversized append files after successful processing.
