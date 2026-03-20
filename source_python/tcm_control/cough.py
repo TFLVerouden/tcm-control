@@ -11,6 +11,7 @@ from tcm_control.devices.spraytec_output import (
 )
 from tcm_control import logger
 from tcm_control.init_config import load_experiment_config
+from tcm_utils.file_dialogs import ask_directory
 from tcm_utils.io_utils import prompt_input, prompt_yes_no, wait_with_progress
 from tcm_utils.time_utils import timestamp_str
 
@@ -105,8 +106,33 @@ def cough(config_path: Path | str | None = None) -> Path:
     spraytec_inputs = config["devices"]["spraytec"]["inputs"]
 
     experiment_name = experiment_config["name"]
+    if experiment_name is None:
+        while True:
+            prompted_name = prompt_input(
+                "Enter experiment name: ",
+                allow_empty=True,
+            )
+            experiment_name = (
+                "" if prompted_name is None else str(prompted_name).strip()
+            )
+            if experiment_name:
+                break
+            print("Experiment name cannot be empty.")
+
     experiment_mode = experiment_config["mode"]
-    series_directory = Path(experiment_config["series_directory"])
+    series_directory_value = experiment_config["series_directory"]
+    if series_directory_value is None:
+        selected_series_dir = ask_directory(
+            key="tcm_series_directory",
+            title="Select series directory",
+            start=Path(__file__).resolve().parent,
+        )
+        if selected_series_dir is None:
+            raise SystemExit("No series directory selected.")
+        series_directory = selected_series_dir
+    else:
+        series_directory = Path(series_directory_value)
+
     record_droplet_size = config["devices"]["spraytec"]["enabled"]
 
     wait_before_run_us = core_inputs["wait_before_run_us"]

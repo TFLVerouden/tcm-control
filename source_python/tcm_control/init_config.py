@@ -144,13 +144,19 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
     # ------------------------------------------------------------------
     # Experiment-level settings
     # ------------------------------------------------------------------
-    experiment_name = _nested_get(raw, "experiment", "name")
+    experiment_name_raw = _nested_get(raw, "experiment", "name")
     experiment_mode = _nested_get(raw, "experiment", "mode")
     series_directory_raw = _nested_get(raw, "experiment", "series_directory")
 
-    if not isinstance(experiment_name, str) or not experiment_name.strip():
+    if experiment_name_raw is None:
         raise ValueError(
-            "Config [experiment].name must be a non-empty string.")
+            "Config [experiment].name must be a string (can be empty to prompt)."
+        )
+    experiment_name = _normalize_optional_string(experiment_name_raw)
+    if experiment_name_raw is not None and not isinstance(experiment_name_raw, str):
+        raise ValueError(
+            "Config [experiment].name must be a string (can be empty to prompt)."
+        )
 
     if not isinstance(experiment_mode, str) or experiment_mode not in VALID_EXPERIMENT_MODES:
         raise ValueError(
@@ -159,8 +165,6 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
         )
 
     series_directory = _normalize_optional_path_string(series_directory_raw)
-    if series_directory is None:
-        raise ValueError("Config [experiment].series_directory must be set.")
 
     # ------------------------------------------------------------------
     # Core timing and run controls
@@ -430,7 +434,7 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
         "experiment": {
             "name": experiment_name,
             "mode": experiment_mode,
-            "series_directory": Path(series_directory),
+            "series_directory": Path(series_directory) if series_directory else None,
         },
         "inputs": {
             "core": core_inputs,
