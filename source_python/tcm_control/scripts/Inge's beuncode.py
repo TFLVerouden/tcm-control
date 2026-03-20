@@ -124,7 +124,7 @@ def _plot_time_dependent_columns(result, plots_root: Path) -> None:
     dn50_value_col = _find_required_column(measurement_df, ["Dn(50)(Value)"])
     dn90_value_col = _find_required_column(measurement_df, ["Dn(90)(Value)"])
     n_lt_10_value_col = _find_n_lt_10_value_column(measurement_df)
-    # residual_col = _find_required_column(measurement_df, ["R(std)"])
+    residual_col = _find_required_column(measurement_df, ["R(Value)"])
     scatter_end_col = _find_required_column(measurement_df, ["Scatter end"])
 
     csv_name = result.file_path.stem
@@ -132,7 +132,7 @@ def _plot_time_dependent_columns(result, plots_root: Path) -> None:
     csv_plots_dir.mkdir(parents=True, exist_ok=True)
 
     print(
-        f"\n{result.file_path.name}: saving 6 hardcoded time-dependent plots."
+        f"\n{result.file_path.name}: saving 7 hardcoded time-dependent plots."
     )
 
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -211,18 +211,18 @@ def _plot_time_dependent_columns(result, plots_root: Path) -> None:
     fig.savefig(csv_plots_dir / "n_lt_10_value.pdf")
     plt.close(fig)
 
-   # fig, ax = plt.subplots(figsize=(10, 6))
-   # ax.plot(time_axis, pd.to_numeric(
-    # measurement_df[residual_col], errors="coerce"), linewidth=1.2, label=residual_col)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(time_axis, pd.to_numeric(
+        measurement_df[residual_col], errors="coerce"), linewidth=1.2, label=residual_col)
 
-    # ax.set_title(f"{result.file_path.name} - Residual")
-    # ax.set_xlabel("Time (relative) (s)")
-    # ax.set_ylabel("Residual")
-    # ax.grid(True, alpha=0.3)
-   # ax.legend(loc="best")
-   # fig.tight_layout()
-   # fig.savefig(csv_plots_dir / "residual.pdf")
-   # plt.close(fig)
+    ax.set_title(f"{result.file_path.name} - Residual")
+    ax.set_xlabel("Time (relative) (s)")
+    ax.set_ylabel("Residual")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="best")
+    fig.tight_layout()
+    fig.savefig(csv_plots_dir / "residual_value.pdf")
+    plt.close(fig)
 
     # vind piektijden in cv en transmissie plots en vergelijk of die overeenkomen met elkaar en met andere datasets.
 
