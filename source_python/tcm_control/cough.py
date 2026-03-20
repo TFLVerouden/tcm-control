@@ -1,5 +1,7 @@
 """Main experiment runner for the Twente Cough Machine."""
 
+import signal
+import shutil
 from pathlib import Path
 
 from typing import Optional
@@ -14,6 +16,60 @@ from tcm_control.init_config import load_experiment_config
 from tcm_utils.file_dialogs import ask_directory
 from tcm_utils.io_utils import prompt_input, prompt_yes_no, wait_with_progress
 from tcm_utils.time_utils import timestamp_str
+
+
+# References to currently active devices, used by the Ctrl+C cleanup path.
+_ACTIVE_TCM: Optional[CoughMachine] = None
+_ACTIVE_PUMP: Optional[SyringePump] = None
+_ACTIVE_OUTPUT_DIR: Optional[Path] = None
+_INTERRUPT_CLEANED_UP = False
+
+
+def _cleanup_on_interrupt() -> None:
+    """Stop active devices once after Ctrl+C."""
+    global _INTERRUPT_CLEANED_UP
+    # Prevent duplicate cleanup attempts if SIGINT is received more than once.
+    if _INTERRUPT_CLEANED_UP:
+        return
+    _INTERRUPT_CLEANED_UP = True
+
+    if _ACTIVE_PUMP is not None:
+        try:
+            _ACTIVE_PUMP.stop()
+            print("Syringe pump stopped.")
+        except Exception as exc:
+            print(f"Warning: Failed to stop syringe pump: {exc}")
+
+    if _ACTIVE_TCM is not None:
+        try:
+            _ACTIVE_TCM.quit()
+            print("Cough machine returned to idle.")
+        except Exception as exc:
+            print(f"Warning: Failed to quit cough machine: {exc}")
+
+    if _ACTIVE_OUTPUT_DIR is not None and _ACTIVE_OUTPUT_DIR.exists():
+        output_dir_full = _ACTIVE_OUTPUT_DIR.resolve()
+        delete_output_dir = prompt_yes_no(
+            "Remove created experiment directory? "
+            f"{output_dir_full} "
+            "(press ENTER to cancel, type 'y' to delete)",
+            default=False,
+        )
+        if delete_output_dir:
+            try:
+                shutil.rmtree(output_dir_full)
+                print(f"Removed experiment directory: {output_dir_full}")
+            except Exception as exc:
+                print(
+                    f"Warning: Failed to remove experiment directory {output_dir_full}: {exc}")
+
+
+def _handle_sigint(_signum, _frame) -> None:
+    """Handle Ctrl+C by attempting safe device shutdown before exit."""
+    # Convert OS signal handling into the usual KeyboardInterrupt flow.
+    print("\nCtrl+C detected. Cleaning up devices before exit...")
+    _cleanup_on_interrupt()
+    raise KeyboardInterrupt
 
 
 # -----------------------------------------------------------------------------
@@ -96,6 +152,9 @@ def cough(config_path: Path | str | None = None) -> Path:
     Returns:
         The experiment output directory path.
     """
+    print("Starting cough machine experiment, "
+          "press Ctrl+C at any time to abort and safely exit")
+
     # Load and unpack normalized config dictionaries.
     config = load_experiment_config(config_path)
 
@@ -152,9 +211,14 @@ def cough(config_path: Path | str | None = None) -> Path:
     time_start = timestamp_str()
     output_dir = logger.create_experiment_dir(
         series_directory, experiment_name, start_time=time_start)
+    global _ACTIVE_OUTPUT_DIR
+    _ACTIVE_OUTPUT_DIR = output_dir
 
     # Initialise cough machine and load flow curve.
     tcm = CoughMachine(debug=core_inputs["debug_mode"])
+    global _ACTIVE_TCM, _ACTIVE_PUMP
+    # Register device so interrupt cleanup can call quit() on it.
+    _ACTIVE_TCM = tcm
     tcm.set_pressure(
         cough_machine_inputs["tank_pressure_bar"],
         timeout_s=cough_machine_inputs["tank_pressure_settling_time_s"],
@@ -227,6 +291,8 @@ def cough(config_path: Path | str | None = None) -> Path:
         case "droplet":
             pump = SyringePump(
                 syringe_volume_ml=pump_inputs["syringe_volume_ml"])
+            # Register pump so interrupt cleanup can call stop() on it.
+            _ACTIVE_PUMP = pump
 
             # Wait for user to start the experiment
             ask_start_confirmation(experiment_name=experiment_name)
@@ -352,4 +418,12 @@ def cough(config_path: Path | str | None = None) -> Path:
 
 
 if __name__ == "__main__":
-    cough()
+    # Temporarily install a SIGINT handler so Ctrl+C triggers device cleanup.
+    previous_sigint_handler = signal.getsignal(signal.SIGINT)
+    signal.signal(signal.SIGINT, _handle_sigint)
+    try:
+        cough()
+    except KeyboardInterrupt:
+        raise SystemExit(130)
+    finally:
+        signal.signal(signal.SIGINT, previous_sigint_handler)
