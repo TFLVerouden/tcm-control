@@ -60,7 +60,7 @@ class CoughMachine(PoFSerialDevice):
         User-entered lines are sent directly over serial and responses are drained
         and printed. Exit with `exit`, `quit`, or Ctrl+C.
         """
-        print("Entering manual mode. Type commands to send to the device. Ctrl+C to exit.")
+        print("Entering manual mode; type commands to send to the device. Ctrl+C to exit")
         try:
             while True:
                 cmd = input(">> ")
@@ -171,6 +171,7 @@ class CoughMachine(PoFSerialDevice):
                 raise ValueError(
                     f"Intermediate pressure must be between 0 and {MAX_PRESSURE_BAR} bar")
             # Set to intermediate pressure and wait
+            print(f"{self.name} adjusting tank pressure temporarily")
             reply, _lines = self._query_and_drain(
                 f"P {interm_press_bar}", expected_prefix="SET_PRESSURE", echo=echo)
             time.sleep(interm_press_time_s)
@@ -572,7 +573,7 @@ class CoughMachine(PoFSerialDevice):
         if reply != "DROPLET_ARMED":
             raise RuntimeError(f"Unexpected reply to {cmd}: {reply!r}")
 
-        print("Ready for cough; awaiting droplet")
+        print("Ready for cough; waiting for next droplet")
         results: list[list[str]] = []
 
         def handle_detection(_detections: int) -> None:

@@ -25,8 +25,13 @@ _ACTIVE_OUTPUT_DIR: Optional[Path] = None
 _INTERRUPT_CLEANED_UP = False
 
 
-def _cleanup_on_interrupt() -> None:
-    """Stop active devices once after Ctrl+C."""
+def _cleanup_on_interrupt(*, ask_before_delete_output_dir: bool = False) -> None:
+    """Stop active devices once after Ctrl+C.
+
+    Args:
+        ask_before_delete_output_dir: When True, prompt before deleting the output
+            directory. Keep this False in signal handlers to avoid re-entrant input.
+    """
     global _INTERRUPT_CLEANED_UP
     # Prevent duplicate cleanup attempts if SIGINT is received more than once.
     if _INTERRUPT_CLEANED_UP:
@@ -36,25 +41,33 @@ def _cleanup_on_interrupt() -> None:
     if _ACTIVE_PUMP is not None:
         try:
             _ACTIVE_PUMP.stop()
-            print("Syringe pump stopped.")
+            print("Syringe pump stopped")
         except Exception as exc:
             print(f"Warning: Failed to stop syringe pump: {exc}")
 
     if _ACTIVE_TCM is not None:
         try:
             _ACTIVE_TCM.quit()
-            print("Cough machine returned to idle.")
+            print("Cough machine returned to idle")
         except Exception as exc:
             print(f"Warning: Failed to quit cough machine: {exc}")
 
     if _ACTIVE_OUTPUT_DIR is not None and _ACTIVE_OUTPUT_DIR.exists():
         output_dir_full = _ACTIVE_OUTPUT_DIR.resolve()
-        delete_output_dir = prompt_yes_no(
-            "Remove created experiment directory? "
-            f"{output_dir_full} "
-            "(press ENTER to cancel, type 'y' to delete)",
-            default=False,
-        )
+        if ask_before_delete_output_dir:
+            delete_output_dir = prompt_yes_no(
+                "Remove created experiment directory? "
+                f"{output_dir_full} "
+                "(press ENTER to cancel, type 'y' to delete)",
+                default=False,
+            )
+        else:
+            delete_output_dir = False
+            print(
+                "Skipping output-directory deletion prompt during Ctrl+C cleanup "
+                "to avoid re-entrant stdin access."
+            )
+
         if delete_output_dir:
             try:
                 shutil.rmtree(output_dir_full)
@@ -62,13 +75,16 @@ def _cleanup_on_interrupt() -> None:
             except Exception as exc:
                 print(
                     f"Warning: Failed to remove experiment directory {output_dir_full}: {exc}")
+        print("Exiting")
 
 
 def _handle_sigint(_signum, _frame) -> None:
-    """Handle Ctrl+C by attempting safe device shutdown before exit."""
-    # Convert OS signal handling into the usual KeyboardInterrupt flow.
-    print("\nCtrl+C detected. Cleaning up devices before exit...")
-    _cleanup_on_interrupt()
+    """Handle Ctrl+C by raising KeyboardInterrupt.
+
+    Keep signal-handler work minimal and non-interactive; cleanup is performed
+    in regular exception handling flow.
+    """
+    print("\nCtrl+C detected; stopping experiment...")
     raise KeyboardInterrupt
 
 
@@ -152,9 +168,6 @@ def cough(config_path: Path | str | None = None) -> Path:
     Returns:
         The experiment output directory path.
     """
-    print("Starting cough machine experiment, "
-          "press Ctrl+C at any time to abort and safely exit")
-
     # Load and unpack normalized config dictionaries.
     config = load_experiment_config(config_path)
 
@@ -213,205 +226,214 @@ def cough(config_path: Path | str | None = None) -> Path:
         series_directory, experiment_name, start_time=time_start)
     global _ACTIVE_OUTPUT_DIR
     _ACTIVE_OUTPUT_DIR = output_dir
+    console_log_path = logger.create_console_log_path(output_dir)
 
-    # Initialise cough machine and load flow curve.
-    tcm = CoughMachine(debug=core_inputs["debug_mode"])
-    global _ACTIVE_TCM, _ACTIVE_PUMP
-    # Register device so interrupt cleanup can call quit() on it.
-    _ACTIVE_TCM = tcm
-    tcm.set_pressure(
-        cough_machine_inputs["tank_pressure_bar"],
-        timeout_s=cough_machine_inputs["tank_pressure_settling_time_s"],
-        avg_window_s=cough_machine_inputs["tank_pressure_avg_window_s"],
-        tolerance_bar=cough_machine_inputs["tank_pressure_tolerance_bar"],
-        poll_interval_s=cough_machine_inputs["tank_pressure_poll_interval_s"],
-        interm_press_diff_bar=cough_machine_inputs[
-            "tank_pressure_intermediate_diff_bar"
-        ],
-        interm_press_time_s=cough_machine_inputs[
-            "tank_pressure_intermediate_time_s"
-        ],
-    )
-    tcm.set_wait_us(wait_us=wait_before_run_us)
-    tcm.load_flowcurve(
-        csv_path=cough_machine_inputs["flow_curve_csv_path"],
-        experiment_dir=output_dir,
-    )
-    # Store the resolved flow curve path for metadata traceability.
-    cough_machine_inputs["flow_curve_csv_path"] = tcm.get_flowcurve_csv_path()
+    with logger.capture_terminal_output(console_log_path):
+        print(f"Session console log file: {console_log_path}")
+        print("Starting cough machine experiment, "
+              "press Ctrl+C at any time to abort and safely exit")
 
-    # Optional SprayTec setup and geometry resolution.
-    if record_droplet_size:
-        lift = SprayTecLift()
-        spraytec_z, lift_height = lift.get_spraytec_height(
-            tcm_trachea_bottom_z_mm=spraytec_inputs["tcm_trachea_bottom_z_mm"],
-            tcm_trachea_height_mm=spraytec_inputs["tcm_trachea_height_mm"],
-            lift_zero_z_mm=spraytec_inputs["lift_zero_z_mm"],
-            table_height_mm=spraytec_inputs["table_height_mm"],
-            spraytec_to_lift_z_mm=spraytec_inputs["spraytec_to_lift_z_mm"],
+        # Initialise cough machine and load flow curve.
+        tcm = CoughMachine(debug=core_inputs["debug_mode"])
+        global _ACTIVE_TCM, _ACTIVE_PUMP
+        # Register device so interrupt cleanup can call quit() on it.
+        _ACTIVE_TCM = tcm
+        tcm.set_pressure(
+            cough_machine_inputs["tank_pressure_bar"],
+            timeout_s=cough_machine_inputs["tank_pressure_settling_time_s"],
+            avg_window_s=cough_machine_inputs["tank_pressure_avg_window_s"],
+            tolerance_bar=cough_machine_inputs["tank_pressure_tolerance_bar"],
+            poll_interval_s=cough_machine_inputs["tank_pressure_poll_interval_s"],
+            interm_press_diff_bar=cough_machine_inputs[
+                "tank_pressure_intermediate_diff_bar"
+            ],
+            interm_press_time_s=cough_machine_inputs[
+                "tank_pressure_intermediate_time_s"
+            ],
         )
-        spraytec_x, spraytec_y, stage_pos_x_mm, stage_pos_y_mm = set_spraytec_xy(
-            spraytec_inputs["tcm_trachea_exit_to_ref_x_mm"],
-            spraytec_inputs["tcm_trachea_exit_to_ref_y_mm"],
-            spraytec_inputs["spraytec_to_ref_x_mm"],
-            spraytec_inputs["spraytec_to_ref_y_mm"],
-            spraytec_inputs["stage_pos_x_zero_mm"],
-            spraytec_inputs["stage_pos_y_zero_mm"],
-            stage_pos_x_mm=spraytec_inputs["stage_pos_x_mm"],
-            stage_pos_y_mm=spraytec_inputs["stage_pos_y_mm"],
+        tcm.set_wait_us(wait_us=wait_before_run_us)
+        tcm.load_flowcurve(
+            csv_path=cough_machine_inputs["flow_curve_csv_path"],
+            experiment_dir=output_dir,
         )
-        spraytec_inputs["stage_pos_x_mm"] = stage_pos_x_mm
-        spraytec_inputs["stage_pos_y_mm"] = stage_pos_y_mm
-
-        spraytec_inputs["append_file_path"] = resolve_append_file_path(
-            spraytec_inputs["append_file_path"]
+        # Store the resolved flow curve path for metadata traceability.
+        cough_machine_inputs["flow_curve_csv_path"] = tcm.get_flowcurve_csv_path(
         )
 
-        print("SprayTec measurement volume position (x, y, z) in mm: ",
-              spraytec_x, spraytec_y, spraytec_z)
-        print(f"SprayTec append file: {spraytec_inputs['append_file_path']}")
+        # Optional SprayTec setup and geometry resolution.
+        if record_droplet_size:
+            lift = SprayTecLift()
+            spraytec_z, lift_height = lift.get_spraytec_height(
+                tcm_trachea_bottom_z_mm=spraytec_inputs["tcm_trachea_bottom_z_mm"],
+                tcm_trachea_height_mm=spraytec_inputs["tcm_trachea_height_mm"],
+                lift_zero_z_mm=spraytec_inputs["lift_zero_z_mm"],
+                table_height_mm=spraytec_inputs["table_height_mm"],
+                spraytec_to_lift_z_mm=spraytec_inputs["spraytec_to_lift_z_mm"],
+            )
+            spraytec_x, spraytec_y, stage_pos_x_mm, stage_pos_y_mm = set_spraytec_xy(
+                spraytec_inputs["tcm_trachea_exit_to_ref_x_mm"],
+                spraytec_inputs["tcm_trachea_exit_to_ref_y_mm"],
+                spraytec_inputs["spraytec_to_ref_x_mm"],
+                spraytec_inputs["spraytec_to_ref_y_mm"],
+                spraytec_inputs["stage_pos_x_zero_mm"],
+                spraytec_inputs["stage_pos_y_zero_mm"],
+                stage_pos_x_mm=spraytec_inputs["stage_pos_x_mm"],
+                stage_pos_y_mm=spraytec_inputs["stage_pos_y_mm"],
+            )
+            spraytec_inputs["stage_pos_x_mm"] = stage_pos_x_mm
+            spraytec_inputs["stage_pos_y_mm"] = stage_pos_y_mm
 
-        prompt_yes_no(
-            "Press Enter to confirm that SprayTec SOP is waiting for a trigger...",
-            default=True)
-        # TODO: Merge this prompt with the start experiment prompt in certain cases. Probably involves making a separate pump if statement before
+            spraytec_inputs["append_file_path"] = resolve_append_file_path(
+                spraytec_inputs["append_file_path"]
+            )
 
-    # ------------------------------------------------------------------
-    # Run mode-specific experiment behavior
-    # ------------------------------------------------------------------
-    match experiment_mode:
-        # Manual mode
-        case "manual":
-            temperature_start, humidity_start = tcm.read_temperature_humidity()
+            print("SprayTec measurement volume position (x, y, z) in mm: ",
+                  spraytec_x, spraytec_y, spraytec_z)
             print(
-                f"Running in manual mode, for direct serial communication with {tcm.name}")
-            tcm.manual_mode()
+                f"SprayTec append file: {spraytec_inputs['append_file_path']}")
 
-        # Droplet mode
-        case "droplet":
-            pump = SyringePump(
-                syringe_volume_ml=pump_inputs["syringe_volume_ml"])
-            # Register pump so interrupt cleanup can call stop() on it.
-            _ACTIVE_PUMP = pump
+            prompt_yes_no(
+                "Press Enter to confirm that SprayTec SOP is waiting for a trigger...",
+                default=True)
+            # TODO: Merge this prompt with the start experiment prompt in certain cases. Probably involves making a separate pump if statement before
 
-            # Wait for user to start the experiment
-            ask_start_confirmation(experiment_name=experiment_name)
+        # ------------------------------------------------------------------
+        # Run mode-specific experiment behavior
+        # ------------------------------------------------------------------
+        match experiment_mode:
+            # Manual mode
+            case "manual":
+                temperature_start, humidity_start = tcm.read_temperature_humidity()
+                print(
+                    f"Running in manual mode, for direct serial communication with {tcm.name}")
+                tcm.manual_mode()
+
+            # Droplet mode
+            case "droplet":
+                pump = SyringePump(
+                    syringe_volume_ml=pump_inputs["syringe_volume_ml"])
+                # Register pump so interrupt cleanup can call stop() on it.
+                _ACTIVE_PUMP = pump
+
+                # Wait for user to start the experiment
+                ask_start_confirmation(experiment_name=experiment_name)
+
+                # Record temperature and humidity
+                temperature_start, humidity_start = tcm.read_temperature_humidity()
+
+                for run_idx in range(core_inputs["nr_runs"]):
+                    # Wait between coughs if needed
+                    if run_idx > 0:
+                        if core_inputs["multi_run_interval_s"] > 0:
+                            wait_with_progress(
+                                float(core_inputs["multi_run_interval_s"]),
+                                label="Waiting before starting next run",
+                            )
+
+                        if core_inputs["confirm_before_starting_next_run"]:
+                            prompt_yes_no(
+                                "Press Enter to continue...",
+                                default=True,
+                            )
+
+                    # Turn on syringe pump
+                    pump.infuse(
+                        pump_rate_ml_mn=pump_inputs["droplet_pump_rate_ml_per_min"])
+
+                    # Optionally let pump run before recording
+                    nr_droplets_to_skip = pump_inputs[
+                        "nr_droplets_to_skip_before_recording"
+                    ]
+                    if nr_droplets_to_skip > 0:
+                        print("Flushing before starting cough")
+                        tcm.count_droplets(
+                            nr_droplets=nr_droplets_to_skip, let_drip=True)
+
+                    # Then go into droplet detection mode
+                    tcm.detect_droplets_and_run(
+                        nr_runs=1,
+                        output_dir=output_dir,
+                        run_nr_start=(run_idx + 1),
+                    )
+
+                    # Turn off pump
+                    pump.stop()
+
+            # Film mode
+            case "film":
+
+                if core_inputs["nr_runs"] > 1:
+                    raise NotImplementedError(
+                        "Multi-run is not implemented for film mode yet.")
+                    # TODO: Implement multi-run for film mode
+
+                # Ask user to start the experiment
+                ask_start_confirmation(experiment_name=experiment_name)
+
+                # Record temperature and humidity
+                temperature_start, humidity_start = tcm.read_temperature_humidity()
+
+                tcm.run(output_dir=output_dir)
+
+            # PIV mode
+            case "piv":
+                raise NotImplementedError("PIV mode not implemented yet.")
+
+        # Finish off
+        if experiment_mode != "manual":
+            # Collect comments
+            comments = ask_user_for_comments(output_dir=output_dir)
 
             # Record temperature and humidity
-            temperature_start, humidity_start = tcm.read_temperature_humidity()
+            temperature_finish, humidity_finish = tcm.read_temperature_humidity()
+            time_finish = timestamp_str()
 
-            for run_idx in range(core_inputs["nr_runs"]):
-                # Wait between coughs if needed
-                if run_idx > 0:
-                    if core_inputs["multi_run_interval_s"] > 0:
-                        wait_with_progress(
-                            float(core_inputs["multi_run_interval_s"]),
-                            label="Waiting before starting next run",
-                        )
-
-                    if core_inputs["confirm_before_starting_next_run"]:
-                        prompt_yes_no(
-                            "Press Enter to continue...",
-                            default=True,
-                        )
-
-                # Turn on syringe pump
-                pump.infuse(
-                    pump_rate_ml_mn=pump_inputs["droplet_pump_rate_ml_per_min"])
-
-                # Optionally let pump run before recording
-                nr_droplets_to_skip = pump_inputs[
-                    "nr_droplets_to_skip_before_recording"
-                ]
-                if nr_droplets_to_skip > 0:
-                    print("Flushing before starting recording")
-                    tcm.count_droplets(
-                        nr_droplets=nr_droplets_to_skip, let_drip=True)
-
-                # Then go into droplet detection mode
-                tcm.detect_droplets_and_run(
-                    nr_runs=1,
-                    output_dir=output_dir,
-                    run_nr_start=(run_idx + 1),
+            # Optional SprayTec post-processing.
+            if record_droplet_size:
+                prompt_yes_no(
+                    "Press Enter if the SprayTec has finished processing and exporting the measurement(s)...",
+                    default=True,
+                )
+                spraytec_audit_path = save_spraytec_data(
+                    append_file_path=spraytec_inputs["append_file_path"],
+                    experiment_dir=output_dir,
+                    start_time=time_start,
+                    debug=core_inputs["debug_mode"],
+                    offer_archive_if_large=True,
                 )
 
-                # Turn off pump
-                pump.stop()
-
-        # Film mode
-        case "film":
-
-            if core_inputs["nr_runs"] > 1:
-                raise NotImplementedError(
-                    "Multi-run is not implemented for film mode yet.")
-                # TODO: Implement multi-run for film mode
-
-            # Ask user to start the experiment
-            ask_start_confirmation(experiment_name=experiment_name)
-
-            # Record temperature and humidity
-            temperature_start, humidity_start = tcm.read_temperature_humidity()
-
-            tcm.run(output_dir=output_dir)
-
-        # PIV mode
-        case "piv":
-            raise NotImplementedError("PIV mode not implemented yet.")
-
-    # Finish off
-    if experiment_mode != "manual":
-        # Collect comments
-        comments = ask_user_for_comments(output_dir=output_dir)
-
-        # Record temperature and humidity
-        temperature_finish, humidity_finish = tcm.read_temperature_humidity()
-        time_finish = timestamp_str()
-
-        # Optional SprayTec post-processing.
-        if record_droplet_size:
-            prompt_yes_no(
-                "Press Enter if the SprayTec has finished processing and exporting the measurement(s)...",
-                default=True,
+            metadata = logger.build_run_metadata(
+                time_start=time_start,
+                time_finish=time_finish,
+                experiment_name=experiment_name,
+                experiment_mode=experiment_mode,
+                output_dir=output_dir,
+                wait_before_run_us=wait_before_run_us,
+                temperature_start=temperature_start,
+                humidity_start=humidity_start,
+                temperature_finish=temperature_finish,
+                humidity_finish=humidity_finish,
+                comments=comments,
+                core_inputs=core_inputs,
+                tcm=tcm,
+                cough_machine_inputs=cough_machine_inputs,
+                pump=pump,
+                pump_inputs=pump_inputs,
+                record_droplet_size=record_droplet_size,
+                spraytec_inputs=spraytec_inputs,
+                spraytec_x=spraytec_x,
+                spraytec_y=spraytec_y,
+                spraytec_z=spraytec_z,
+                spraytec_audit_path=spraytec_audit_path,
+                lift_height=lift_height,
+                lift=lift,
             )
-            spraytec_audit_path = save_spraytec_data(
-                append_file_path=spraytec_inputs["append_file_path"],
-                experiment_dir=output_dir,
-                start_time=time_start,
-                debug=core_inputs["debug_mode"],
-                offer_archive_if_large=True,
-            )
+            # Persist full run metadata snapshot.
+            logger.write_run_metadata(
+                experiment_dir=output_dir, metadata=metadata)
 
-        metadata = logger.build_run_metadata(
-            time_start=time_start,
-            time_finish=time_finish,
-            experiment_name=experiment_name,
-            experiment_mode=experiment_mode,
-            output_dir=output_dir,
-            wait_before_run_us=wait_before_run_us,
-            temperature_start=temperature_start,
-            humidity_start=humidity_start,
-            temperature_finish=temperature_finish,
-            humidity_finish=humidity_finish,
-            comments=comments,
-            core_inputs=core_inputs,
-            tcm=tcm,
-            cough_machine_inputs=cough_machine_inputs,
-            pump=pump,
-            pump_inputs=pump_inputs,
-            record_droplet_size=record_droplet_size,
-            spraytec_inputs=spraytec_inputs,
-            spraytec_x=spraytec_x,
-            spraytec_y=spraytec_y,
-            spraytec_z=spraytec_z,
-            spraytec_audit_path=spraytec_audit_path,
-            lift_height=lift_height,
-            lift=lift,
-        )
-        # Persist full run metadata snapshot.
-        logger.write_run_metadata(experiment_dir=output_dir, metadata=metadata)
-
-        print("Experiment completed, all data saved to ", output_dir)
-        print("Exiting.")
+            print("Experiment completed, all data saved to ", output_dir)
+            print("Exiting.")
 
     # Return output directory
     return output_dir
@@ -424,6 +446,7 @@ if __name__ == "__main__":
     try:
         cough()
     except KeyboardInterrupt:
+        _cleanup_on_interrupt(ask_before_delete_output_dir=True)
         raise SystemExit(130)
     finally:
         signal.signal(signal.SIGINT, previous_sigint_handler)
