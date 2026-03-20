@@ -6,15 +6,14 @@ import sys
 
 import matplotlib.pyplot as plt
 import pandas as pd
+from natsort import natsorted
 from tcm_utils.plot_style import plot_binned_area, set_log_axes, use_tcm_poster_style, append_unit_to_last_ticklabel
 from tcm_utils.cvd_check import set_cvd_friendly_colors
+from tcm_utils.io_utils import ask_directory
 import scipy.signal as scip
 import numpy as np
 
 # instellingen
-folder = "260318_290mm"
-nr_runs = 10
-
 cv_peaks = []
 transmission_peaks = []
 
@@ -67,7 +66,7 @@ def _print_metadata_differences(
         all_keys.update(metadata.keys())
 
     differing_keys: list[str] = []
-    for key in sorted(all_keys):
+    for key in natsorted(all_keys):
         values = [metadata_per_file[file_name].get(
             key) for file_name in file_names]
         if any(value != values[0] for value in values[1:]):
@@ -373,12 +372,33 @@ def _averaging(loaded_results, plots_root, averaging_time, t_droplet) -> None:
 
 
 def main() -> int:
-    example_dir = SOURCE_PYTHON / "tcm_control" / "example_spraytec_data" / folder
+    default_input_dir = SOURCE_PYTHON / "tcm_control" / "example_spraytec_data"
+    selected_dir = ask_directory(
+        key="spraytec_data_dir",
+        title="Select directory with Spraytec CSV files",
+        default_dir=default_input_dir,
+    )
+    if selected_dir is None:
+        print("No directory selected.")
+        return 1
 
-    file_paths = sorted(example_dir.glob("*.csv"))[:nr_runs]
+    example_dir = Path(selected_dir).expanduser().resolve()
+    processed_dir = example_dir / "processed"
+    processed_dir.mkdir(parents=True, exist_ok=True)
+
+    file_paths = natsorted(
+        path for path in example_dir.glob("*.csv")
+        if path.name.lower().startswith("spraytec")
+    )
+    if not file_paths:
+        print(
+            f"No spraytec CSV files found in: {example_dir} "
+            "(expected file names starting with 'spraytec')."
+        )
+        return 1
 
     loaded_results = [load_spraytec_csv(path) for path in file_paths]
-    metadata_json_output_dir = example_dir
+    metadata_json_output_dir = processed_dir
     exported_json_path = export_combined_spraytec_metadata_json(
         spraytec_data_list=loaded_results,
         output_dir=metadata_json_output_dir,
@@ -393,7 +413,7 @@ def main() -> int:
     }
     _print_metadata_differences(metadata_per_file)
 
-    plots_root = example_dir / "plots"
+    plots_root = processed_dir / "plots"
     plots_root.mkdir(parents=True, exist_ok=True)
     print(f"\nSaving plots under: {plots_root}")
 
