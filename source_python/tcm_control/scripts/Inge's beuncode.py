@@ -331,32 +331,32 @@ def _averaging(loaded_results, plots_root, averaging_time, t_droplet) -> None:
                 f"Expected at least 382 columns in {result.file_path}, got {len(all_columns)}"
             )
 
-    left_edge_header = all_columns[321]
-    bin_headers = all_columns[322:382]
+        left_edge_header = all_columns[321]
+        bin_headers = all_columns[322:382]
 
-    x_edges_um = [_column_float(left_edge_header)] + [
-        _column_float(header) for header in bin_headers
-    ]
+        x_edges_um = [_column_float(left_edge_header)] + [
+            _column_float(header) for header in bin_headers
+        ]
 
-    y_average = (
-        df[bin_headers]
-        .apply(pd.to_numeric, errors="coerce")
-        .mean(axis=0, skipna=True)
-        .to_numpy())
+        y_average = (
+            df[bin_headers]
+            .apply(pd.to_numeric, errors="coerce")
+            .mean(axis=0, skipna=True)
+            .to_numpy())
 
-    color = color_cycle[index % len(color_cycle)]
-    plot_binned_area(
-        ax,
-        x_edges_um,
-        y_average,
-        x_mode="edges",
-        color=color,
-        alpha=0.25,
-        outline=True,
-        outline_color=color,
-        outline_linewidth=2.5,
-    )
-    ax.plot([], [], color=color, label=result.file_path.name)
+        color = color_cycle[index % len(color_cycle)]
+        plot_binned_area(
+            ax,
+            x_edges_um,
+            y_average,
+            x_mode="edges",
+            color=color,
+            alpha=0.25,
+            outline=True,
+            outline_color=color,
+            outline_linewidth=2.5,
+        )
+        ax.plot([], [], color=color, label=result.file_path.name)
 
     set_log_axes(ax, x=True)
     ax.set_ylabel("Number (%)")
