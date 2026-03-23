@@ -64,6 +64,8 @@ _CATEGORY_SORT_ORDER = [
     "Dc",
 ]
 
+# TODO: Processing functions (from Inge's beuncode) could be part of the class too?
+
 
 class SprayTec:
     """Namespace class for SprayTec append parsing and export workflows."""
@@ -104,6 +106,32 @@ class SprayTec:
             offer_archive_if_large=offer_archive_if_large,
             export_combined_metadata=export_combined_metadata,
             combined_metadata_filename=combined_metadata_filename,
+        )
+
+    @staticmethod
+    def load_csv(file_path: str | Path | None = None) -> "SpraytecCsvData":
+        """Load one SprayTec CSV and split metadata vs measurement data."""
+        return load_spraytec_csv(file_path)
+
+    @staticmethod
+    def load_csvs(
+        folder_path: str | Path,
+        pattern: str = DEFAULT_SPRAYTEC_CSV_GLOB,
+    ) -> list["SpraytecCsvData"]:
+        """Load all SprayTec CSV files in a folder and return typed results."""
+        return load_spraytec_csvs(folder_path=folder_path, pattern=pattern)
+
+    @staticmethod
+    def export_combined_metadata_json(
+        spraytec_data_list: list["SpraytecCsvData"],
+        output_dir: str | Path,
+        filename: str = "spraytec_metadata.json",
+    ) -> Path:
+        """Export one combined metadata JSON for multiple SprayTec CSV files."""
+        return export_combined_spraytec_metadata_json(
+            spraytec_data_list=spraytec_data_list,
+            output_dir=output_dir,
+            filename=filename,
         )
 
 

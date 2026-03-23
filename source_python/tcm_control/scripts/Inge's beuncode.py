@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib.util
 from pathlib import Path
 import sys
 
@@ -13,6 +12,7 @@ from tcm_utils.io_utils import ask_directory
 import scipy.signal as scip
 import numpy as np
 from tcm_control.processing import PROCESSED_SUBDIR_NAME
+from tcm_control.devices import SprayTec
 
 # instellingen
 cv_peaks = []
@@ -23,22 +23,6 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 SOURCE_PYTHON = SCRIPT_DIR.parents[1]
 if str(SOURCE_PYTHON) not in sys.path:
     sys.path.insert(0, str(SOURCE_PYTHON))
-
-
-SPRAYTEC_OUTPUT_PATH = SOURCE_PYTHON / \
-    "tcm_control" / "devices" / "spraytec_output.py"
-_module_spec = importlib.util.spec_from_file_location(
-    "tcm_control_devices_spraytec_output",
-    SPRAYTEC_OUTPUT_PATH,
-)
-if _module_spec is None or _module_spec.loader is None:
-    raise ImportError(f"Could not load module from {SPRAYTEC_OUTPUT_PATH}")
-
-_spraytec_output = importlib.util.module_from_spec(_module_spec)
-sys.modules[_module_spec.name] = _spraytec_output
-_module_spec.loader.exec_module(_spraytec_output)
-load_spraytec_csv = _spraytec_output.load_spraytec_csv
-export_combined_spraytec_metadata_json = _spraytec_output.export_combined_spraytec_metadata_json
 
 
 def _print_metadata(file_path: Path, metadata_by_category: dict[str, dict[str, object]]) -> None:
@@ -398,9 +382,9 @@ def main() -> int:
         )
         return 1
 
-    loaded_results = [load_spraytec_csv(path) for path in file_paths]
+    loaded_results = [SprayTec.load_csv(path) for path in file_paths]
     metadata_json_output_dir = processed_dir
-    exported_json_path = export_combined_spraytec_metadata_json(
+    exported_json_path = SprayTec.export_combined_metadata_json(
         spraytec_data_list=loaded_results,
         output_dir=metadata_json_output_dir,
     )
@@ -414,7 +398,7 @@ def main() -> int:
     }
     _print_metadata_differences(metadata_per_file)
 
-    plots_root = processed_dir / "plots"
+    plots_root = processed_dir
     plots_root.mkdir(parents=True, exist_ok=True)
     print(f"\nSaving plots under: {plots_root}")
 
