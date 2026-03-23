@@ -18,7 +18,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from collections import OrderedDict
 from natsort import natsorted
-from tcm_utils.io_utils import ask_open_file, prompt_yes_no, save_metadata_json
+from tcm_utils.io_utils import (
+    ask_open_file,
+    make_minimal_progress_bar,
+    prompt_yes_no,
+    save_metadata_json,
+)
 from tcm_utils.time_utils import timestamp_str
 from pathlib import Path
 from typing import Any
@@ -153,7 +158,8 @@ class SprayTec:
         """Extract new measurements and update stored audit/metadata state."""
         # Step 1: Resolve effective append file and update per-call overrides.
         resolved_append_path = self.resolve_append_file_path(append_file_path)
-
+        print(
+            f"Gathering SprayTec data from append file: {resolved_append_path}")
         if experiment_dir is not None:
             self.experiment_dir = Path(experiment_dir).resolve()
 
@@ -231,7 +237,7 @@ class SprayTec:
         # to the folder of the first selected source CSV.
         if output_dir is None:
             if self.experiment_dir is not None:
-                resolved_output_dir = self.experiment_dir
+                resolved_output_dir = self.experiment_dir / EXPERIMENT_SPRAYTEC_SUBDIR
             else:
                 resolved_output_dir = selected_data[0].file_path.parent
         else:
@@ -1115,80 +1121,88 @@ def _save_spraytec_data(
                 older_unprocessed_count += 1
 
     # Process all blocks and persist/copy only those that are new for this run.
-    for block in blocks:
-        previous = previous_rows.get(block.block_id)
-        row = _block_to_audit_row(block, previous=previous)
+    with make_minimal_progress_bar(
+        total=len(blocks),
+        label="SprayTec",
+        unit_label="blocks",
+    ) as pbar:
+        for block in blocks:
+            previous = previous_rows.get(block.block_id)
+            row = _block_to_audit_row(block, previous=previous)
 
-        is_after_start = (
-            start_dt is None
-            or (block.timestamp_dt is not None and block.timestamp_dt > start_dt)
-        )
-        already_copied = row.get("copied_to_experiment") == "1"
+            is_after_start = (
+                start_dt is None
+                or (block.timestamp_dt is not None and block.timestamp_dt > start_dt)
+            )
+            already_copied = row.get("copied_to_experiment") == "1"
 
-        if is_after_start and not already_copied:
-            # Always save parsed measurement in local redundancy cache first.
-            redundancy_dir.mkdir(parents=True, exist_ok=True)
-            timestamp_label = _timestamp_for_filename(block.timestamp_dt)
-            local_filename = f"spraytec_{timestamp_label}.csv"
-            local_path = _next_available_path(redundancy_dir / local_filename)
+            if is_after_start and not already_copied:
+                # Always save parsed measurement in local redundancy cache first.
+                redundancy_dir.mkdir(parents=True, exist_ok=True)
+                timestamp_label = _timestamp_for_filename(block.timestamp_dt)
+                local_filename = f"spraytec_{timestamp_label}.csv"
+                local_path = _next_available_path(
+                    redundancy_dir / local_filename)
 
-            _write_block_csv(block, local_path, fallback_header=header_row)
-            extracted_count += 1
+                _write_block_csv(block, local_path, fallback_header=header_row)
+                extracted_count += 1
 
-            row["cached_saved"] = "1"
-            row["cached_csv"] = str(local_path)
+                row["cached_saved"] = "1"
+                row["cached_csv"] = str(local_path)
 
-            should_copy_to_experiment = experiment_path is not None
+                should_copy_to_experiment = experiment_path is not None
 
-            if should_copy_to_experiment:
-                assert experiment_path is not None
-                next_copy_index = copied_count + 1
+                if should_copy_to_experiment:
+                    assert experiment_path is not None
+                    next_copy_index = copied_count + 1
 
-                # If this becomes a multi-file batch, rename first copied file to label 1
-                # so copied files are consistently numbered 1..N in experiment folder.
-                if (
-                    next_copy_index == 2
-                    and first_experiment_csv is not None
-                    and first_experiment_timestamp is not None
-                    and first_experiment_row is not None
-                ):
-                    first_labeled_filename = create_labeled_csv_filename(
+                    # If this becomes a multi-file batch, rename first copied file to label 1
+                    # so copied files are consistently numbered 1..N in experiment folder.
+                    if (
+                        next_copy_index == 2
+                        and first_experiment_csv is not None
+                        and first_experiment_timestamp is not None
+                        and first_experiment_row is not None
+                    ):
+                        first_labeled_filename = create_labeled_csv_filename(
+                            prefix="spraytec",
+                            label=1,
+                            timestamp=first_experiment_timestamp,
+                        )
+                        first_labeled_path = _next_available_path(
+                            experiment_path / first_labeled_filename
+                        )
+                        first_experiment_csv.rename(first_labeled_path)
+                        first_experiment_csv = first_labeled_path
+                        first_experiment_row["experiment_csv"] = str(
+                            first_labeled_path)
+
+                    label = next_copy_index if next_copy_index > 1 else None
+                    experiment_filename = create_labeled_csv_filename(
                         prefix="spraytec",
-                        label=1,
-                        timestamp=first_experiment_timestamp,
+                        label=label,
+                        timestamp=timestamp_label,
                     )
-                    first_labeled_path = _next_available_path(
-                        experiment_path / first_labeled_filename
-                    )
-                    first_experiment_csv.rename(first_labeled_path)
-                    first_experiment_csv = first_labeled_path
-                    first_experiment_row["experiment_csv"] = str(
-                        first_labeled_path)
+                    experiment_csv = _next_available_path(
+                        experiment_path / experiment_filename)
+                    shutil.copy2(local_path, experiment_csv)
+                    copied_count += 1
 
-                label = next_copy_index if next_copy_index > 1 else None
-                experiment_filename = create_labeled_csv_filename(
-                    prefix="spraytec",
-                    label=label,
-                    timestamp=timestamp_label,
-                )
-                experiment_csv = _next_available_path(
-                    experiment_path / experiment_filename)
-                shutil.copy2(local_path, experiment_csv)
-                copied_count += 1
+                    row["copied_to_experiment"] = "1"
+                    row["experiment_dir"] = str(experiment_path)
+                    row["experiment_csv"] = str(experiment_csv)
+                    row["copied_at"] = datetime.now(
+                    ).isoformat(timespec="seconds")
 
-                row["copied_to_experiment"] = "1"
-                row["experiment_dir"] = str(experiment_path)
-                row["experiment_csv"] = str(experiment_csv)
-                row["copied_at"] = datetime.now().isoformat(timespec="seconds")
+                    # Remember the first copied file in case a second copy later requires
+                    # retroactive numbering of that first file.
+                    if copied_count == 1:
+                        first_experiment_csv = experiment_csv
+                        first_experiment_timestamp = timestamp_label
+                        first_experiment_row = row
 
-                # Remember the first copied file in case a second copy later requires
-                # retroactive numbering of that first file.
-                if copied_count == 1:
-                    first_experiment_csv = experiment_csv
-                    first_experiment_timestamp = timestamp_label
-                    first_experiment_row = row
-
-        audit_rows.append(row)
+            audit_rows.append(row)
+            pbar.update(1)
 
     _write_audit_rows(audit_path, audit_rows)
 
@@ -1222,7 +1236,7 @@ def _save_spraytec_data(
             spraytec_data_list = load_spraytec_csvs(experiment_path)
             spraytec_metadata_json_path = export_combined_spraytec_metadata_json(
                 spraytec_data_list=spraytec_data_list,
-                output_dir=experiment_path.parent,
+                output_dir=experiment_path,
                 filename=combined_metadata_filename,
             )
             print(
@@ -1241,7 +1255,7 @@ def _save_spraytec_data(
         current_size_mb = append_file_size_bytes / (1024 * 1024)
         archive_now = prompt_yes_no(
             "SprayTec append file is large "
-            f"({current_size_mb:.1f} MB > {max_size_mb:.1f} MB). Archive now?",
+            f"({current_size_mb:.1f} MB > {max_size_mb:.1f} MB). Archive now (press ENTER for yes or type 'n')?",
             default=False,
         )
         if archive_now:

@@ -56,7 +56,7 @@ class SyringePump(PumpPHD2000_Refill):
             if chain is None:
                 # If the stored port failed, ask for a new one and retry.
                 prompted_raw = prompt_input(
-                    "Enter COM port for syringe pump (e.g. 11 or COM11) or press Enter to quit: ",
+                    "Enter COM port for syringe pump (e.g. 11 or COM11) or press ENTER to quit: ",
                     allow_empty=True)
                 prompted_text = "" if prompted_raw is None else str(
                     prompted_raw)
@@ -109,7 +109,7 @@ class SyringePump(PumpPHD2000_Refill):
         # If not provided, ask user for syringe volume
         if syringe_volume_ml is None:
             prompted_volume = prompt_input(
-                f"Enter syringe volume in mL (press Enter to use current volume of {current_volume} mL): ", value_type="float", min_value=0.0005, max_value=50.0, allow_empty=True)
+                f"Enter syringe volume in mL (press ENTER to use current volume of {current_volume} mL): ", value_type="float", min_value=0.0005, max_value=50.0, allow_empty=True)
             syringe_volume_ml = float(
                 prompted_volume) if prompted_volume is not None else current_volume
         syringe_volume_ml = float(syringe_volume_ml)

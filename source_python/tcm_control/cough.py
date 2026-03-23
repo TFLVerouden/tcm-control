@@ -93,7 +93,7 @@ def _handle_sigint(_signum, _frame) -> None:
 def ask_start_confirmation(experiment_name: str):
     """Ask the user to confirm experiment start."""
     result = prompt_yes_no(
-        f"Press Enter to start experiment \"{experiment_name}\"...", default=True)
+        f"Press ENTER to start experiment \"{experiment_name}\"...", default=True)
 
     if not result:
         print("Aborted.")
@@ -107,7 +107,7 @@ def ask_user_for_comments(output_dir: Path) -> str:
 
     print(
         "Enter comments for this run "
-        "(press Enter to confirm, leave empty to skip): "
+        "(press ENTER to confirm, leave empty to skip): "
     )
     comments = input(">> ")
     if comments:
@@ -297,7 +297,7 @@ def cough(config_path: Path | str | None = None) -> Path:
                 f"SprayTec append file: {spraytec_inputs['append_file_path']}")
 
             prompt_yes_no(
-                "Press Enter to confirm that SprayTec SOP is waiting for a trigger...",
+                "Press ENTER to confirm that SprayTec SOP is waiting for a trigger...",
                 default=True)
             # TODO: Merge this prompt with the start experiment prompt in certain cases. Probably involves making a separate pump if statement before
 
@@ -336,7 +336,7 @@ def cough(config_path: Path | str | None = None) -> Path:
 
                         if core_inputs["confirm_before_starting_next_run"]:
                             prompt_yes_no(
-                                "Press Enter to continue...",
+                                "Press ENTER to continue...",
                                 default=True,
                             )
 
@@ -405,7 +405,7 @@ def cough(config_path: Path | str | None = None) -> Path:
             if record_droplet_size:
                 assert spraytec is not None
                 prompt_yes_no(
-                    "Press Enter if the SprayTec has finished processing and exporting the measurement(s)...",
+                    "Press ENTER if the SprayTec has finished processing and exporting the measurement(s)...",
                     default=True,
                 )
                 spraytec_audit_path = spraytec.save_data(
