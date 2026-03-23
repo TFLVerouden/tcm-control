@@ -13,6 +13,7 @@ from tcm_control.devices.spraytec_output import (
 )
 from tcm_control import logger
 from tcm_control.init_config import load_experiment_config
+from tcm_control.processing import plot_run_log
 from tcm_utils.file_dialogs import ask_directory
 from tcm_utils.io_utils import prompt_input, prompt_yes_no, wait_with_progress
 from tcm_utils.time_utils import timestamp_str
@@ -215,6 +216,7 @@ def cough(config_path: Path | str | None = None) -> Path:
     spraytec_y = None
     spraytec_z = None
     spraytec_audit_path = None
+    first_run_log_path = None
 
     # ------------------------------------------------------------------
     # Prepare output folder and device state variables
@@ -350,11 +352,13 @@ def cough(config_path: Path | str | None = None) -> Path:
                             nr_droplets=nr_droplets_to_skip, let_drip=True)
 
                     # Then go into droplet detection mode
-                    tcm.detect_droplets_and_run(
+                    saved_run_log_paths = tcm.detect_droplets_and_run(
                         nr_runs=1,
                         output_dir=output_dir,
                         run_nr_start=(run_idx + 1),
                     )
+                    if run_idx == 0 and saved_run_log_paths:
+                        first_run_log_path = saved_run_log_paths[0]
 
                     # Turn off pump
                     pump.stop()
@@ -373,7 +377,7 @@ def cough(config_path: Path | str | None = None) -> Path:
                 # Record temperature and humidity
                 temperature_start, humidity_start = tcm.read_temperature_humidity()
 
-                tcm.run(output_dir=output_dir)
+                first_run_log_path = tcm.run(output_dir=output_dir)
 
             # PIV mode
             case "piv":
@@ -381,6 +385,13 @@ def cough(config_path: Path | str | None = None) -> Path:
 
         # Finish off
         if experiment_mode != "manual":
+            if first_run_log_path is not None:
+                plot_run_log(
+                    run_log_path=first_run_log_path,
+                    experiment_dir=output_dir,
+                    show=False,
+                )
+
             # Collect comments
             comments = ask_user_for_comments(output_dir=output_dir)
 

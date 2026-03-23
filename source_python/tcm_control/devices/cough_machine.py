@@ -443,11 +443,11 @@ class CoughMachine(PoFSerialDevice):
         echo: Optional[bool] = None,
         output_dir: Optional[str | Path] = None,
         run_nr_start: Optional[int] = None,
-    ) -> list[str]:
+    ) -> Path:
         """Run the loaded dataset immediately using `R` and save streamed log CSV.
 
         Expects a log stream wrapped by `START_OF_FILE ...` and `END_OF_FILE`.
-        Returns collected CSV lines for the run.
+        Returns the saved run-log CSV path.
         """
 
         print("Starting cough")
@@ -458,9 +458,14 @@ class CoughMachine(PoFSerialDevice):
             echo=echo,
         )
         print("Cough completed")
-        self._save_run_logs(rows, output_dir=output_dir,
-                            run_nr_start=run_nr_start)
-        return rows
+        saved_paths = self._save_run_logs(
+            rows,
+            output_dir=output_dir,
+            run_nr_start=run_nr_start,
+        )
+        if not saved_paths:
+            raise RuntimeError("Failed to save run log for cough run")
+        return saved_paths[0]
 
     def _await_droplet_events(
         self,
@@ -557,11 +562,11 @@ class CoughMachine(PoFSerialDevice):
         echo: Optional[bool] = None,
         output_dir: Optional[str | Path] = None,
         log_timeout_s: float = 10.0,
-    ) -> list[list[str]]:
+    ) -> list[Path]:
         """Arm droplet-triggered run mode (`D!` or `D! <n>`) and collect run logs.
 
         For each detected droplet, waits for and captures one streamed run log,
-        then saves all captured logs to disk.
+        then saves all captured logs to disk and returns saved file paths.
         """
         if nr_runs is not None and int(nr_runs) <= 0:
             raise ValueError("nr_runs must be >= 1 when provided")
@@ -589,9 +594,12 @@ class CoughMachine(PoFSerialDevice):
         )
 
         print("Cough completed")
-        self._save_run_logs(results, output_dir=output_dir,
-                            run_nr_start=run_nr_start)
-        return results
+        saved_paths = self._save_run_logs(
+            results,
+            output_dir=output_dir,
+            run_nr_start=run_nr_start,
+        )
+        return saved_paths
 
     # -------------------------------------------------------------------
     # Flowcurve read and upload

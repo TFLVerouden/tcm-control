@@ -9,7 +9,22 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def plot_run_log(run_log_path: Path | None = None, experiment_dir: Path | None = None):
+PROCESSED_SUBDIR_NAME = "processed"
+
+
+def get_processed_dir(experiment_dir: Path) -> Path:
+    """Return (and create) the processed output directory for an experiment."""
+    processed_dir = Path(experiment_dir) / PROCESSED_SUBDIR_NAME
+    processed_dir.mkdir(parents=True, exist_ok=True)
+    return processed_dir
+
+
+def plot_run_log(
+    run_log_path: Path | None = None,
+    experiment_dir: Path | None = None,
+    *,
+    show: bool = True,
+) -> Path | None:
     # If no path provided, ask the user to select a run log CSV file.
     if run_log_path is None:
         run_log_path = ask_open_file(
@@ -19,7 +34,9 @@ def plot_run_log(run_log_path: Path | None = None, experiment_dir: Path | None =
         )
     if run_log_path is None:
         print("No file selected, aborting.")
-        return
+        return None
+
+    run_log_path = Path(run_log_path)
 
     # Read the run log and extract metadata and data columns
     (trigger_t0_us, run_nr, time_us, sol_valve_action,
@@ -66,13 +83,21 @@ def plot_run_log(run_log_path: Path | None = None, experiment_dir: Path | None =
     # ax1.legend(loc="upper right")
 
     append_unit_to_last_ticklabel(ax1, axis="x", unit="ms")
+    plot_path: Path | None = None
 
-    plt.show()
-    # Export to pdf in experiment directory/plots
+    # Export to pdf in experiment directory/processed
     if experiment_dir is not None:
-        plot_path = experiment_dir / f"run_log_{run_nr}.pdf"
-        plt.savefig(plot_path)
+        processed_dir = get_processed_dir(Path(experiment_dir))
+        plot_path = processed_dir / f"pressure_valve_timing_run{run_nr}.pdf"
+        fig.savefig(plot_path)
         print(f"Plot saved to {plot_path}")
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    return plot_path
 
 
 def _read_run_log(run_log_path: Path) -> tuple[

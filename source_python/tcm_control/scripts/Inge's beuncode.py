@@ -12,6 +12,7 @@ from tcm_utils.cvd_check import set_cvd_friendly_colors
 from tcm_utils.io_utils import ask_directory
 import scipy.signal as scip
 import numpy as np
+from tcm_control.processing import PROCESSED_SUBDIR_NAME
 
 # instellingen
 cv_peaks = []
@@ -383,7 +384,7 @@ def main() -> int:
         return 1
 
     example_dir = Path(selected_dir).expanduser().resolve()
-    processed_dir = example_dir / "processed"
+    processed_dir = example_dir.parent / PROCESSED_SUBDIR_NAME
     processed_dir.mkdir(parents=True, exist_ok=True)
 
     file_paths = natsorted(
