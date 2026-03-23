@@ -65,12 +65,54 @@ _CATEGORY_SORT_ORDER = [
 ]
 
 
+class SprayTec:
+    """Namespace class for SprayTec append parsing and export workflows."""
+
+    @staticmethod
+    def resolve_append_file_path(append_file_path: str | Path | None) -> Path:
+        """Return a validated append-file path, prompting the user when omitted."""
+        return _resolve_append_file_path(append_file_path)
+
+    @staticmethod
+    def archive_append_file(append_file_path: str | Path | None = None) -> Path:
+        """Move the current append file into an archive folder with a timestamp."""
+        return _archive_spraytec_append_file(append_file_path)
+
+    @staticmethod
+    def list_runs(append_file_path: str | Path | None = None) -> list[dict[str, str]]:
+        """Refresh and return audit rows without writing measurement CSV outputs."""
+        return _list_spraytec_runs(append_file_path)
+
+    @staticmethod
+    def save_data(
+        append_file_path: str | Path | None = None,
+        experiment_dir: str | Path | None = None,
+        start_time: str | None = None,
+        debug: bool = False,
+        max_append_file_size_bytes: int = DEFAULT_APPEND_MAX_FILE_SIZE_BYTES,
+        offer_archive_if_large: bool = True,
+        export_combined_metadata: bool = True,
+        combined_metadata_filename: str = "spraytec_metadata.json",
+    ) -> Path:
+        """Extract new measurements and optionally copy them to experiment folder."""
+        return _save_spraytec_data(
+            append_file_path=append_file_path,
+            experiment_dir=experiment_dir,
+            start_time=start_time,
+            debug=debug,
+            max_append_file_size_bytes=max_append_file_size_bytes,
+            offer_archive_if_large=offer_archive_if_large,
+            export_combined_metadata=export_combined_metadata,
+            combined_metadata_filename=combined_metadata_filename,
+        )
+
+
 # =============================================================================
 # Append file path + archiving
 # =============================================================================
 
 
-def resolve_append_file_path(append_file_path: str | Path | None) -> Path:
+def _resolve_append_file_path(append_file_path: str | Path | None) -> Path:
     """Return a validated append-file path, prompting the user when omitted."""
     # If no path is supplied, ask the user to pick the current SprayTec append file.
     if append_file_path is None:
@@ -95,12 +137,12 @@ def resolve_append_file_path(append_file_path: str | Path | None) -> Path:
     return append_path
 
 
-def archive_spraytec_append_file(
+def _archive_spraytec_append_file(
     append_file_path: str | Path | None = None,
 ) -> Path:
     """Move the current append file into an archive folder with a timestamp."""
     # Resolve source file and ensure the archive target folder exists.
-    append_path = resolve_append_file_path(append_file_path)
+    append_path = _resolve_append_file_path(append_file_path)
     archive_dir = append_path.parent / ARCHIVE_DIRNAME
     archive_dir.mkdir(parents=True, exist_ok=True)
 
@@ -849,11 +891,11 @@ def _build_blocks(append_path: Path) -> tuple[list[str], list[SpraytecBlock]]:
     return top_header, blocks
 
 
-def list_spraytec_runs(
+def _list_spraytec_runs(
         append_file_path: str | Path | None = None,
 ) -> list[dict[str, str]]:
     """Refresh and return audit rows without writing measurement CSV outputs."""
-    append_path = resolve_append_file_path(append_file_path)
+    append_path = _resolve_append_file_path(append_file_path)
 
     _header, blocks = _build_blocks(append_path)
     audit_path = append_path.parent / AUDIT_FILENAME
@@ -868,7 +910,7 @@ def list_spraytec_runs(
     return audit_rows
 
 
-def save_spraytec_data(
+def _save_spraytec_data(
         append_file_path: str | Path | None = None,
         experiment_dir: str | Path | None = None,
         start_time: str | None = None,
@@ -889,7 +931,7 @@ def save_spraytec_data(
     6) Optionally export combined SprayTec metadata JSON for copied CSVs.
     """
     # Resolve append file and determine whether the archive prompt should be shown.
-    append_path = resolve_append_file_path(append_file_path)
+    append_path = _resolve_append_file_path(append_file_path)
     append_file_size_bytes = append_path.stat().st_size
     should_offer_archive = (
         offer_archive_if_large
@@ -1061,7 +1103,7 @@ def save_spraytec_data(
             default=False,
         )
         if archive_now:
-            archived_path = archive_spraytec_append_file(append_path)
+            archived_path = _archive_spraytec_append_file(append_path)
             print(f"SprayTec: append file archived to {archived_path}")
 
     return audit_path

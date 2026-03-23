@@ -6,11 +6,7 @@ from pathlib import Path
 
 from typing import Optional
 
-from tcm_control.devices import CoughMachine, SprayTecLift, SyringePump
-from tcm_control.devices.spraytec_output import (
-    resolve_append_file_path,
-    save_spraytec_data,
-)
+from tcm_control.devices import CoughMachine, VerticalStage, SyringePump, SprayTec
 from tcm_control import logger
 from tcm_control.init_config import load_experiment_config
 from tcm_control.processing import plot_run_log
@@ -264,7 +260,7 @@ def cough(config_path: Path | str | None = None) -> Path:
 
         # Optional SprayTec setup and geometry resolution.
         if record_droplet_size:
-            lift = SprayTecLift()
+            lift = VerticalStage()
             spraytec_z, lift_height = lift.get_spraytec_height(
                 tcm_trachea_bottom_z_mm=spraytec_inputs["tcm_trachea_bottom_z_mm"],
                 tcm_trachea_height_mm=spraytec_inputs["tcm_trachea_height_mm"],
@@ -285,7 +281,7 @@ def cough(config_path: Path | str | None = None) -> Path:
             spraytec_inputs["stage_pos_x_mm"] = stage_pos_x_mm
             spraytec_inputs["stage_pos_y_mm"] = stage_pos_y_mm
 
-            spraytec_inputs["append_file_path"] = resolve_append_file_path(
+            spraytec_inputs["append_file_path"] = SprayTec.resolve_append_file_path(
                 spraytec_inputs["append_file_path"]
             )
 
@@ -405,7 +401,7 @@ def cough(config_path: Path | str | None = None) -> Path:
                     "Press Enter if the SprayTec has finished processing and exporting the measurement(s)...",
                     default=True,
                 )
-                spraytec_audit_path = save_spraytec_data(
+                spraytec_audit_path = SprayTec.save_data(
                     append_file_path=spraytec_inputs["append_file_path"],
                     experiment_dir=output_dir,
                     start_time=time_start,

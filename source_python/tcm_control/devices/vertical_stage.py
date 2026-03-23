@@ -3,11 +3,11 @@ from typing import Optional
 from .base import PoFSerialDevice
 
 
-class SprayTecLift(PoFSerialDevice):
+class VerticalStage(PoFSerialDevice):
     def __init__(
         self,
-        name: str = "SprayTec_Lift",
-        long_name: str = "SprayTec lift controller",
+        name: str = "vertical_stage",
+        long_name: str = "SprayTec vertical stage controller",
         expected_id: str = "Arduino_MEGA_2560",
         baudrate: int = 9600,
         boot_drain_s: float = 2,
