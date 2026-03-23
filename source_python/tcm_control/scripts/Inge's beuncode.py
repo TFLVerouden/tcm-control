@@ -382,9 +382,10 @@ def main() -> int:
         )
         return 1
 
-    loaded_results = [SprayTec.load_csv(path) for path in file_paths]
+    spraytec = SprayTec()
+    loaded_results = [spraytec.load_csv(path) for path in file_paths]
     metadata_json_output_dir = processed_dir
-    exported_json_path = SprayTec.export_combined_metadata_json(
+    exported_json_path = spraytec.export_combined_metadata_json(
         spraytec_data_list=loaded_results,
         output_dir=metadata_json_output_dir,
     )

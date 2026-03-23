@@ -24,7 +24,8 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    archived_path = SprayTec.archive_append_file(args.append_file)
+    spraytec = SprayTec(append_file_path=args.append_file)
+    archived_path = spraytec.archive_append_file()
     print(f"Archived append file to: {archived_path}")
     return 0
 

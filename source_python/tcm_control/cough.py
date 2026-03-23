@@ -208,6 +208,7 @@ def cough(config_path: Path | str | None = None) -> Path:
 
     pump = None
     lift = None
+    spraytec = None
     spraytec_x = None
     spraytec_y = None
     spraytec_z = None
@@ -281,7 +282,12 @@ def cough(config_path: Path | str | None = None) -> Path:
             spraytec_inputs["stage_pos_x_mm"] = stage_pos_x_mm
             spraytec_inputs["stage_pos_y_mm"] = stage_pos_y_mm
 
-            spraytec_inputs["append_file_path"] = SprayTec.resolve_append_file_path(
+            spraytec = SprayTec(
+                append_file_path=spraytec_inputs["append_file_path"],
+                experiment_dir=output_dir,
+            )
+
+            spraytec_inputs["append_file_path"] = spraytec.resolve_append_file_path(
                 spraytec_inputs["append_file_path"]
             )
 
@@ -397,13 +403,13 @@ def cough(config_path: Path | str | None = None) -> Path:
 
             # Optional SprayTec post-processing.
             if record_droplet_size:
+                assert spraytec is not None
                 prompt_yes_no(
                     "Press Enter if the SprayTec has finished processing and exporting the measurement(s)...",
                     default=True,
                 )
-                spraytec_audit_path = SprayTec.save_data(
+                spraytec_audit_path = spraytec.save_data(
                     append_file_path=spraytec_inputs["append_file_path"],
-                    experiment_dir=output_dir,
                     start_time=time_start,
                     debug=core_inputs["debug_mode"],
                     offer_archive_if_large=True,

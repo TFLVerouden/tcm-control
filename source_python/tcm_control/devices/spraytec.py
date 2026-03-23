@@ -68,71 +68,185 @@ _CATEGORY_SORT_ORDER = [
 
 
 class SprayTec:
-    """Namespace class for SprayTec append parsing and export workflows."""
+    """Stateful SprayTec helper storing configuration and loaded metadata/data."""
 
-    @staticmethod
-    def resolve_append_file_path(append_file_path: str | Path | None) -> Path:
-        """Return a validated append-file path, prompting the user when omitted."""
-        return _resolve_append_file_path(append_file_path)
+    def __init__(
+        self,
+        append_file_path: str | Path | None = None,
+        experiment_dir: str | Path | None = None,
+        max_append_file_size_bytes: int = DEFAULT_APPEND_MAX_FILE_SIZE_BYTES,
+        offer_archive_if_large: bool = True,
+    ):
+        # Persist default workflow inputs so subsequent method calls can omit
+        # repeated arguments (append file path, output directory, archive policy).
+        self.append_file_path = (
+            Path(append_file_path) if append_file_path is not None else None
+        )
+        self.experiment_dir = (
+            Path(experiment_dir).resolve() if experiment_dir is not None else None
+        )
+        self.max_append_file_size_bytes = max_append_file_size_bytes
+        self.offer_archive_if_large = offer_archive_if_large
 
-    @staticmethod
-    def archive_append_file(append_file_path: str | Path | None = None) -> Path:
-        """Move the current append file into an archive folder with a timestamp."""
-        return _archive_spraytec_append_file(append_file_path)
+        # Runtime state populated by listing/saving/loading/export operations.
+        # These fields allow callers to inspect outcomes after each step.
+        self.audit_path: Path | None = None
+        self.last_listed_runs: list[dict[str, str]] = []
+        self.loaded_csvs: list[SpraytecCsvData] = []
+        self.combined_metadata: dict[str, Any] | None = None
+        self.combined_metadata_json_path: Path | None = None
 
-    @staticmethod
-    def list_runs(append_file_path: str | Path | None = None) -> list[dict[str, str]]:
-        """Refresh and return audit rows without writing measurement CSV outputs."""
-        return _list_spraytec_runs(append_file_path)
+    @classmethod
+    def from_append(
+        cls,
+        append_file_path: str | Path,
+        experiment_dir: str | Path | None = None,
+    ) -> "SprayTec":
+        """Construct instance seeded with append-file workflow context."""
+        return cls(append_file_path=append_file_path, experiment_dir=experiment_dir)
 
-    @staticmethod
+    @classmethod
+    def from_csv(cls, file_path: str | Path) -> "SprayTec":
+        """Construct instance and preload a single SprayTec CSV."""
+        instance = cls()
+        instance.load_csv(file_path)
+        return instance
+
+    def resolve_append_file_path(
+        self,
+        append_file_path: str | Path | None = None,
+    ) -> Path:
+        """Resolve and store append-file path for subsequent operations."""
+        # Prefer explicit argument when provided, otherwise fall back to the
+        # instance default configured at construction time.
+        candidate = append_file_path if append_file_path is not None else self.append_file_path
+        resolved_path = _resolve_append_file_path(candidate)
+        self.append_file_path = resolved_path
+        return resolved_path
+
+    def archive_append_file(self, append_file_path: str | Path | None = None) -> Path:
+        """Archive append file and clear stored append path."""
+        candidate = append_file_path if append_file_path is not None else self.append_file_path
+        archived_path = _archive_spraytec_append_file(candidate)
+        self.append_file_path = None
+        return archived_path
+
+    def list_runs(self, append_file_path: str | Path | None = None) -> list[dict[str, str]]:
+        """Refresh audit rows and store latest list/audit path in instance state."""
+        resolved_append_path = self.resolve_append_file_path(append_file_path)
+        rows = _list_spraytec_runs(resolved_append_path)
+        self.last_listed_runs = rows
+        self.audit_path = resolved_append_path.parent / AUDIT_FILENAME
+        return rows
+
     def save_data(
+        self,
         append_file_path: str | Path | None = None,
         experiment_dir: str | Path | None = None,
         start_time: str | None = None,
         debug: bool = False,
-        max_append_file_size_bytes: int = DEFAULT_APPEND_MAX_FILE_SIZE_BYTES,
-        offer_archive_if_large: bool = True,
+        max_append_file_size_bytes: int | None = None,
+        offer_archive_if_large: bool | None = None,
         export_combined_metadata: bool = True,
         combined_metadata_filename: str = "spraytec_metadata.json",
     ) -> Path:
-        """Extract new measurements and optionally copy them to experiment folder."""
-        return _save_spraytec_data(
-            append_file_path=append_file_path,
-            experiment_dir=experiment_dir,
+        """Extract new measurements and update stored audit/metadata state."""
+        # Step 1: Resolve effective append file and update per-call overrides.
+        resolved_append_path = self.resolve_append_file_path(append_file_path)
+
+        if experiment_dir is not None:
+            self.experiment_dir = Path(experiment_dir).resolve()
+
+        if max_append_file_size_bytes is not None:
+            self.max_append_file_size_bytes = max_append_file_size_bytes
+        if offer_archive_if_large is not None:
+            self.offer_archive_if_large = offer_archive_if_large
+
+        # Step 2: Run the core extraction/copy workflow and persist audit location.
+        audit_path = _save_spraytec_data(
+            append_file_path=resolved_append_path,
+            experiment_dir=self.experiment_dir,
             start_time=start_time,
             debug=debug,
-            max_append_file_size_bytes=max_append_file_size_bytes,
-            offer_archive_if_large=offer_archive_if_large,
+            max_append_file_size_bytes=self.max_append_file_size_bytes,
+            offer_archive_if_large=self.offer_archive_if_large,
             export_combined_metadata=export_combined_metadata,
             combined_metadata_filename=combined_metadata_filename,
         )
+        self.audit_path = audit_path
 
-    @staticmethod
-    def load_csv(file_path: str | Path | None = None) -> "SpraytecCsvData":
-        """Load one SprayTec CSV and split metadata vs measurement data."""
-        return load_spraytec_csv(file_path)
+        # Step 3: Refresh in-memory CSV/metadata cache from experiment outputs,
+        # when an experiment directory is configured.
+        if self.experiment_dir is not None:
+            spraytec_dir = self.experiment_dir / EXPERIMENT_SPRAYTEC_SUBDIR
+            if spraytec_dir.exists() and spraytec_dir.is_dir():
+                try:
+                    self.loaded_csvs = load_spraytec_csvs(spraytec_dir)
+                    self.combined_metadata = build_combined_spraytec_metadata(
+                        self.loaded_csvs
+                    )
+                except ValueError:
+                    self.loaded_csvs = []
+                    self.combined_metadata = None
 
-    @staticmethod
+        return audit_path
+
+    def load_csv(self, file_path: str | Path | None = None) -> "SpraytecCsvData":
+        """Load one SprayTec CSV and append result to instance state."""
+        result = load_spraytec_csv(file_path)
+        # Keep cumulative loaded files for downstream combined metadata export.
+        self.loaded_csvs.append(result)
+        # Invalidate derived combined artifacts after mutating loaded input set.
+        self.combined_metadata = None
+        self.combined_metadata_json_path = None
+        return result
+
     def load_csvs(
+        self,
         folder_path: str | Path,
         pattern: str = DEFAULT_SPRAYTEC_CSV_GLOB,
     ) -> list["SpraytecCsvData"]:
-        """Load all SprayTec CSV files in a folder and return typed results."""
-        return load_spraytec_csvs(folder_path=folder_path, pattern=pattern)
+        """Load all SprayTec CSV files and replace instance-loaded data."""
+        results = load_spraytec_csvs(folder_path=folder_path, pattern=pattern)
+        # Replace rather than append: this method represents a fresh folder scan.
+        self.loaded_csvs = results
+        self.combined_metadata = None
+        self.combined_metadata_json_path = None
+        return results
 
-    @staticmethod
     def export_combined_metadata_json(
-        spraytec_data_list: list["SpraytecCsvData"],
-        output_dir: str | Path,
+        self,
+        spraytec_data_list: list["SpraytecCsvData"] | None = None,
+        output_dir: str | Path | None = None,
         filename: str = "spraytec_metadata.json",
     ) -> Path:
-        """Export one combined metadata JSON for multiple SprayTec CSV files."""
-        return export_combined_spraytec_metadata_json(
-            spraytec_data_list=spraytec_data_list,
-            output_dir=output_dir,
+        """Export combined metadata JSON from provided or stored loaded CSVs."""
+        # Allow explicit data override, otherwise use whatever is currently loaded
+        # on this instance.
+        selected_data = spraytec_data_list if spraytec_data_list is not None else self.loaded_csvs
+        if not selected_data:
+            raise ValueError("No SprayTec CSV data loaded to export.")
+
+        # Resolve output directory from argument, instance context, or fallback
+        # to the folder of the first selected source CSV.
+        if output_dir is None:
+            if self.experiment_dir is not None:
+                resolved_output_dir = self.experiment_dir
+            else:
+                resolved_output_dir = selected_data[0].file_path.parent
+        else:
+            resolved_output_dir = Path(output_dir)
+
+        # Export and store both the generated path and in-memory combined payload.
+        json_path = export_combined_spraytec_metadata_json(
+            spraytec_data_list=selected_data,
+            output_dir=resolved_output_dir,
             filename=filename,
         )
+        self.combined_metadata = build_combined_spraytec_metadata(
+            selected_data)
+        self.combined_metadata_json_path = json_path
+        return json_path
 
 
 # =============================================================================
