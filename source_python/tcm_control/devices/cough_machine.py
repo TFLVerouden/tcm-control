@@ -368,7 +368,8 @@ class CoughMachine(PoFSerialDevice):
         """Load and upload a flow-curve dataset using serial command `L`.
 
         The selected CSV is converted to protocol payload format
-        `<N> <duration_ms> <ms0>,<mA0>,<e0>,...` and sent as one `L` command.
+        `<N> <duration_ms> <ms0>,<mA0>,<e0>,<t0>,...` and sent as one `L` command,
+        where `e` is solenoid enable and `t` is trigger event (both 0/1).
         Waits for upload confirmation ending with `DATASET_SAVED`.
         """
         # If a path is passed here, it overrides any previously stored default
@@ -404,10 +405,15 @@ class CoughMachine(PoFSerialDevice):
         if self._flowcurve_csv_path is None:
             raise SystemExit("No flow curve CSV selected")
 
-        time_arr, mA_arr, enable_arr = self._extract_csv(
+        time_arr, mA_arr, sol_enable_arr, trig_enable_arr = self._extract_csv(
             self._flowcurve_csv_path, delimiter=delimiter
         )
-        serial_command = self._format_dataset(time_arr, mA_arr, enable_arr)
+        serial_command = self._format_dataset(
+            time_arr,
+            mA_arr,
+            sol_enable_arr,
+            trig_enable_arr,
+        )
 
         if self._debug:
             print(f"Formatted serial command:\n{serial_command}")
@@ -608,40 +614,90 @@ class CoughMachine(PoFSerialDevice):
     @staticmethod
     def _extract_csv(
         filename: str | Path, delimiter: str = ","
-    ) -> tuple[list[str], list[str], list[str]]:
-        """Read flow-curve CSV into arrays for time, current, and enable columns.
+    ) -> tuple[list[str], list[str], list[str], list[str]]:
+        """Read flow-curve CSV into arrays for time/current/solenoid/trigger.
 
-        CSV rows must contain at least three non-empty values in the order
-        `time_ms,current_mA,enable`.
+        CSV rows must contain four non-empty values in the order
+        `time_ms,prop_valve_ma,sol_valve,trig`.
         """
-        # Parse a CSV file into time, current, enable arrays for the L command.
+        # Parse a CSV file into time, current, solenoid and trigger arrays
+        # for the L command.
         time_arr: list[str] = []
         mA_arr: list[str] = []
-        enable_arr: list[str] = []
-        row_idx = 0
+        sol_enable_arr: list[str] = []
+        trig_enable_arr: list[str] = []
+        has_header = False
 
         with open(filename, "r") as csvfile:
             csvreader = csv.reader(csvfile, delimiter=delimiter)
-            for rows in csvreader:
-                if len(rows) < 3 or not rows[0] or not rows[1] or rows[2] == "":
-                    raise ValueError(
-                        f"Encountered empty cell at row index {row_idx}!"
-                    )
-                # replace ',' with '.' depending on csv format (';' delim vs ',' delim)
-                time_arr.append(rows[0].replace(",", "."))
-                mA_arr.append(rows[1].replace(",", "."))
-                enable_arr.append(rows[2].strip())
-                row_idx += 1
+            for file_row_idx, rows in enumerate(csvreader, start=1):
+                if not rows:
+                    continue
 
-        if not time_arr or not mA_arr or not enable_arr:
+                if len(rows) < 4:
+                    raise ValueError(
+                        f"Row {file_row_idx} must have 4 columns: "
+                        "time_ms,prop_valve_ma,sol_valve,trig"
+                    )
+
+                time_str = rows[0].strip()
+                current_str = rows[1].strip()
+                sol_str = rows[2].strip()
+                trig_str = rows[3].strip()
+
+                if (
+                    file_row_idx == 1
+                    and time_str.lower() == "time_ms"
+                    and current_str.lower() == "prop_valve_ma"
+                    and sol_str.lower() == "sol_valve"
+                    and trig_str.lower() == "trig"
+                ):
+                    has_header = True
+                    continue
+
+                if not time_str or not current_str or sol_str == "" or trig_str == "":
+                    raise ValueError(
+                        f"Encountered empty cell at row {file_row_idx}!"
+                    )
+
+                # replace ',' with '.' depending on csv format (';' delim vs ',' delim)
+                time_clean = time_str.replace(",", ".")
+                current_clean = current_str.replace(",", ".")
+
+                try:
+                    float(time_clean)
+                    float(current_clean)
+                except ValueError as exc:
+                    raise ValueError(
+                        f"Non-numeric time/current at row {file_row_idx}: {rows[:2]}"
+                    ) from exc
+
+                if sol_str not in {"0", "1"}:
+                    raise ValueError(
+                        f"sol_valve must be 0 or 1 at row {file_row_idx}, got: {sol_str}"
+                    )
+                if trig_str not in {"0", "1"}:
+                    raise ValueError(
+                        f"trig must be 0 or 1 at row {file_row_idx}, got: {trig_str}"
+                    )
+
+                time_arr.append(time_clean)
+                mA_arr.append(current_clean)
+                sol_enable_arr.append(sol_str)
+                trig_enable_arr.append(trig_str)
+
+        if not time_arr or not mA_arr or not sol_enable_arr or not trig_enable_arr:
             raise ValueError("CSV contains no data.")
-        return time_arr, mA_arr, enable_arr
+        if has_header:
+            print(f"Detected and skipped CSV header in {filename}")
+        return time_arr, mA_arr, sol_enable_arr, trig_enable_arr
 
     @staticmethod
     def _format_dataset(
         time_array: list[str],
         mA_array: list[str],
-        enable_array: list[str],
+        sol_enable_array: list[str],
+        trig_enable_array: list[str],
         *,
         prefix: str = "L",
         handshake_delim: str = " ",
@@ -649,17 +705,19 @@ class CoughMachine(PoFSerialDevice):
     ) -> str:
         """Build the dataset upload string in MCU `L` command format.
 
-        Output format is `L <N> <duration_ms> <ms0>,<mA0>,<e0>,...`.
+        Output format is `L <N> <duration_ms> <ms0>,<mA0>,<e0>,<t0>,...`.
         """
         # Format the arrays into the serial protocol for dataset upload.
         if (
             not time_array
             or len(time_array) != len(mA_array)
-            or len(time_array) != len(enable_array)
+            or len(time_array) != len(sol_enable_array)
+            or len(time_array) != len(trig_enable_array)
         ):
             raise ValueError(
                 f"Arrays are not compatible! Time length: {len(time_array)}, "
-                f"mA length: {len(mA_array)}, enable length: {len(enable_array)}"
+                f"mA length: {len(mA_array)}, solenoid length: {len(sol_enable_array)}, "
+                f"trigger length: {len(trig_enable_array)}"
             )
 
         duration = time_array[-1]
@@ -669,8 +727,13 @@ class CoughMachine(PoFSerialDevice):
         )
         data = [
             str(val)
-            for t, mA, e in zip(time_array, mA_array, enable_array)
-            for val in (t, mA, e)
+            for t, mA, e, trig in zip(
+                time_array,
+                mA_array,
+                sol_enable_array,
+                trig_enable_array,
+            )
+            for val in (t, mA, e, trig)
         ]
         return header + data_delim.join(data)
 
