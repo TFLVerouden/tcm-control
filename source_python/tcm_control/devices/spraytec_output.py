@@ -445,11 +445,6 @@ def load_spraytec_csv(file_path: str | Path | None = None) -> SpraytecCsvData:
         else:
             measurement_columns.append(column_name)
 
-    if bin_edges_um:
-        metadata_flat["bin_edges_um"] = bin_edges_um
-    if bin_centers_um:
-        metadata_flat["bin_centers_um"] = bin_centers_um
-
     measurement_df = dataframe[measurement_columns].copy()
     for column_name in measurement_df.columns:
         measurement_df[column_name] = _coerce_numeric_if_possible(
