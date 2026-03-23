@@ -25,20 +25,6 @@ if str(SOURCE_PYTHON) not in sys.path:
     sys.path.insert(0, str(SOURCE_PYTHON))
 
 
-def _print_metadata(file_path: Path, metadata_by_category: dict[str, dict[str, object]]) -> None:
-    print(f"\n=== Metadata: {file_path.name} ===")
-    for category, category_values in metadata_by_category.items():
-        print(f"[{category}]")
-        for key, value in category_values.items():
-            print(f"  {key}: {value}")
-
-
-def _print_time_dependent_columns(columns: list[str]) -> None:
-    print(f"[time_dependent_columns] ({len(columns)})")
-    for column_name in columns:
-        print(f"  {column_name}")
-
-
 def _print_metadata_differences(
     metadata_per_file: dict[str, dict[str, object]],
 ) -> None:
@@ -89,6 +75,39 @@ def _find_n_lt_10_value_column(measurement_df: pd.DataFrame) -> str:
         if normalized.startswith("%N < 10") and normalized.endswith("(Value)"):
             return column_name
     raise KeyError("Required column not found: %N < 10(Value)")
+
+
+def _to_volume_distribution_percent(
+    y_number_percent: np.ndarray,
+    x_edges_um: list[float],
+    *,
+    context_label: str,
+) -> np.ndarray:
+    y_number = np.nan_to_num(np.asarray(y_number_percent, dtype=float), nan=0.0)
+    x_edges = np.asarray(x_edges_um, dtype=float)
+
+    if len(x_edges) != len(y_number) + 1:
+        raise ValueError(
+            "Expected len(x_edges_um) == len(y_number_percent) + 1, got "
+            f"{len(x_edges)} and {len(y_number)}"
+        )
+
+    # Use bin-center diameter for V = N * D^3 conversion.
+    bin_centers_um = 0.5 * (x_edges[:-1] + x_edges[1:])
+    y_volume_raw = y_number * np.power(bin_centers_um, 3)
+    raw_sum = float(np.nansum(y_volume_raw))
+    if raw_sum <= 0:
+        raise ValueError(
+            f"Volume conversion produced non-positive total for {context_label}"
+        )
+
+    y_volume_percent = 100.0 * y_volume_raw / raw_sum
+    renorm_sum = float(np.nansum(y_volume_percent))
+    print(
+        f"{context_label}: volume renormalization check = {renorm_sum:.6f}% "
+        f"(target: 100.000000%)"
+    )
+    return y_volume_percent
 
 
 def _plot_time_dependent_columns(result, plots_root: Path) -> None:
@@ -238,6 +257,7 @@ def _plot_time_dependent_columns(result, plots_root: Path) -> None:
 
 def _plot_average_number_distributions(loaded_results: list, plots_root: Path) -> None:
     fig, ax = plt.subplots(figsize=(10, 6))
+    fig_vol, ax_vol = plt.subplots(figsize=(10, 6))
     color_cycle = plt.rcParams["axes.prop_cycle"].by_key().get(
         "color", ["C0", "C1", "C2", "C3"])
 
@@ -260,6 +280,11 @@ def _plot_average_number_distributions(loaded_results: list, plots_root: Path) -
             .mean(axis=0, skipna=True)
             .to_numpy()
         )
+        y_volume_average = _to_volume_distribution_percent(
+            y_average,
+            x_edges_um,
+            context_label=f"{result.file_path.name} (full average)",
+        )
 
         print(
             f"\n{result.file_path.name}: left-edge header (col 322) = {left_edge_header}; "
@@ -280,6 +305,19 @@ def _plot_average_number_distributions(loaded_results: list, plots_root: Path) -
         )
         ax.plot([], [], color=color, label=result.file_path.name)
 
+        plot_binned_area(
+            ax_vol,
+            x_edges_um,
+            y_volume_average,
+            x_mode="edges",
+            color=color,
+            alpha=0.25,
+            outline=True,
+            outline_color=color,
+            outline_linewidth=2.5,
+        )
+        ax_vol.plot([], [], color=color, label=result.file_path.name)
+
     set_log_axes(ax, x=True)
     ax.set_ylabel("Number (%)")
     append_unit_to_last_ticklabel(ax, axis="x", unit="µm")
@@ -287,15 +325,28 @@ def _plot_average_number_distributions(loaded_results: list, plots_root: Path) -
     ax.legend(loc="upper right")
     fig.tight_layout()
 
-    output_path = plots_root / "combined_number_distribution.pdf"
+    set_log_axes(ax_vol, x=True)
+    ax_vol.set_ylabel("Volume (%)")
+    append_unit_to_last_ticklabel(ax_vol, axis="x", unit="µm")
+    ax_vol.grid(True, alpha=0.3)
+    ax_vol.legend(loc="upper right")
+    fig_vol.tight_layout()
+
+    output_path = plots_root / "number_distributions_averaged_full.pdf"
     fig.savefig(output_path)
     plt.close(fig)
     print(f"Saved combined distribution plot: {output_path}")
+
+    output_path_vol = plots_root / "volume_distributions_averaged_full.pdf"
+    fig_vol.savefig(output_path_vol)
+    plt.close(fig_vol)
+    print(f"Saved combined volume distribution plot: {output_path_vol}")
 
 
 def _averaging(loaded_results, plots_root, averaging_time, t_droplet) -> None:
 
     fig, ax = plt.subplots(figsize=(10, 6))
+    fig_vol, ax_vol = plt.subplots(figsize=(10, 6))
     color_cycle = plt.rcParams["axes.prop_cycle"].by_key().get(
         "color", ["C0", "C1", "C2", "C3"]
     )
@@ -328,6 +379,11 @@ def _averaging(loaded_results, plots_root, averaging_time, t_droplet) -> None:
             .apply(pd.to_numeric, errors="coerce")
             .mean(axis=0, skipna=True)
             .to_numpy())
+        y_volume_average = _to_volume_distribution_percent(
+            y_average,
+            x_edges_um,
+            context_label=f"{result.file_path.name} (interval average)",
+        )
 
         color = color_cycle[index % len(color_cycle)]
         plot_binned_area(
@@ -343,6 +399,19 @@ def _averaging(loaded_results, plots_root, averaging_time, t_droplet) -> None:
         )
         ax.plot([], [], color=color, label=result.file_path.name)
 
+        plot_binned_area(
+            ax_vol,
+            x_edges_um,
+            y_volume_average,
+            x_mode="edges",
+            color=color,
+            alpha=0.25,
+            outline=True,
+            outline_color=color,
+            outline_linewidth=2.5,
+        )
+        ax_vol.plot([], [], color=color, label=result.file_path.name)
+
     set_log_axes(ax, x=True)
     ax.set_ylabel("Number (%)")
     append_unit_to_last_ticklabel(ax, axis="x", unit="µm")
@@ -350,10 +419,22 @@ def _averaging(loaded_results, plots_root, averaging_time, t_droplet) -> None:
     ax.legend(loc="upper right")
     fig.tight_layout()
 
-    output_path = plots_root / "combined_average_number_distribution_over_averaging_time.pdf"
+    set_log_axes(ax_vol, x=True)
+    ax_vol.set_ylabel("Volume (%)")
+    append_unit_to_last_ticklabel(ax_vol, axis="x", unit="µm")
+    ax_vol.grid(True, alpha=0.3)
+    ax_vol.legend(loc="upper right")
+    fig_vol.tight_layout()
+
+    output_path = plots_root / "number_distributions_averaged_interval.pdf"
     fig.savefig(output_path)
     plt.close(fig)
     print(f"Saved combined average number distribution plot: {output_path}")
+
+    output_path_vol = plots_root / "volume_distributions_averaged_interval.pdf"
+    fig_vol.savefig(output_path_vol)
+    plt.close(fig_vol)
+    print(f"Saved combined average volume distribution plot: {output_path_vol}")
 
 
 def main() -> int:
