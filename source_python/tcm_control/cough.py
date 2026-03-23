@@ -299,7 +299,7 @@ def cough(config_path: Path | str | None = None) -> Path:
             prompt_yes_no(
                 "Press ENTER to confirm that SprayTec SOP is waiting for a trigger...",
                 default=True)
-            # TODO: Merge this prompt with the start experiment prompt in certain cases. Probably involves making a separate pump if statement before
+            # TODO: Make it so pump is already running at this point, so we don't crash when it is not on by accident
 
         # ------------------------------------------------------------------
         # Run mode-specific experiment behavior
@@ -408,12 +408,12 @@ def cough(config_path: Path | str | None = None) -> Path:
                     "Press ENTER if the SprayTec has finished processing and exporting the measurement(s)...",
                     default=True,
                 )
-                spraytec_audit_path = spraytec.save_data(
-                    append_file_path=spraytec_inputs["append_file_path"],
-                    start_time=time_start,
-                    debug=core_inputs["debug_mode"],
-                    offer_archive_if_large=True,
-                )
+                # TODO: Add some print statements in save_data so user is not wondering what is going on.
+                spraytec_audit_path = spraytec.save_data(append_file_path=spraytec_inputs["append_file_path"],
+                                                         start_time=time_start,
+                                                         debug=core_inputs["debug_mode"],
+                                                         offer_archive_if_large=True,
+                                                         )
 
             metadata = logger.build_run_metadata(
                 time_start=time_start,
@@ -461,5 +461,8 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         _cleanup_on_interrupt(ask_before_delete_output_dir=True)
         raise SystemExit(130)
+    except Exception:
+        _cleanup_on_interrupt(ask_before_delete_output_dir=False)
+        raise
     finally:
         signal.signal(signal.SIGINT, previous_sigint_handler)

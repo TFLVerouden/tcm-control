@@ -152,10 +152,17 @@ class SprayTec:
         debug: bool = False,
         max_append_file_size_bytes: int | None = None,
         offer_archive_if_large: bool | None = None,
+        ask_retry_on_permission_error: bool = True,
         export_combined_metadata: bool = True,
         combined_metadata_filename: str = "spraytec_metadata.json",
     ) -> Path:
-        """Extract new measurements and update stored audit/metadata state."""
+        """Extract new measurements and update stored audit/metadata state.
+
+        When ``ask_retry_on_permission_error`` is True, this method catches
+        ``PermissionError`` (for example when the SprayTec append file is still
+        locked by the exporter), prompts the user to retry, and loops until
+        success or user cancellation.
+        """
         # Step 1: Resolve effective append file and update per-call overrides.
         resolved_append_path = self.resolve_append_file_path(append_file_path)
         print(
@@ -169,16 +176,44 @@ class SprayTec:
             self.offer_archive_if_large = offer_archive_if_large
 
         # Step 2: Run the core extraction/copy workflow and persist audit location.
-        audit_path = _save_spraytec_data(
-            append_file_path=resolved_append_path,
-            experiment_dir=self.experiment_dir,
-            start_time=start_time,
-            debug=debug,
-            max_append_file_size_bytes=self.max_append_file_size_bytes,
-            offer_archive_if_large=self.offer_archive_if_large,
-            export_combined_metadata=export_combined_metadata,
-            combined_metadata_filename=combined_metadata_filename,
-        )
+        default_audit_path = resolved_append_path.parent / AUDIT_FILENAME
+        while True:
+            try:
+                audit_path = _save_spraytec_data(
+                    append_file_path=resolved_append_path,
+                    experiment_dir=self.experiment_dir,
+                    start_time=start_time,
+                    debug=debug,
+                    max_append_file_size_bytes=self.max_append_file_size_bytes,
+                    offer_archive_if_large=self.offer_archive_if_large,
+                    export_combined_metadata=export_combined_metadata,
+                    combined_metadata_filename=combined_metadata_filename,
+                )
+                break
+            except PermissionError as err:
+                if not ask_retry_on_permission_error:
+                    raise
+
+                print(
+                    "SprayTec append file is currently in use; "
+                    "wait for SprayTec to finish exporting, then retry."
+                )
+                if debug:
+                    print(f"SprayTec debug: {err}")
+
+                retry_now = prompt_yes_no(
+                    "Retry SprayTec append-file parsing now (press ENTER for yes or type 'n')?",
+                    default=True,
+                )
+                if retry_now:
+                    continue
+
+                print(
+                    "SprayTec save skipped; export manually from SprayTec software"
+                )
+                self.audit_path = default_audit_path
+                return default_audit_path
+
         self.audit_path = audit_path
 
         # Step 3: Refresh in-memory CSV/metadata cache from experiment outputs,
