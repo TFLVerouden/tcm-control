@@ -451,6 +451,49 @@ def cough(config_path: Path | str | None = None) -> Path:
     # Return output directory
     return output_dir
 
+    # BUG: Fix error without bug
+#     Comments saved to C:\CoughMachineData\260320_tests\260324_121206_nospraytec_test\comments.txt
+# ERROR:root:PHD2000: pump reported COMMAND NOT APPLICABLE AT THIS TIME error when <00STP> was issued.
+# --- Logging error ---
+# Traceback (most recent call last):
+#   File "c:\Users\local2\Documents\GitHub\tcm-control\source_python\tcm_control\cough.py", line 460, in <module>
+#     cough()
+#   File "c:\Users\local2\Documents\GitHub\tcm-control\source_python\tcm_control\cough.py", line 441, in cough
+#     lift_height=lift_height,
+#                 ^^^^^^^^^^^
+# UnboundLocalError: cannot access local variable 'lift_height' where it is not associated with a value
+
+# During handling of the above exception, another exception occurred:
+
+# Traceback (most recent call last):
+#   File "C:\Users\local2\AppData\Local\Programs\Python\Python312\Lib\logging\__init__.py", line 1163, in emit
+#     stream.write(msg + self.terminator)
+#   File "C:\Users\local2\Documents\GitHub\tcm-control\source_python\tcm_control\logger.py", line 138, in write
+#     self._log_stream.write(self._timestamp_prefix())
+# ValueError: I/O operation on closed file.
+# Call stack:
+#   File "c:\Users\local2\Documents\GitHub\tcm-control\source_python\tcm_control\cough.py", line 465, in <module>
+#     _cleanup_on_interrupt(ask_before_delete_output_dir=False)
+#   File "c:\Users\local2\Documents\GitHub\tcm-control\source_python\tcm_control\cough.py", line 40, in _cleanup_on_interrupt
+#     _ACTIVE_PUMP.stop()
+#   File "C:\Users\local2\Documents\GitHub\tcm-control\.venv\Lib\site-packages\pumpy3\pump.py", line 238, in stop
+#     resp = self.issue_command('STP')
+#   File "C:\Users\local2\Documents\GitHub\tcm-control\.venv\Lib\site-packages\pumpy3\pump.py", line 177, in issue_command
+#     logging.error(f'{self.name}: pump reported COMMAND NOT APPLICABLE AT THIS TIME error when <{instruction}> was issued.')
+# Message: 'PHD2000: pump reported COMMAND NOT APPLICABLE AT THIS TIME error when <00STP> was issued.'
+# Arguments: ()
+# Syringe pump stopped
+# Cough machine returned to idle
+# Skipping output-directory deletion prompt during Ctrl+C cleanup to avoid re-entrant stdin access.
+# Exiting
+# Traceback (most recent call last):
+#   File "c:\Users\local2\Documents\GitHub\tcm-control\source_python\tcm_control\cough.py", line 460, in <module>
+#     cough()
+#   File "c:\Users\local2\Documents\GitHub\tcm-control\source_python\tcm_control\cough.py", line 441, in cough
+#     lift_height=lift_height,
+#                 ^^^^^^^^^^^
+# UnboundLocalError: cannot access local variable 'lift_height' where it is not associated with a value
+
 
 if __name__ == "__main__":
     # Temporarily install a SIGINT handler so Ctrl+C triggers device cleanup.

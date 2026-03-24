@@ -26,7 +26,7 @@ droplet_pump_rate_ml_per_min = 0.1
 nr_droplets_to_skip_before_recording = 5
 
 [devices.spraytec]
-record_droplet_size = true
+record_droplet_size = false
 
 [devices.spraytec.inputs]
 append_file_path = "C:/Users/Public/Documents/Malvern Instruments/Spraytec/Export Data/SPRAYTEC_APPEND_FILE.txt" # keep empty to trigger file dialog
@@ -39,7 +39,7 @@ tcm_trachea_exit_to_ref_y_mm = 200
 spraytec_to_ref_x_mm = 44
 spraytec_to_ref_y_mm = 483
 stage_pos_x_zero_mm = 96
-stage_pos_y_zero_mm = 655
+stage_pos_y_zero_mm = 655 
 stage_pos_x_mm = "" # keep empty to prompt
 stage_pos_y_mm = "" # keep empty to prompt
 table_height_mm = 920
