@@ -1,6 +1,7 @@
 from __future__ import annotations
 """Load and validate experiment input configuration from TOML."""
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,39 @@ def _normalize_optional_string(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text if text else None
+
+
+def _normalize_optional_path_string(value: Any) -> str | None:
+    """Normalize optional path-like strings to use forward slashes."""
+    text = _normalize_optional_string(value)
+    if text is None:
+        return None
+    return text.replace("\\", "/")
+
+
+def _sanitize_windows_path_separators_in_toml(raw_text: str) -> str:
+    """Normalize Windows backslashes for selected TOML path keys.
+
+    This targets only basic string assignments for:
+    - series_directory
+    - append_file_path
+
+    It converts backslashes to forward slashes so TOML parsing remains robust
+    when users provide Windows-style paths.
+    """
+
+    pattern = re.compile(
+        r'(^\s*(series_directory|append_file_path)\s*=\s*")([^"\n]*)(")',
+        flags=re.MULTILINE,
+    )
+
+    def _replace(match: re.Match[str]) -> str:
+        prefix = match.group(1)
+        path_value = match.group(3)
+        suffix = match.group(4)
+        return f"{prefix}{path_value.replace('\\', '/')}{suffix}"
+
+    return pattern.sub(_replace, raw_text)
 
 
 def _optional_float(value: Any) -> float | None:
@@ -98,19 +132,31 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
     if not config_file.exists():
         raise FileNotFoundError(f"Config file not found: {config_file}")
 
-    with open(config_file, "rb") as handle:
-        raw = tomllib.load(handle)
+    raw_text = config_file.read_text(encoding="utf-8")
+    try:
+        raw = tomllib.loads(raw_text)
+    except tomllib.TOMLDecodeError:
+        sanitized_text = _sanitize_windows_path_separators_in_toml(raw_text)
+        if sanitized_text == raw_text:
+            raise
+        raw = tomllib.loads(sanitized_text)
 
     # ------------------------------------------------------------------
     # Experiment-level settings
     # ------------------------------------------------------------------
-    experiment_name = _nested_get(raw, "experiment", "name")
+    experiment_name_raw = _nested_get(raw, "experiment", "name")
     experiment_mode = _nested_get(raw, "experiment", "mode")
     series_directory_raw = _nested_get(raw, "experiment", "series_directory")
 
-    if not isinstance(experiment_name, str) or not experiment_name.strip():
+    if experiment_name_raw is None:
         raise ValueError(
-            "Config [experiment].name must be a non-empty string.")
+            "Config [experiment].name must be a string (can be empty to prompt)."
+        )
+    experiment_name = _normalize_optional_string(experiment_name_raw)
+    if experiment_name_raw is not None and not isinstance(experiment_name_raw, str):
+        raise ValueError(
+            "Config [experiment].name must be a string (can be empty to prompt)."
+        )
 
     if not isinstance(experiment_mode, str) or experiment_mode not in VALID_EXPERIMENT_MODES:
         raise ValueError(
@@ -118,9 +164,7 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             + ", ".join(sorted(VALID_EXPERIMENT_MODES))
         )
 
-    series_directory = _normalize_optional_string(series_directory_raw)
-    if series_directory is None:
-        raise ValueError("Config [experiment].series_directory must be set.")
+    series_directory = _normalize_optional_path_string(series_directory_raw)
 
     # ------------------------------------------------------------------
     # Core timing and run controls
@@ -133,6 +177,15 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
         "multi_run_interval_s": float(
             _nested_get(raw, "inputs", "core",
                         "multi_run_interval_s", default=0.0)
+        ),
+        "confirm_before_starting_next_run": bool(
+            _nested_get(
+                raw,
+                "inputs",
+                "core",
+                "confirm_before_starting_next_run",
+                default=True,
+            )
         ),
         "wait_before_run_ms": float(
             _nested_get(raw, "inputs", "core",
@@ -284,7 +337,7 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
     # SprayTec inputs (validated only when enabled)
     # ------------------------------------------------------------------
     spraytec_inputs = {
-        "append_file_path": _normalize_optional_string(
+        "append_file_path": _normalize_optional_path_string(
             _nested_get(raw, "devices", "spraytec",
                         "inputs", "append_file_path")
         ),
@@ -381,7 +434,7 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
         "experiment": {
             "name": experiment_name,
             "mode": experiment_mode,
-            "series_directory": Path(series_directory),
+            "series_directory": Path(series_directory) if series_directory else None,
         },
         "inputs": {
             "core": core_inputs,

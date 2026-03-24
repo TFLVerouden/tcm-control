@@ -1,4 +1,5 @@
 from __future__ import annotations
+from tcm_control.devices import SprayTec
 
 import argparse
 import sys
@@ -9,8 +10,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_PYTHON = REPO_ROOT / "source_python"
 if str(SOURCE_PYTHON) not in sys.path:
     sys.path.insert(0, str(SOURCE_PYTHON))
-
-from tcm_control.devices.spraytec_output import archive_spraytec_append_file
 
 
 def main() -> int:
@@ -25,7 +24,8 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    archived_path = archive_spraytec_append_file(args.append_file)
+    spraytec = SprayTec(append_file_path=args.append_file)
+    archived_path = spraytec.archive_append_file()
     print(f"Archived append file to: {archived_path}")
     return 0
 

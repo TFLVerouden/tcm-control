@@ -1,11 +1,19 @@
 """File and metadata logging utilities for experiment runs."""
 
+from contextlib import contextmanager
+from datetime import datetime
+import io
 from pathlib import Path
+import sys
 import time
-from typing import Any
+from typing import Any, TextIO
 
 from tcm_utils.io_utils import create_timestamped_filename, save_metadata_json
 from tcm_utils.time_utils import timestamp_str, timestamp_from_file
+
+
+RUN_LOGS_SUBDIR = "run_logs"
+CONSOLE_LOGS_SUBDIR = "host_console_logs"
 
 # In the destination folder, put several files: metadata (json),
 # cough machine event log (csv, multiple in case of droplet detection),
@@ -49,7 +57,9 @@ def write_run_log(
             break
 
     # Set the file path and write the log
-    file_path = experiment_dir / f"run_log_{run_nr}.txt"
+    run_logs_dir = experiment_dir / RUN_LOGS_SUBDIR
+    run_logs_dir.mkdir(parents=True, exist_ok=True)
+    file_path = run_logs_dir / f"run_log_{run_nr}.txt"
     with open(file_path, "w") as f:
         for row in rows:
             f.write(f"{row}\n")
@@ -91,6 +101,80 @@ def create_labeled_csv_filename(
 
     safe_label = "" if label is None else str(label)
     return f"{prefix}{safe_label}_{timestamp}.csv"
+
+
+def create_console_log_path(
+        experiment_dir: Path) -> Path:
+    """Return the fixed log path for captured terminal output per experiment."""
+    return experiment_dir / "host_console_log.txt"
+
+
+class _TimestampedTee(io.TextIOBase):
+    """Mirror writes to terminal and a timestamped text log file."""
+
+    def __init__(
+        self,
+        terminal_stream: TextIO,
+        log_stream: TextIO,
+        stream_label: str,
+    ) -> None:
+        self._terminal_stream = terminal_stream
+        self._log_stream = log_stream
+        self._stream_label = stream_label
+        self._line_start = True
+
+    def _timestamp_prefix(self) -> str:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return f"[{timestamp}] [{self._stream_label}] "
+
+    def write(self, text: str) -> int:
+        if not text:
+            return 0
+
+        self._terminal_stream.write(text)
+
+        for char in text:
+            if self._line_start:
+                self._log_stream.write(self._timestamp_prefix())
+                self._line_start = False
+
+            if char == "\r":
+                self._log_stream.write("\n")
+                self._line_start = True
+                continue
+
+            self._log_stream.write(char)
+
+            if char == "\n":
+                self._line_start = True
+
+        return len(text)
+
+    def flush(self) -> None:
+        self._terminal_stream.flush()
+        self._log_stream.flush()
+
+    def isatty(self) -> bool:
+        return self._terminal_stream.isatty()
+
+
+@contextmanager
+def capture_terminal_output(log_path: Path):
+    """Capture all process stdout/stderr to a timestamped text file."""
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(log_path, "a", encoding="utf-8") as log_stream:
+        original_stdout = sys.stdout
+        original_stderr = sys.stderr
+        sys.stdout = _TimestampedTee(original_stdout, log_stream, "STDOUT")
+        sys.stderr = _TimestampedTee(original_stderr, log_stream, "STDERR")
+        try:
+            yield log_path
+        finally:
+            sys.stdout.flush()
+            sys.stderr.flush()
+            sys.stdout = original_stdout
+            sys.stderr = original_stderr
 
 
 def _to_jsonable(value: Any) -> Any:
@@ -138,6 +222,7 @@ def build_run_metadata(
     spraytec_x: float | None,
     spraytec_y: float | None,
     spraytec_z: float | None,
+    lift_height: float | None,
     spraytec_audit_path: str | Path | None,
     lift: Any,
 ) -> dict[str, Any]:
@@ -216,6 +301,11 @@ def build_run_metadata(
                         None
                         if lift is None
                         else lift.serial_settings.get("timeout")
+                    ),
+                    "lift_height_mm": (
+                        None
+                        if lift is None
+                        else lift_height
                     ),
                 },
             },
