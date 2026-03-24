@@ -13,6 +13,8 @@ DEFAULT_FLOWCURVE_DIR = Path("source_python/tcm_control/flow_curves")
 DEFAULT_RUN_LOG_DIR = Path(".logs")
 EXPERIMENT_RUN_LOG_SUBDIR = "run_logs"
 MAX_PRESSURE_BAR = 4.3
+# Keep protocol version as a single integer. Bump only for breaking serial changes.
+DEFAULT_SUPPORTED_PROTOCOL_VERSION = 4
 
 
 class CoughMachine(PoFSerialDevice):
@@ -25,6 +27,7 @@ class CoughMachine(PoFSerialDevice):
         timeout: float = 1,
         debug: bool = False,
         echo: bool = False,
+        supported_protocol_version: int = DEFAULT_SUPPORTED_PROTOCOL_VERSION,
     ):
         """Initialize the cough machine serial device wrapper.
 
@@ -41,6 +44,15 @@ class CoughMachine(PoFSerialDevice):
             debug=debug,
             echo=echo,
         )
+
+        self._supported_protocol_version = int(supported_protocol_version)
+        self._protocol_version: Optional[int] = None
+
+        if self._supported_protocol_version < 0:
+            raise ValueError("supported_protocol_version must be >= 0")
+
+        # Fail fast when host and firmware protocol contracts do not match.
+        self._assert_protocol_compatibility(echo=echo)
 
         self._wait_us: Optional[int] = None
         self._dataset_loaded = False
@@ -81,6 +93,50 @@ class CoughMachine(PoFSerialDevice):
         """Query device identity using `id?` and return the reply string."""
         reply, _lines = self._query_and_drain("id?", echo=echo)
         return reply or ""
+
+    def get_protocol_version(self, *, echo: Optional[bool] = None) -> int:
+        """Query protocol info using `ver?`.
+
+        Expects `PROTO <integer>` and returns that integer.
+        """
+        reply, _lines = self._query_and_drain(
+            "ver?", expected_prefix="PROTO", echo=echo)
+        if reply is None:
+            raise RuntimeError("No reply to protocol version query 'ver?'")
+
+        clean = reply.strip()
+        parts = clean.split()
+        if len(parts) != 2 or parts[0] != "PROTO":
+            raise RuntimeError(f"Unexpected protocol version reply: {reply!r}")
+
+        try:
+            return int(parts[1])
+        except ValueError as exc:
+            raise RuntimeError(
+                f"Unexpected protocol version reply: {reply!r}") from exc
+
+    @property
+    def protocol_version(self) -> Optional[int]:
+        """Negotiated MCU protocol version for this connection."""
+        return self._protocol_version
+
+    def _assert_protocol_compatibility(self, *, echo: Optional[bool] = None) -> None:
+        try:
+            protocol_version = self.get_protocol_version(echo=echo)
+        except Exception as exc:
+            raise RuntimeError(
+                "Failed to negotiate protocol version with the MCU. "
+                "Expected a `ver?` command reply in the form 'PROTO <integer>'."
+            ) from exc
+
+        if protocol_version != self._supported_protocol_version:
+            raise RuntimeError(
+                "Incompatible MCU protocol version "
+                f"{protocol_version}. This host expects protocol version "
+                f"{self._supported_protocol_version}."
+            )
+
+        self._protocol_version = protocol_version
 
     def _set_debug(self, enabled: bool) -> None:
         """Enable or disable MCU debug output using `B <0|1>`.

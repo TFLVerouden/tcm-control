@@ -249,6 +249,7 @@ def build_run_metadata(
         "devices": {
             "cough_machine": {
                 "name": tcm.name,
+                "protocol_version": getattr(tcm, "protocol_version", None),
                 "inputs": cough_machine_inputs,
                 "connection": {
                     "port": getattr(getattr(tcm, "ser", None), "port", None),

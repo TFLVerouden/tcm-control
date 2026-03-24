@@ -3,6 +3,15 @@
 Install tcm-utilities:
 pip install -e ../tcm-utils
 
+## Versioning policy
+
+This project uses two separate version numbers:
+
+1. Python package version in pyproject.toml (project/app release tracking).
+2. Host-MCU protocol version (serial communication compatibility).
+
+The protocol should be a single integer: host and MCU protocol versions must match exactly. The version number is increased when communication changes in a breaking way.
+
 ## VS Code workspace settings
 This repository tracks only `.vscode/settings.json` for shared Python run/interpreter behavior.
 Keep other `.vscode` files local (they are ignored by `.gitignore`) unless the team explicitly decides to share them.
