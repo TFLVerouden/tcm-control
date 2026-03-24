@@ -273,6 +273,14 @@ class CoughMachine(PoFSerialDevice):
             cmd, expected=expected, echo=echo)
         return reply or ""
 
+    def trigger_test(self, *, echo: Optional[bool] = None):
+        """Load the "just_trigger.csv" flow curve and run it to test the trigger output."""
+        test_csv = DEFAULT_FLOWCURVE_DIR / "just_trigger.csv"
+        if not test_csv.exists():
+            raise RuntimeError(f"Test CSV not found at {test_csv}")
+        self.load_flowcurve(csv_path=test_csv, echo=echo)
+        self.run(echo=echo)
+
     # READ OUT SENSORS
     def read_pressure(self, *, echo: Optional[bool] = None) -> Optional[float]:
         """Read instantaneous pressure using `P?` and parse `P<bar>` reply."""
