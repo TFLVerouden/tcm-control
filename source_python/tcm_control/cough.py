@@ -331,7 +331,7 @@ def cough(config_path: Path | str | None = None) -> Path:
                         if core_inputs["multi_run_interval_s"] > 0:
                             wait_with_progress(
                                 float(core_inputs["multi_run_interval_s"]),
-                                label="Waiting before starting next run",
+                                label=f"Waiting before starting run {run_idx + 1}/{core_inputs['nr_runs']}",
                             )
 
                         if core_inputs["confirm_before_starting_next_run"]:
