@@ -1,0 +1,10 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "ms-toolsai.jupyter",
+    "platformio.platformio-ide",
+    "github.vscode-pull-request-github",
+    "ms-vscode.makefile-tools"
+  ]
+}

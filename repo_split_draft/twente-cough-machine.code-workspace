@@ -1,0 +1,36 @@
+{
+  "folders": [
+    { "name": "twente-cough-machine", "path": "." },
+    { "name": "control", "path": "control" },
+    { "name": "firmware", "path": "firmware" },
+    { "name": "hardware", "path": "hardware" },
+    { "name": "utils", "path": "utils" },
+    { "name": "analysis-piv", "path": "analysis/piv" },
+    { "name": "analysis-dropsize", "path": "analysis/dropsize" },
+    { "name": "analysis-video", "path": "analysis/video" },
+    { "name": "analysis-rheology", "path": "analysis/rheology" }
+  ],
+  "settings": {
+    "python.testing.pytestEnabled": true,
+    "python.testing.unittestEnabled": false,
+    "files.exclude": {
+      "**/.git": true,
+      "**/.DS_Store": true,
+      "**/__pycache__": true
+    },
+    "search.exclude": {
+      "**/.git": true,
+      "**/__pycache__": true
+    }
+  },
+  "extensions": {
+    "recommendations": [
+      "ms-python.python",
+      "ms-python.vscode-pylance",
+      "ms-toolsai.jupyter",
+      "platformio.platformio-ide",
+      "github.vscode-pull-request-github",
+      "ms-azuretools.vscode-docker"
+    ]
+  }
+}
