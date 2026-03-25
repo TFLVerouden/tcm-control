@@ -15,6 +15,8 @@ from tcm_utils.io_utils import prompt_input, prompt_yes_no, wait_with_progress
 from tcm_utils.time_utils import timestamp_str
 
 
+# TODO: Add option to not save any data
+
 # References to currently active devices, used by the Ctrl+C cleanup path.
 _ACTIVE_TCM: Optional[CoughMachine] = None
 _ACTIVE_PUMP: Optional[SyringePump] = None
