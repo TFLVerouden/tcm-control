@@ -316,7 +316,6 @@ def cough(config_path: Path | str | None = None) -> Path:
         match experiment_mode:
             # Manual mode
             case "manual":
-                temperature_start, humidity_start = tcm.read_temperature_humidity()
                 print(
                     f"Running in manual mode, for direct serial communication with {tcm.name}")
                 tcm.manual_mode()
@@ -345,7 +344,7 @@ def cough(config_path: Path | str | None = None) -> Path:
 
                         if core_inputs["confirm_before_starting_next_run"]:
                             prompt_yes_no(
-                                "Press ENTER to continue...",
+                                f"Press ENTER to continue with run {run_idx + 1}/{core_inputs['nr_runs']}...",
                                 default=True,
                             )
 
@@ -376,19 +375,33 @@ def cough(config_path: Path | str | None = None) -> Path:
 
             # Film mode
             case "film":
-
-                if core_inputs["nr_runs"] > 1:
-                    raise NotImplementedError(
-                        "Multi-run is not implemented for film mode yet.")
-                    # TODO: Implement multi-run for film mode
-
                 # Ask user to start the experiment
                 ask_start_confirmation(experiment_name=experiment_name)
 
                 # Record temperature and humidity
                 temperature_start, humidity_start = tcm.read_temperature_humidity()
 
-                first_run_log_path = tcm.run(output_dir=output_dir)
+                for run_idx in range(core_inputs["nr_runs"]):
+                    # Wait between coughs if needed
+                    if run_idx > 0:
+                        if core_inputs["multi_run_interval_s"] > 0:
+                            wait_with_progress(
+                                float(core_inputs["multi_run_interval_s"]),
+                                label=f"Waiting before starting run {run_idx + 1}/{core_inputs['nr_runs']}",
+                            )
+
+                        if core_inputs["confirm_before_starting_next_run"]:
+                            prompt_yes_no(
+                                f"Press ENTER to continue with run {run_idx + 1}/{core_inputs['nr_runs']}...",
+                                default=True,
+                            )
+
+                    run_log_path = tcm.run(
+                        output_dir=output_dir,
+                        run_nr_start=(run_idx + 1),
+                    )
+                    if run_idx == 0:
+                        first_run_log_path = run_log_path
 
             # PIV mode
             case "piv":
