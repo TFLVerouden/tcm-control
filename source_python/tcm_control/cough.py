@@ -10,8 +10,13 @@ from tcm_control.devices import CoughMachine, VerticalStage, SyringePump, SprayT
 from tcm_control import logger
 from tcm_control.init_config import load_experiment_config
 from tcm_control.processing import plot_run_log
-from tcm_utils.file_dialogs import ask_directory
-from tcm_utils.io_utils import prompt_input, prompt_yes_no, wait_with_progress
+from tcm_utils.file_dialogs import ensure_directory_path
+from tcm_utils.io_utils import (
+    ensure_non_empty_text,
+    prompt_input,
+    prompt_yes_no,
+    wait_with_progress,
+)
 from tcm_utils.time_utils import timestamp_str
 
 
@@ -157,6 +162,10 @@ def set_spraytec_xy(tcm_trachea_exit_to_ref_x_mm: float,
         tcm_trachea_exit_to_ref_y_mm + spraytec_to_ref_y_mm
     return spraytec_x, spraytec_y, stage_pos_x_mm, stage_pos_y_mm
 
+# -----------------------------------------------------------------------------
+# Main experiment flow
+# -----------------------------------------------------------------------------
+
 
 def cough(config_path: Path | str | None = None) -> Path:
     """Run a full experiment using a TOML configuration.
@@ -170,39 +179,25 @@ def cough(config_path: Path | str | None = None) -> Path:
     # Load and unpack normalized config dictionaries.
     config = load_experiment_config(config_path)
 
-    experiment_config = config["experiment"]
+    exp_conf = config["experiment"]
     core_inputs = config["inputs"]["core"]
     cough_machine_inputs = config["devices"]["cough_machine"]["inputs"]
     pump_inputs = config["devices"]["pump"]["inputs"]
     spraytec_inputs = config["devices"]["spraytec"]["inputs"]
-
-    experiment_name = experiment_config["name"]
-    if experiment_name is None:
-        while True:
-            prompted_name = prompt_input(
-                "Enter experiment name: ",
-                allow_empty=True,
-            )
-            experiment_name = (
-                "" if prompted_name is None else str(prompted_name).strip()
-            )
-            if experiment_name:
-                break
-            print("Experiment name cannot be empty.")
-
-    experiment_mode = experiment_config["mode"]
-    series_directory_value = experiment_config["series_directory"]
-    if series_directory_value is None:
-        selected_series_dir = ask_directory(
-            key="tcm_series_directory",
-            title="Select series directory",
-            start=Path(__file__).resolve().parent,
-        )
-        if selected_series_dir is None:
-            raise SystemExit("No series directory selected.")
-        series_directory = selected_series_dir
-    else:
-        series_directory = Path(series_directory_value)
+    experiment_name = ensure_non_empty_text(
+        exp_conf["name"],
+        prompt="Enter experiment name: ",
+        empty_error="Experiment name cannot be empty.",
+    )
+    experiment_mode = exp_conf["mode"]
+    series_directory = ensure_directory_path(
+        exp_conf["series_directory"],
+        key="tcm_series_directory",
+        title="Select series directory",
+        start=Path(__file__).resolve().parent,
+    )
+    if series_directory is None:
+        raise SystemExit("No series directory selected.")
 
     record_droplet_size = config["devices"]["spraytec"]["enabled"]
 
