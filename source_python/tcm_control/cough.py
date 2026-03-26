@@ -229,6 +229,7 @@ def cough(config_path: Path | str | None = None) -> Path:
     _ACTIVE_OUTPUT_DIR = output_dir
     console_log_path = logger.create_console_log_path(output_dir)
 
+    # Set up logger to write all prints to a file
     with logger.capture_terminal_output(console_log_path):
         print(f"Session console log file: {console_log_path}")
         print("Starting cough machine experiment, "
@@ -236,9 +237,11 @@ def cough(config_path: Path | str | None = None) -> Path:
 
         # Initialise cough machine and load flow curve.
         tcm = CoughMachine(debug=core_inputs["debug_mode"])
+
+        # Register device so interrupt cleanup can call quit() on it
         global _ACTIVE_TCM, _ACTIVE_PUMP
-        # Register device so interrupt cleanup can call quit() on it.
         _ACTIVE_TCM = tcm
+
         tcm.set_pressure(
             cough_machine_inputs["tank_pressure_bar"],
             timeout_s=cough_machine_inputs["tank_pressure_settling_time_s"],
@@ -260,6 +263,14 @@ def cough(config_path: Path | str | None = None) -> Path:
         # Store the resolved flow curve path for metadata traceability.
         cough_machine_inputs["flow_curve_csv_path"] = tcm.get_flowcurve_csv_path(
         )
+
+        # In droplet and PIV modes, set up the pump
+        if experiment_mode in ["droplet", "piv"]:
+            pump = SyringePump(
+                syringe_volume_ml=pump_inputs["syringe_volume_ml"])\
+
+            # Register pump so interrupt cleanup can call stop() on it
+            _ACTIVE_PUMP = pump
 
         # Optional SprayTec setup and geometry resolution.
         if record_droplet_size:
