@@ -302,14 +302,8 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
         "syringe_volume_ml": _optional_float(
             _nested_get(raw, "devices", "pump", "inputs", "syringe_volume_ml")
         ),
-        "droplet_pump_rate_ml_per_min": _optional_float(
-            _nested_get(
-                raw,
-                "devices",
-                "pump",
-                "inputs",
-                "droplet_pump_rate_ml_per_min",
-            )
+        "pump_rate_ml_per_min": _optional_float(
+            _nested_get(raw, "devices", "pump", "inputs", "pump_rate_ml_per_min")
         ),
         "nr_droplets_to_skip_before_recording": _required_non_negative_int(
             _nested_get(
@@ -320,18 +314,84 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
                 "nr_droplets_to_skip_before_recording",
             )
         ),
+        "piv_pump_start_before_run_s": float(
+            _nested_get(
+                raw,
+                "devices",
+                "pump",
+                "inputs",
+                "piv_pump_start_before_run_s",
+                default=0.0,
+            )
+        ),
+        "piv_pump_stop_after_run_s": float(
+            _nested_get(
+                raw,
+                "devices",
+                "pump",
+                "inputs",
+                "piv_pump_stop_after_run_s",
+                default=0.0,
+            )
+        ),
+        "piv_nebuliser_pressure_bar": float(
+            _nested_get(
+                raw,
+                "devices",
+                "pump",
+                "inputs",
+                "piv_nebuliser_pressure_bar",
+                default=0.5,
+            )
+        ),
     }
+    if pump_required and pump_inputs["syringe_volume_ml"] is None:
+        raise ValueError(
+            "Config [devices.pump.inputs].syringe_volume_ml must be set "
+            "for droplet and piv modes."
+        )
+
+    if experiment_mode in {"droplet", "piv"}:
+        if pump_inputs["pump_rate_ml_per_min"] is None:
+            raise ValueError(
+                "Config [devices.pump.inputs].pump_rate_ml_per_min "
+                "must be set for droplet and piv modes."
+            )
+
+    if experiment_mode == "piv":
+        if pump_inputs["piv_pump_start_before_run_s"] < 0:
+            raise ValueError(
+                "Config [devices.pump.inputs].piv_pump_start_before_run_s "
+                "must be >= 0."
+            )
+        if pump_inputs["piv_pump_stop_after_run_s"] < 0:
+            raise ValueError(
+                "Config [devices.pump.inputs].piv_pump_stop_after_run_s "
+                "must be >= 0."
+            )
+        if pump_inputs["piv_nebuliser_pressure_bar"] <= 0:
+            raise ValueError(
+                "Config [devices.pump.inputs].piv_nebuliser_pressure_bar "
+                "must be > 0."
+            )
+
     if not pump_required:
         pump_inputs = {
             "syringe_volume_ml": None,
-            "droplet_pump_rate_ml_per_min": None,
+            "pump_rate_ml_per_min": None,
             "nr_droplets_to_skip_before_recording": 0,
+            "piv_pump_start_before_run_s": 0.0,
+            "piv_pump_stop_after_run_s": 0.0,
+            "piv_nebuliser_pressure_bar": None,
         }
 
     record_droplet_size = bool(
         _nested_get(raw, "devices", "spraytec",
                     "record_droplet_size", default=False)
     )
+    # SprayTec is intentionally disabled in PIV mode.
+    if experiment_mode == "piv":
+        record_droplet_size = False
 
     # ------------------------------------------------------------------
     # SprayTec inputs (validated only when enabled)

@@ -2,6 +2,7 @@
 
 import signal
 import shutil
+import time
 from pathlib import Path
 
 from typing import Optional
@@ -264,7 +265,7 @@ def cough(config_path: Path | str | None = None) -> Path:
         # In droplet and PIV modes, set up the pump
         if experiment_mode in ["droplet", "piv"]:
             pump = SyringePump(
-                syringe_volume_ml=pump_inputs["syringe_volume_ml"])\
+                syringe_volume_ml=pump_inputs["syringe_volume_ml"])
 
             # Register pump so interrupt cleanup can call stop() on it
             _ACTIVE_PUMP = pump
@@ -322,10 +323,7 @@ def cough(config_path: Path | str | None = None) -> Path:
 
             # Droplet mode
             case "droplet":
-                pump = SyringePump(
-                    syringe_volume_ml=pump_inputs["syringe_volume_ml"])
-                # Register pump so interrupt cleanup can call stop() on it.
-                _ACTIVE_PUMP = pump
+                assert pump is not None
 
                 # Wait for user to start the experiment
                 ask_start_confirmation(experiment_name=experiment_name)
@@ -334,23 +332,9 @@ def cough(config_path: Path | str | None = None) -> Path:
                 temperature_start, humidity_start = tcm.read_temperature_humidity()
 
                 for run_idx in range(core_inputs["nr_runs"]):
-                    # Wait between coughs if needed
-                    if run_idx > 0:
-                        if core_inputs["multi_run_interval_s"] > 0:
-                            wait_with_progress(
-                                float(core_inputs["multi_run_interval_s"]),
-                                label=f"Waiting before starting run {run_idx + 1}/{core_inputs['nr_runs']}",
-                            )
-
-                        if core_inputs["confirm_before_starting_next_run"]:
-                            prompt_yes_no(
-                                f"Press ENTER to continue with run {run_idx + 1}/{core_inputs['nr_runs']}...",
-                                default=True,
-                            )
-
                     # Turn on syringe pump
                     pump.infuse(
-                        pump_rate_ml_mn=pump_inputs["droplet_pump_rate_ml_per_min"])
+                        pump_rate_ml_mn=pump_inputs["pump_rate_ml_per_min"])
 
                     # Optionally let pump run before recording
                     nr_droplets_to_skip = pump_inputs[
@@ -372,6 +356,20 @@ def cough(config_path: Path | str | None = None) -> Path:
 
                     # Turn off pump
                     pump.stop()
+
+                    is_last_run = run_idx == (core_inputs["nr_runs"] - 1)
+                    if not is_last_run:
+                        if core_inputs["multi_run_interval_s"] > 0:
+                            wait_with_progress(
+                                float(core_inputs["multi_run_interval_s"]),
+                                label=f"Waiting before starting run {run_idx + 2}/{core_inputs['nr_runs']}",
+                            )
+
+                        if core_inputs["confirm_before_starting_next_run"]:
+                            prompt_yes_no(
+                                f"Press ENTER to continue with run {run_idx + 2}/{core_inputs['nr_runs']}...",
+                                default=True,
+                            )
 
             # Film mode
             case "film":
@@ -405,7 +403,67 @@ def cough(config_path: Path | str | None = None) -> Path:
 
             # PIV mode
             case "piv":
-                raise NotImplementedError("PIV mode not implemented yet.")
+                assert pump is not None
+
+                piv_nebuliser_pressure_bar = pump_inputs["piv_nebuliser_pressure_bar"]
+                pump_rate_ml_per_min = pump_inputs["pump_rate_ml_per_min"]
+                assert piv_nebuliser_pressure_bar is not None
+                assert pump_rate_ml_per_min is not None
+
+                confirm_piv_ready = prompt_yes_no(
+                    "Press ENTER to confirm the nebuliser is pressurised to "
+                    f"{piv_nebuliser_pressure_bar} bar...",
+                    default=True,
+                )
+                if not confirm_piv_ready:
+                    print("Aborted.")
+                    exit(1)
+
+                # Ask user to start the experiment
+                ask_start_confirmation(experiment_name=experiment_name)
+
+                # Record temperature and humidity
+                temperature_start, humidity_start = tcm.read_temperature_humidity()
+
+                for run_idx in range(core_inputs["nr_runs"]):
+                    pump.infuse(pump_rate_ml_mn=pump_rate_ml_per_min)
+                    try:
+                        if pump_inputs["piv_pump_start_before_run_s"] > 0:
+                            print(
+                                f"Waiting {pump_inputs['piv_pump_start_before_run_s']} s before run {run_idx + 1}/{core_inputs['nr_runs']}"
+                            )
+                            time.sleep(
+                                float(pump_inputs["piv_pump_start_before_run_s"]))
+
+                        run_log_path = tcm.run(
+                            output_dir=output_dir,
+                            run_nr_start=(run_idx + 1),
+                        )
+                        if run_idx == 0:
+                            first_run_log_path = run_log_path
+
+                        if pump_inputs["piv_pump_stop_after_run_s"] > 0:
+                            print(
+                                f"Waiting {pump_inputs['piv_pump_stop_after_run_s']} s after run {run_idx + 1}/{core_inputs['nr_runs']}"
+                            )
+                            time.sleep(
+                                float(pump_inputs["piv_pump_stop_after_run_s"]))
+                    finally:
+                        pump.stop()
+
+                    is_last_run = run_idx == (core_inputs["nr_runs"] - 1)
+                    if not is_last_run:
+                        if core_inputs["multi_run_interval_s"] > 0:
+                            wait_with_progress(
+                                float(core_inputs["multi_run_interval_s"]),
+                                label=f"Waiting before starting run {run_idx + 2}/{core_inputs['nr_runs']}",
+                            )
+
+                        if core_inputs["confirm_before_starting_next_run"]:
+                            prompt_yes_no(
+                                f"Press ENTER to continue with run {run_idx + 2}/{core_inputs['nr_runs']}...",
+                                default=True,
+                            )
 
         # Finish off
         if experiment_mode != "manual":

@@ -273,7 +273,7 @@ def build_run_metadata(
                 "resolved": {
                     "syringe_volume_ml": getattr(pump, "syringe_volume_ml", None),
                     "rate_ml_per_min": (
-                        pump_inputs.get("droplet_pump_rate_ml_per_min")
+                        pump_inputs.get("pump_rate_ml_per_min")
                         if experiment_mode in ["droplet", "piv"]
                         else None
                     ),

@@ -226,6 +226,7 @@ class SprayTec:
                     self.combined_metadata = build_combined_spraytec_metadata(
                         self.loaded_csvs
                     )
+                # TODO: It is inefficient to load the data again here.
                 except ValueError:
                     self.loaded_csvs = []
                     self.combined_metadata = None

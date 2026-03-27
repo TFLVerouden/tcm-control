@@ -22,8 +22,11 @@ tank_pressure_intermediate_time_s = ""    # set together with tank_pressure_inte
 
 [devices.pump.inputs]
 syringe_volume_ml = 2.5
-droplet_pump_rate_ml_per_min = 0.1
+pump_rate_ml_per_min = 0.1
 nr_droplets_to_skip_before_recording = 5
+piv_pump_start_before_run_s = 0.0
+piv_pump_stop_after_run_s = 0.0
+piv_nebuliser_pressure_bar = 0.5
 
 [devices.spraytec]
 record_droplet_size = false
