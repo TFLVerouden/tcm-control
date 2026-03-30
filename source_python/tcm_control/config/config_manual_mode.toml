@@ -11,11 +11,11 @@ confirm_before_starting_next_run = true
 wait_before_run_ms = 67.5
 
 [devices.cough_machine.inputs]
-flow_curve_csv_path = "tijn_cough"
+flow_curve_csv_path = "just_trigger"
 tank_pressure_bar = 1.5
 tank_pressure_settling_time_s = 60.0
-tank_pressure_avg_window_s = 5.0
-tank_pressure_tolerance_bar = 0.05
+tank_pressure_avg_window_s = 0.1
+tank_pressure_tolerance_bar = 1.0
 tank_pressure_poll_interval_s = 0.2
 tank_pressure_intermediate_diff_bar = -0.1 # set together with tank_pressure_intermediate_time_s (empty disables)
 tank_pressure_intermediate_time_s = 2    # set together with tank_pressure_intermediate_diff_bar (empty disables)
