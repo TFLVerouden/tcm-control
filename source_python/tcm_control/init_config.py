@@ -10,7 +10,7 @@ from tcm_utils.file_dialogs import ask_open_file
 import tomllib
 
 
-VALID_EXPERIMENT_MODES = {"droplet", "film", "piv", "manual", "clean"}
+VALID_EXPERIMENT_MODES = {"droplet", "film", "piv", "manual"}
 PUMP_REQUIRED_MODES = {"droplet", "piv"}
 
 
@@ -307,7 +307,8 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             _nested_get(raw, "devices", "pump", "inputs", "syringe_volume_ml")
         ),
         "pump_rate_ml_per_min": _optional_float(
-            _nested_get(raw, "devices", "pump", "inputs", "pump_rate_ml_per_min")
+            _nested_get(raw, "devices", "pump",
+                        "inputs", "pump_rate_ml_per_min")
         ),
         "nr_droplets_to_skip_before_recording": _required_non_negative_int(
             _nested_get(
@@ -393,8 +394,8 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
         _nested_get(raw, "devices", "spraytec",
                     "record_droplet_size", default=False)
     )
-    # SprayTec is intentionally disabled in PIV and clean modes.
-    if experiment_mode in {"piv", "clean"}:
+    # SprayTec is intentionally disabled in PIV mode.
+    if experiment_mode == "piv":
         record_droplet_size = False
 
     # ------------------------------------------------------------------

@@ -179,7 +179,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         config_path: Optional TOML path. If omitted, a file picker opens.
 
     Returns:
-        The experiment output directory path, or None in clean mode.
+        The experiment output directory path, or None when saving is disabled.
     """
     global _ACTIVE_TCM, _ACTIVE_PUMP, _ACTIVE_OUTPUT_DIR
 
@@ -193,32 +193,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     spraytec_inputs = config["devices"]["spraytec"]["inputs"]
     experiment_mode = exp_conf["mode"]
     save_data = bool(exp_conf.get("save_data", True))
-
-    # Dedicated maintenance mode: run cleaning only and skip data/log outputs.
-    if experiment_mode == "clean":
-        print("Starting cough machine clean mode (no data will be saved)")
-        tcm = CoughMachine(debug=core_inputs["debug_mode"])
-
-        _ACTIVE_TCM = tcm
-        _ACTIVE_PUMP = None
-        _ACTIVE_OUTPUT_DIR = None
-
-        tcm.set_pressure(
-            cough_machine_inputs["tank_pressure_bar"],
-            timeout_s=cough_machine_inputs["tank_pressure_settling_time_s"],
-            avg_window_s=cough_machine_inputs["tank_pressure_avg_window_s"],
-            tolerance_bar=cough_machine_inputs["tank_pressure_tolerance_bar"],
-            poll_interval_s=cough_machine_inputs["tank_pressure_poll_interval_s"],
-            interm_press_diff_bar=cough_machine_inputs[
-                "tank_pressure_intermediate_diff_bar"
-            ],
-            interm_press_time_s=cough_machine_inputs[
-                "tank_pressure_intermediate_time_s"
-            ],
-        )
-        tcm.clean()
-        print("Cleaning routine completed. No data was saved.")
-        return None
 
     experiment_name = ensure_non_empty_text(
         exp_conf["name"],

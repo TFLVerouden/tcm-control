@@ -364,7 +364,9 @@ class CoughMachine(PoFSerialDevice):
               `prop_valve_close_current_ma`
 
         After all cycles (or on failure), the previous pressure setpoint is
-        restored automatically using `set_pressure`.
+        restored automatically using `set_pressure`. When no host-side
+        setpoint is known, the current sensor readback is used as the fallback
+        restore target.
         """
         if pressure_bar < 0 or pressure_bar > MAX_PRESSURE_BAR:
             raise ValueError(
@@ -376,10 +378,8 @@ class CoughMachine(PoFSerialDevice):
 
         original_setpoint_bar = self._target_pressure_bar
         if original_setpoint_bar is None:
-            raise RuntimeError(
-                "Cannot run clean() before a pressure setpoint is established. "
-                "Call set_pressure() at least once first."
-            )
+            original_setpoint_bar = self.read_pressure(echo=False)
+        restore_original_setpoint = original_setpoint_bar is not None
 
         try:
             for cycle_idx in range(1, repeats + 1):
@@ -398,7 +398,7 @@ class CoughMachine(PoFSerialDevice):
                     echo=echo,
                 )
 
-                opening_msg = f"{self.name} cleaning cycle (opening valves)"
+                opening_msg = f"{self.name} cleaning cycle {cycle_idx}/{repeats} (opening valves)"
                 pressure_msg_len = len(
                     f"{self.name} cleaning cycle {cycle_idx}/{repeats} "
                     f"(pressure -.--/{pressure_bar:.2f} bar)"
@@ -414,18 +414,19 @@ class CoughMachine(PoFSerialDevice):
                 finally:
                     self.set_valve_current(12, echo=echo)
         finally:
-            self.set_pressure(
-                original_setpoint_bar,
-                timeout_s=settle_timeout_s,
-                avg_window_s=settle_avg_window_s,
-                tolerance_bar=settle_tolerance_bar,
-                poll_interval_s=settle_poll_interval_s,
-                status_prefix=f"{self.name} restoring pressure (pressure",
-                status_suffix=")",
-                show_status=False,
-                print_newline_on_exit=False,
-                echo=echo,
-            )
+            if restore_original_setpoint:
+                self.set_pressure(
+                    original_setpoint_bar,
+                    timeout_s=settle_timeout_s,
+                    avg_window_s=settle_avg_window_s,
+                    tolerance_bar=settle_tolerance_bar,
+                    poll_interval_s=settle_poll_interval_s,
+                    status_prefix=f"{self.name} restoring pressure (pressure",
+                    status_suffix=")",
+                    show_status=False,
+                    print_newline_on_exit=False,
+                    echo=echo,
+                )
             print()
 
     def quit(self, *, echo: Optional[bool] = None) -> str:
