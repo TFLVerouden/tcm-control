@@ -1,7 +1,7 @@
 [experiment]
 name = "" # keep empty to prompt
 mode = "droplet" # droplet | film | piv | manual
-series_directory = "" # keep empty to prompt
+series_directory = "" # keep empty to prompt; set to "None" to disable saving data
 
 [inputs.core]
 debug_mode = false

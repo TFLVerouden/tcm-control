@@ -1,5 +1,6 @@
 """Main experiment runner for the Twente Cough Machine."""
 
+from contextlib import nullcontext
 import signal
 import shutil
 import time
@@ -20,8 +21,6 @@ from tcm_utils.io_utils import (
 )
 from tcm_utils.time_utils import timestamp_str
 
-
-# TODO: Add option to not save any data, maybe by setting series_directory to None
 # TODO: Move variables around in config: wait_before_run_ms should be under cough_machine inputs, maybe have a cough_machine.tank category
 
 # References to currently active devices, used by the Ctrl+C cleanup path.
@@ -173,15 +172,17 @@ def set_spraytec_xy(tcm_trachea_exit_to_ref_x_mm: float,
 # -----------------------------------------------------------------------------
 
 
-def cough(config_path: Path | str | None = None) -> Path:
+def cough(config_path: Path | str | None = None) -> Optional[Path]:
     """Run a full experiment using a TOML configuration.
 
     Args:
         config_path: Optional TOML path. If omitted, a file picker opens.
 
     Returns:
-        The experiment output directory path.
+        The experiment output directory path, or None in clean mode.
     """
+    global _ACTIVE_TCM, _ACTIVE_PUMP, _ACTIVE_OUTPUT_DIR
+
     # Load and unpack normalized config dictionaries.
     config = load_experiment_config(config_path)
 
@@ -190,20 +191,52 @@ def cough(config_path: Path | str | None = None) -> Path:
     cough_machine_inputs = config["devices"]["cough_machine"]["inputs"]
     pump_inputs = config["devices"]["pump"]["inputs"]
     spraytec_inputs = config["devices"]["spraytec"]["inputs"]
+    experiment_mode = exp_conf["mode"]
+    save_data = bool(exp_conf.get("save_data", True))
+
+    # Dedicated maintenance mode: run cleaning only and skip data/log outputs.
+    if experiment_mode == "clean":
+        print("Starting cough machine clean mode (no data will be saved)")
+        tcm = CoughMachine(debug=core_inputs["debug_mode"])
+
+        _ACTIVE_TCM = tcm
+        _ACTIVE_PUMP = None
+        _ACTIVE_OUTPUT_DIR = None
+
+        tcm.set_pressure(
+            cough_machine_inputs["tank_pressure_bar"],
+            timeout_s=cough_machine_inputs["tank_pressure_settling_time_s"],
+            avg_window_s=cough_machine_inputs["tank_pressure_avg_window_s"],
+            tolerance_bar=cough_machine_inputs["tank_pressure_tolerance_bar"],
+            poll_interval_s=cough_machine_inputs["tank_pressure_poll_interval_s"],
+            interm_press_diff_bar=cough_machine_inputs[
+                "tank_pressure_intermediate_diff_bar"
+            ],
+            interm_press_time_s=cough_machine_inputs[
+                "tank_pressure_intermediate_time_s"
+            ],
+        )
+        tcm.clean()
+        print("Cleaning routine completed. No data was saved.")
+        return None
+
     experiment_name = ensure_non_empty_text(
         exp_conf["name"],
         prompt="Enter experiment name: ",
         empty_error="Experiment name cannot be empty.",
     )
-    experiment_mode = exp_conf["mode"]
-    series_directory = ensure_directory_path(
-        exp_conf["series_directory"],
-        key="tcm_series_directory",
-        title="Select series directory",
-        start=Path(__file__).resolve().parent,
-    )
-    if series_directory is None:
-        raise SystemExit("No series directory selected.")
+    if save_data:
+        series_directory = ensure_directory_path(
+            exp_conf["series_directory"],
+            key="tcm_series_directory",
+            title="Select series directory",
+            start=Path(__file__).resolve().parent,
+        )
+        if series_directory is None:
+            raise SystemExit("No series directory selected.")
+    else:
+        series_directory = None
+        print("Data saving disabled via config setting series_directory='None'.")
 
     record_droplet_size = config["devices"]["spraytec"]["enabled"]
 
@@ -223,17 +256,25 @@ def cough(config_path: Path | str | None = None) -> Path:
     # Prepare output folder and device state variables
     # ------------------------------------------------------------------
 
-    # Create output directory for this experiment.
     time_start = timestamp_str()
-    output_dir = logger.create_experiment_dir(
-        series_directory, experiment_name, start_time=time_start)
-    global _ACTIVE_OUTPUT_DIR
-    _ACTIVE_OUTPUT_DIR = output_dir
-    console_log_path = logger.create_console_log_path(output_dir)
+    output_dir: Optional[Path] = None
+    console_log_path: Optional[Path] = None
+    if save_data:
+        assert series_directory is not None
+        # Create output directory for this experiment.
+        output_dir = logger.create_experiment_dir(
+            series_directory, experiment_name, start_time=time_start)
+        _ACTIVE_OUTPUT_DIR = output_dir
+        console_log_path = logger.create_console_log_path(output_dir)
+        logging_context = logger.capture_terminal_output(console_log_path)
+    else:
+        _ACTIVE_OUTPUT_DIR = None
+        logging_context = nullcontext()
 
-    # Set up logger to write all prints to a file
-    with logger.capture_terminal_output(console_log_path):
-        print(f"Session console log file: {console_log_path}")
+    # Set up logger to write all prints to a file when saving is enabled.
+    with logging_context:
+        if console_log_path is not None:
+            print(f"Session console log file: {console_log_path}")
         print("Starting cough machine experiment, "
               "press Ctrl+C at any time to abort and safely exit")
 
@@ -241,7 +282,6 @@ def cough(config_path: Path | str | None = None) -> Path:
         tcm = CoughMachine(debug=core_inputs["debug_mode"])
 
         # Register device so interrupt cleanup can call quit() on it
-        global _ACTIVE_TCM, _ACTIVE_PUMP
         _ACTIVE_TCM = tcm
 
         tcm.set_pressure(
@@ -260,7 +300,7 @@ def cough(config_path: Path | str | None = None) -> Path:
         tcm.set_wait_us(wait_us=wait_before_run_us)
         tcm.load_flowcurve(
             csv_path=cough_machine_inputs["flow_curve_csv_path"],
-            experiment_dir=output_dir,
+            experiment_dir=output_dir if save_data else None,
         )
         # Store the resolved flow curve path for metadata traceability.
         cough_machine_inputs["flow_curve_csv_path"] = tcm.get_flowcurve_csv_path(
@@ -354,6 +394,7 @@ def cough(config_path: Path | str | None = None) -> Path:
                         nr_runs=1,
                         output_dir=output_dir,
                         run_nr_start=(run_idx + 1),
+                        save_logs=save_data,
                     )
                     if run_idx == 0 and saved_run_log_paths:
                         first_run_log_path = saved_run_log_paths[0]
@@ -401,6 +442,7 @@ def cough(config_path: Path | str | None = None) -> Path:
                     run_log_path = tcm.run(
                         output_dir=output_dir,
                         run_nr_start=(run_idx + 1),
+                        save_logs=save_data,
                     )
                     if run_idx == 0:
                         first_run_log_path = run_log_path
@@ -442,6 +484,7 @@ def cough(config_path: Path | str | None = None) -> Path:
                         run_log_path = tcm.run(
                             output_dir=output_dir,
                             run_nr_start=(run_idx + 1),
+                            save_logs=save_data,
                         )
                         if run_idx == 0:
                             first_run_log_path = run_log_path
@@ -474,7 +517,8 @@ def cough(config_path: Path | str | None = None) -> Path:
                             )
 
         # Finish off
-        if experiment_mode != "manual":
+        if save_data and experiment_mode != "manual":
+            assert output_dir is not None
             if first_run_log_path is not None:
                 plot_run_log(
                     run_log_path=first_run_log_path,
@@ -534,6 +578,11 @@ def cough(config_path: Path | str | None = None) -> Path:
                 experiment_dir=output_dir, metadata=metadata)
 
             print("Experiment completed, all data saved to ", output_dir)
+            print("Exiting.")
+        else:
+            print("Experiment completed.")
+            if not save_data:
+                print("No data was saved (series_directory='None').")
             print("Exiting.")
 
     # Return output directory

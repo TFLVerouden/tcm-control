@@ -10,7 +10,7 @@ from tcm_utils.file_dialogs import ask_open_file
 import tomllib
 
 
-VALID_EXPERIMENT_MODES = {"droplet", "film", "piv", "manual"}
+VALID_EXPERIMENT_MODES = {"droplet", "film", "piv", "manual", "clean"}
 PUMP_REQUIRED_MODES = {"droplet", "piv"}
 
 
@@ -165,6 +165,10 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
         )
 
     series_directory = _normalize_optional_path_string(series_directory_raw)
+    save_data = True
+    if series_directory is not None and series_directory.strip().lower() == "none":
+        series_directory = None
+        save_data = False
 
     # ------------------------------------------------------------------
     # Core timing and run controls
@@ -389,8 +393,8 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
         _nested_get(raw, "devices", "spraytec",
                     "record_droplet_size", default=False)
     )
-    # SprayTec is intentionally disabled in PIV mode.
-    if experiment_mode == "piv":
+    # SprayTec is intentionally disabled in PIV and clean modes.
+    if experiment_mode in {"piv", "clean"}:
         record_droplet_size = False
 
     # ------------------------------------------------------------------
@@ -495,6 +499,7 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             "name": experiment_name,
             "mode": experiment_mode,
             "series_directory": Path(series_directory) if series_directory else None,
+            "save_data": save_data,
         },
         "inputs": {
             "core": core_inputs,
