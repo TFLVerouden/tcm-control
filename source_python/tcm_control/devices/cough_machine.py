@@ -55,6 +55,7 @@ class CoughMachine(PoFSerialDevice):
         self._assert_protocol_compatibility(echo=echo)
 
         self._wait_us: Optional[int] = None
+        self._target_pressure_bar: Optional[float] = None
         self._dataset_loaded = False
         self._flowcurve_csv_path: Optional[Path] = None
 
@@ -195,6 +196,10 @@ class CoughMachine(PoFSerialDevice):
         poll_interval_s: float = 0.2,
         interm_press_diff_bar: Optional[float] = None,
         interm_press_time_s: Optional[float] = None,
+        status_prefix: Optional[str] = None,
+        status_suffix: str = "",
+        show_status: bool = True,
+        print_newline_on_exit: bool = True,
         echo: Optional[bool] = None,
     ) -> str:
         """Set target pressure with `P <bar>` and wait for stable measured pressure.
@@ -218,6 +223,8 @@ class CoughMachine(PoFSerialDevice):
         if (interm_press_diff_bar is not None) != (interm_press_time_s is not None):
             raise ValueError(
                 "Both interm_press_diff_bar and interm_press_time_s must be provided together")
+        if status_prefix is None:
+            status_prefix = f"{self.name} tank pressure settling:"
 
         # Track previous status-line length so shorter updates can clear tail chars.
         last_status_len = 0
@@ -250,10 +257,11 @@ class CoughMachine(PoFSerialDevice):
                     cutoff = now - avg_window_s
                     samples = [(t, p) for t, p in samples if t >= cutoff]
 
-                    _print_settling_status(
-                        f"{self.name} tank pressure settling: "
-                        f"{reading:.2f}/{target_bar:.2f} bar{status_suffix}"
-                    )
+                    if show_status:
+                        _print_settling_status(
+                            f"{status_prefix} "
+                            f"{reading:.2f}/{target_bar:.2f} bar{status_suffix}"
+                        )
 
                     # For final setpoint settling, require the rolling average to
                     # stay within tolerance before reporting success.
@@ -262,10 +270,11 @@ class CoughMachine(PoFSerialDevice):
                         if abs(avg - target_bar) <= tolerance_bar:
                             return True
                 else:
-                    _print_settling_status(
-                        f"{self.name} tank pressure settling: "
-                        f"-.--/{target_bar:.2f} bar{status_suffix}"
-                    )
+                    if show_status:
+                        _print_settling_status(
+                            f"{status_prefix} "
+                            f"-.--/{target_bar:.2f} bar{status_suffix}"
+                        )
 
                 time.sleep(poll_interval_s)
 
@@ -300,9 +309,14 @@ class CoughMachine(PoFSerialDevice):
             pressure_bar,
             timeout_s,
             require_settle=True,
+            status_suffix=status_suffix,
         )
-        print()
+        if show_status and print_newline_on_exit:
+            print()
         if settled:
+            # Remember the active pressure setpoint so routines (e.g. cleaning)
+            # can restore it later without requiring caller-managed state.
+            self._target_pressure_bar = pressure_bar
             return reply or ""
 
         raise RuntimeError(
@@ -327,6 +341,92 @@ class CoughMachine(PoFSerialDevice):
             "C", expected="SOLENOID_CLOSED", echo=echo
         )
         return reply or ""
+
+    def clean(
+        self,
+        *,
+        pressure_bar: float = 4.0,
+        open_duration_s: float = 2.5,
+        repeats: int = 3,
+        settle_timeout_s: float = 120.0,
+        settle_avg_window_s: float = 5.0,
+        settle_tolerance_bar: float = 0.05,
+        settle_poll_interval_s: float = 0.2,
+        echo: Optional[bool] = None,
+    ) -> None:
+        """Run a tank/valve cleaning routine and restore prior pressure setpoint.
+
+        The routine repeats:
+        1) set tank pressure to `pressure_bar`
+          2) set proportional valve current to `prop_valve_open_current_ma`
+          3) open solenoid for `open_duration_s`
+          4) close solenoid and set proportional valve current to
+              `prop_valve_close_current_ma`
+
+        After all cycles (or on failure), the previous pressure setpoint is
+        restored automatically using `set_pressure`.
+        """
+        if pressure_bar < 0 or pressure_bar > MAX_PRESSURE_BAR:
+            raise ValueError(
+                f"pressure_bar must be between 0 and {MAX_PRESSURE_BAR} bar")
+        if open_duration_s <= 0:
+            raise ValueError("open_duration_s must be > 0")
+        if repeats <= 0:
+            raise ValueError("repeats must be >= 1")
+
+        original_setpoint_bar = self._target_pressure_bar
+        if original_setpoint_bar is None:
+            raise RuntimeError(
+                "Cannot run clean() before a pressure setpoint is established. "
+                "Call set_pressure() at least once first."
+            )
+
+        try:
+            for cycle_idx in range(1, repeats + 1):
+                self.set_pressure(
+                    pressure_bar,
+                    timeout_s=settle_timeout_s,
+                    avg_window_s=settle_avg_window_s,
+                    tolerance_bar=settle_tolerance_bar,
+                    poll_interval_s=settle_poll_interval_s,
+                    status_prefix=(
+                        f"{self.name} cleaning cycle {cycle_idx}/{repeats} "
+                        "(pressure"
+                    ),
+                    status_suffix=")",
+                    print_newline_on_exit=False,
+                    echo=echo,
+                )
+
+                opening_msg = f"{self.name} cleaning cycle (opening valves)"
+                pressure_msg_len = len(
+                    f"{self.name} cleaning cycle {cycle_idx}/{repeats} "
+                    f"(pressure -.--/{pressure_bar:.2f} bar)"
+                )
+                clear_tail = max(0, pressure_msg_len - len(opening_msg))
+                print(f"\r{opening_msg}{' ' * clear_tail}", end="", flush=True)
+
+                self.set_valve_current(20, echo=echo)
+                try:
+                    self.open_solenoid(echo=echo)
+                    time.sleep(open_duration_s)
+                    self.close_solenoid(echo=echo)
+                finally:
+                    self.set_valve_current(12, echo=echo)
+        finally:
+            self.set_pressure(
+                original_setpoint_bar,
+                timeout_s=settle_timeout_s,
+                avg_window_s=settle_avg_window_s,
+                tolerance_bar=settle_tolerance_bar,
+                poll_interval_s=settle_poll_interval_s,
+                status_prefix=f"{self.name} restoring pressure (pressure",
+                status_suffix=")",
+                show_status=False,
+                print_newline_on_exit=False,
+                echo=echo,
+            )
+            print()
 
     def quit(self, *, echo: Optional[bool] = None) -> str:
         """Abort active MCU modes and return to idle using `Q`.
@@ -753,7 +853,7 @@ class CoughMachine(PoFSerialDevice):
                     and sol_str.lower() == "sol_valve"
                     and trig_str.lower() == "trig"
                 ):
-                    has_header = True
+                    # has_header = True
                     continue
 
                 if not time_str or not current_str or sol_str == "" or trig_str == "":
@@ -789,8 +889,8 @@ class CoughMachine(PoFSerialDevice):
 
         if not time_arr or not mA_arr or not sol_enable_arr or not trig_enable_arr:
             raise ValueError("CSV contains no data.")
-        if has_header:
-            print(f"Detected and skipped CSV header in {filename}")
+        # if has_header:
+            # print(f"Detected and skipped CSV header in {filename}")
         return time_arr, mA_arr, sol_enable_arr, trig_enable_arr
 
     @staticmethod

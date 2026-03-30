@@ -453,7 +453,11 @@ def cough(config_path: Path | str | None = None) -> Path:
                             time.sleep(
                                 float(pump_inputs["piv_pump_stop_after_run_s"]))
                     finally:
+                        # Stop pump
                         pump.stop()
+
+                        # Run channel cleaning routine
+                        tcm.clean()
 
                     is_last_run = run_idx == (core_inputs["nr_runs"] - 1)
                     if not is_last_run:
