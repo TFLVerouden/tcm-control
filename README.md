@@ -12,6 +12,22 @@ This project uses two separate version numbers:
 
 The protocol should be a single integer: host and MCU protocol versions must match exactly. The version number is increased when communication changes in a breaking way.
 
+## Config and metadata extension guide
+
+Use this checklist when adding a new configuration value and writing it to run metadata.
+
+1. Add or update the value in the experiment TOML.
+2. Ensure it is normalized in `load_experiment_config(...)` in `source_python/tcm_control/init_config.py`.
+3. Read the value in `source_python/tcm_control/cough.py` from the appropriate config block (`core_inputs`, `cough_machine_inputs`, `pump_inputs`, `spraytec_inputs`).
+4. Add the value to either `run_context` (run-level fields) or `device_context` (device/config fields) in `cough.py` where metadata is assembled.
+5. Map it into the output schema in `build_run_metadata(...)` in `source_python/tcm_control/logger.py`.
+6. Run one experiment and inspect `metadata.json` in the output directory.
+
+Rule of thumb:
+- Put values in `run_context` when they describe the run as a whole (timing, mode, ambient readings, comments).
+- Put values in `device_context` when they belong to one hardware subsystem or its resolved settings.
+
+
 ## VS Code workspace settings
 This repository tracks only `.vscode/settings.json` for shared Python run/interpreter behavior.
 Keep other `.vscode` files local (they are ignored by `.gitignore`) unless the team explicitly decides to share them.

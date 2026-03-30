@@ -515,31 +515,41 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                                                          offer_archive_if_large=True,
                                                          )
 
+            # Group run-level values in one dictionary to keep metadata wiring compact.
+            run_context = {
+                "time_start": time_start,
+                "time_finish": time_finish,
+                "experiment_name": experiment_name,
+                "experiment_mode": experiment_mode,
+                "output_dir": output_dir,
+                "wait_before_run_us": wait_before_run_us,
+                "temperature_start": temperature_start,
+                "humidity_start": humidity_start,
+                "temperature_finish": temperature_finish,
+                "humidity_finish": humidity_finish,
+                "comments": comments,
+            }
+
+            # Group device/config values separately for easier extension per device.
+            device_context = {
+                "tcm": tcm,
+                "cough_machine_inputs": cough_machine_inputs,
+                "pump": pump,
+                "pump_inputs": pump_inputs,
+                "record_droplet_size": record_droplet_size,
+                "spraytec_inputs": spraytec_inputs,
+                "spraytec_x": spraytec_x,
+                "spraytec_y": spraytec_y,
+                "spraytec_z": spraytec_z,
+                "spraytec_audit_path": spraytec_audit_path,
+                "lift_height": lift_height,
+                "lift": lift,
+            }
+
             metadata = logger.build_run_metadata(
-                time_start=time_start,
-                time_finish=time_finish,
-                experiment_name=experiment_name,
-                experiment_mode=experiment_mode,
-                output_dir=output_dir,
-                wait_before_run_us=wait_before_run_us,
-                temperature_start=temperature_start,
-                humidity_start=humidity_start,
-                temperature_finish=temperature_finish,
-                humidity_finish=humidity_finish,
-                comments=comments,
+                run_context=run_context,
                 core_inputs=core_inputs,
-                tcm=tcm,
-                cough_machine_inputs=cough_machine_inputs,
-                pump=pump,
-                pump_inputs=pump_inputs,
-                record_droplet_size=record_droplet_size,
-                spraytec_inputs=spraytec_inputs,
-                spraytec_x=spraytec_x,
-                spraytec_y=spraytec_y,
-                spraytec_z=spraytec_z,
-                spraytec_audit_path=spraytec_audit_path,
-                lift_height=lift_height,
-                lift=lift,
+                device_context=device_context,
             )
             # Persist full run metadata snapshot.
             logger.write_run_metadata(
