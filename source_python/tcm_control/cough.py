@@ -9,7 +9,7 @@ from typing import Optional
 
 from tcm_control.devices import CoughMachine, VerticalStage, SyringePump, SprayTec
 from tcm_control import logger
-from tcm_control.config_init import load_experiment_config
+from tcm_control.initialise_config import load_experiment_config
 from tcm_control.interrupt_handling import (
     cleanup_on_interrupt,
     handle_sigint,
@@ -31,8 +31,6 @@ from tcm_utils.io_utils import (
     prompt_yes_no,
 )
 from tcm_utils.time_utils import timestamp_str
-
-# TODO: Move variables around in config: wait_before_run_ms should be under cough_machine inputs, maybe have a cough_machine.tank category
 
 
 def cough(config_path: Path | str | None = None) -> Optional[Path]:
@@ -59,8 +57,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
     # Split the normalized config into local sections used throughout this run
     exp_conf = config["experiment"]
-    core_inputs = config["inputs"]["core"]
+    cough_inputs = config["inputs"]["cough"]
     cough_machine_inputs = config["devices"]["cough_machine"]["inputs"]
+    tank_inputs = cough_machine_inputs["tank"]
     pump_inputs = config["devices"]["pump"]["inputs"]
     spraytec_inputs = config["devices"]["spraytec"]["inputs"]
     # Cache the selected mode for the central match/case branch below
@@ -90,10 +89,10 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         print("Data saving disabled via config setting series_directory='None'.")
 
     # Toggle for optional SprayTec setup and post-processing branches
-    record_droplet_size = config["devices"]["spraytec"]["enabled"]
+    record_droplet_size = bool(cough_inputs["record_droplet_size"])
 
     # Host-level pre-trigger delay that is sent to the cough machine
-    wait_before_run_us = core_inputs["wait_before_run_us"]
+    wait_before_run_us = cough_machine_inputs["wait_before_run_us"]
 
     pump = None
     lift = None
@@ -142,24 +141,20 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
               "press Ctrl+C at any time to abort and safely exit")
 
         # Initialise cough machine
-        tcm = CoughMachine(debug=core_inputs["debug_mode"])
+        tcm = CoughMachine(debug=cough_inputs["debug_mode"])
 
         # Register device so interrupt cleanup can call quit() on it
         set_active_tcm(tcm)
 
         tcm.set_pressure(
             # Drive tank to target pressure and hold until tolerance is satisfied
-            cough_machine_inputs["tank_pressure_bar"],
-            timeout_s=cough_machine_inputs["tank_pressure_settling_time_s"],
-            avg_window_s=cough_machine_inputs["tank_pressure_avg_window_s"],
-            tolerance_bar=cough_machine_inputs["tank_pressure_tolerance_bar"],
-            poll_interval_s=cough_machine_inputs["tank_pressure_poll_interval_s"],
-            interm_press_diff_bar=cough_machine_inputs[
-                "tank_pressure_intermediate_diff_bar"
-            ],
-            interm_press_time_s=cough_machine_inputs[
-                "tank_pressure_intermediate_time_s"
-            ],
+            tank_inputs["pressure_bar"],
+            timeout_s=tank_inputs["settling_time_s"],
+            avg_window_s=tank_inputs["avg_window_s"],
+            tolerance_bar=tank_inputs["tolerance_bar"],
+            poll_interval_s=tank_inputs["poll_interval_s"],
+            interm_press_diff_bar=tank_inputs["intermediate_diff_bar"],
+            interm_press_time_s=tank_inputs["intermediate_time_s"],
         )
         # Program the fixed pre-run wait into the cough machine controller
         tcm.set_wait_us(wait_us=wait_before_run_us)
@@ -242,7 +237,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 temperature_start, humidity_start = tcm.read_temperature_humidity()
 
                 # Execute configured number of single-cough runs
-                for run_idx in range(core_inputs["nr_runs"]):
+                for run_idx in range(cough_inputs["nr_runs"]):
                     # Turn on syringe pump
                     pump.infuse(
                         pump_rate_ml_mn=pump_inputs["pump_rate_ml_per_min"])
@@ -271,14 +266,14 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     pump.stop()
 
                     # Skip inter-run wait/confirm prompts after the final run
-                    is_last_run = run_idx == (core_inputs["nr_runs"] - 1)
+                    is_last_run = run_idx == (cough_inputs["nr_runs"] - 1)
                     if not is_last_run:
                         wait_or_confirm_next_run(
                             next_run_number=(run_idx + 2),
-                            nr_runs=core_inputs["nr_runs"],
+                            nr_runs=cough_inputs["nr_runs"],
                             multi_run_interval_s=float(
-                                core_inputs["multi_run_interval_s"]),
-                            confirm_before_starting_next_run=core_inputs[
+                                cough_inputs["multi_run_interval_s"]),
+                            confirm_before_starting_next_run=cough_inputs[
                                 "confirm_before_starting_next_run"
                             ],
                         )
@@ -296,15 +291,15 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 temperature_start, humidity_start = tcm.read_temperature_humidity()
 
                 # Execute repeated runs
-                for run_idx in range(core_inputs["nr_runs"]):
+                for run_idx in range(cough_inputs["nr_runs"]):
                     # Wait between coughs if needed
                     if run_idx > 0:
                         wait_or_confirm_next_run(
                             next_run_number=(run_idx + 1),
-                            nr_runs=core_inputs["nr_runs"],
+                            nr_runs=cough_inputs["nr_runs"],
                             multi_run_interval_s=float(
-                                core_inputs["multi_run_interval_s"]),
-                            confirm_before_starting_next_run=core_inputs[
+                                cough_inputs["multi_run_interval_s"]),
+                            confirm_before_starting_next_run=cough_inputs[
                                 "confirm_before_starting_next_run"
                             ],
                         )
@@ -348,14 +343,14 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 temperature_start, humidity_start = tcm.read_temperature_humidity()
 
                 # Execute configured number of PIV runs with pump start/stop timing
-                for run_idx in range(core_inputs["nr_runs"]):
+                for run_idx in range(cough_inputs["nr_runs"]):
                     # Start liquid feed before each run
                     pump.infuse(pump_rate_ml_mn=pump_rate_ml_per_min)
                     try:
                         if pump_inputs["piv_pump_start_before_run_s"] > 0:
                             # Optional pre-run pump lead-in time for stable nebulisation
                             print(
-                                f"Waiting {pump_inputs['piv_pump_start_before_run_s']} s before run {run_idx + 1}/{core_inputs['nr_runs']}"
+                                f"Waiting {pump_inputs['piv_pump_start_before_run_s']} s before run {run_idx + 1}/{cough_inputs['nr_runs']}"
                             )
                             time.sleep(
                                 float(pump_inputs["piv_pump_start_before_run_s"]))
@@ -372,7 +367,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         if pump_inputs["piv_pump_stop_after_run_s"] > 0:
                             # Optional post-run pump tail time
                             print(
-                                f"Waiting {pump_inputs['piv_pump_stop_after_run_s']} s after run {run_idx + 1}/{core_inputs['nr_runs']}"
+                                f"Waiting {pump_inputs['piv_pump_stop_after_run_s']} s after run {run_idx + 1}/{cough_inputs['nr_runs']}"
                             )
                             time.sleep(
                                 float(pump_inputs["piv_pump_stop_after_run_s"]))
@@ -384,14 +379,14 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         tcm.clean()
 
                     # Skip inter-run wait/confirm prompts after the final run
-                    is_last_run = run_idx == (core_inputs["nr_runs"] - 1)
+                    is_last_run = run_idx == (cough_inputs["nr_runs"] - 1)
                     if not is_last_run:
                         wait_or_confirm_next_run(
                             next_run_number=(run_idx + 2),
-                            nr_runs=core_inputs["nr_runs"],
+                            nr_runs=cough_inputs["nr_runs"],
                             multi_run_interval_s=float(
-                                core_inputs["multi_run_interval_s"]),
-                            confirm_before_starting_next_run=core_inputs[
+                                cough_inputs["multi_run_interval_s"]),
+                            confirm_before_starting_next_run=cough_inputs[
                                 "confirm_before_starting_next_run"
                             ],
                         )
@@ -426,7 +421,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 # TODO: Add some print statements in save_data so user is not wondering what is going on.
                 spraytec_audit_path = spraytec.save_data(append_file_path=spraytec_inputs["append_file_path"],
                                                          start_time=time_start,
-                                                         debug=core_inputs["debug_mode"],
+                                                         debug=cough_inputs["debug_mode"],
                                                          offer_archive_if_large=True,
                                                          )
 
@@ -465,7 +460,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
             metadata = logger.build_run_metadata(
                 run_context=run_context,
-                core_inputs=core_inputs,
+                cough_inputs=cough_inputs,
                 device_context=device_context,
             )
             # Persist full run metadata snapshot.

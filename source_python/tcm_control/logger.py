@@ -226,7 +226,7 @@ def write_run_metadata(
 def build_run_metadata(
     *,
     run_context: dict[str, Any],
-    core_inputs: dict[str, Any],
+    cough_inputs: dict[str, Any],
     device_context: dict[str, Any],
 ) -> dict[str, Any]:
     """Construct the run metadata dictionary before JSON serialization.
@@ -278,7 +278,7 @@ def build_run_metadata(
             "output_dir": output_dir,
         },
         "inputs": {
-            "core": core_inputs,
+            "cough": cough_inputs,
         },
         "devices": {
             "cough_machine": {

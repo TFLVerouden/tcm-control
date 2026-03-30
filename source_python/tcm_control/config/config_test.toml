@@ -3,33 +3,30 @@ name = "" # keep empty to prompt
 mode = "droplet" # droplet | film | piv
 series_directory = "" # keep empty to prompt; set to "None" to disable saving data
 
-[inputs.core]
+[inputs.cough]
 debug_mode = false
 nr_runs = 3
 multi_run_interval_s = 5
 confirm_before_starting_next_run = false
-wait_before_run_ms = 67.5
+record_droplet_size = true
 
 [devices.cough_machine.inputs]
 flow_curve_csv_path = "step300ms"
-tank_pressure_bar = 1.5
-tank_pressure_settling_time_s = 60.0
-tank_pressure_avg_window_s = 5.0
-tank_pressure_tolerance_bar = 0.05
-tank_pressure_poll_interval_s = 0.2
-tank_pressure_intermediate_diff_bar = "" # set together with tank_pressure_intermediate_time_s (empty disables)
-tank_pressure_intermediate_time_s = ""  # set together with tank_pressure_intermediate_diff_bar (empty disables)
+wait_before_run_ms = 67.5
+
+[devices.cough_machine.inputs.tank]
+pressure_bar = 1.5
+settling_time_s = 60.0
+avg_window_s = 5.0
+tolerance_bar = 0.05
+poll_interval_s = 0.2
+intermediate_diff_bar = "" # set together with intermediate_time_s (empty disables)
+intermediate_time_s = "" # set together with intermediate_diff_bar (empty disables)
 
 [devices.pump.inputs]
 syringe_volume_ml = 2.5
 pump_rate_ml_per_min = 0.1
 nr_droplets_to_skip_before_recording = 3
-piv_pump_start_before_run_s = 0.0
-piv_pump_stop_after_run_s = 0.0
-piv_nebuliser_pressure_bar = 0.5
-
-[devices.spraytec]
-record_droplet_size = true
 
 [devices.spraytec.inputs]
 append_file_path = "C:/Users/Public/Documents/Malvern Instruments/Spraytec/Export Data/SPRAYTEC_APPEND_FILE.txt" # keep empty to trigger file dialog
@@ -37,6 +34,7 @@ tcm_trachea_bottom_z_mm = 326
 tcm_trachea_height_mm = 15.15   
 lift_zero_z_mm = 172.7 #lift actually at 1.3mm, so 174-1.3 =172.7
 spraytec_to_lift_z_mm = 739  
+table_height_mm = 920
 tcm_trachea_exit_to_ref_x_mm = 44.5
 tcm_trachea_exit_to_ref_y_mm = 200
 spraytec_to_ref_x_mm = 44
@@ -45,4 +43,3 @@ stage_pos_x_zero_mm = 96
 stage_pos_y_zero_mm = 655 
 stage_pos_x_mm = 95 # keep empty to prompt
 stage_pos_y_mm = 660 # keep empty to prompt
-table_height_mm = 920

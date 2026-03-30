@@ -17,8 +17,8 @@ The protocol should be a single integer: host and MCU protocol versions must mat
 Use this checklist when adding a new configuration value and writing it to run metadata.
 
 1. Add or update the value in the experiment TOML.
-2. Ensure it is normalized in `load_experiment_config(...)` in `source_python/tcm_control/init_config.py`.
-3. Read the value in `source_python/tcm_control/cough.py` from the appropriate config block (`core_inputs`, `cough_machine_inputs`, `pump_inputs`, `spraytec_inputs`).
+2. Ensure it is normalized in `load_experiment_config(...)` in `source_python/tcm_control/initialise_config.py`.
+3. Read the value in `source_python/tcm_control/cough.py` from the appropriate config block (`cough_inputs`, `cough_machine_inputs` including `tank_inputs`, `pump_inputs`, `spraytec_inputs`).
 4. Add the value to either `run_context` (run-level fields) or `device_context` (device/config fields) in `cough.py` where metadata is assembled.
 5. Map it into the output schema in `build_run_metadata(...)` in `source_python/tcm_control/logger.py`.
 6. Run one experiment and inspect `metadata.json` in the output directory.
