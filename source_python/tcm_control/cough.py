@@ -46,8 +46,12 @@ def _cleanup_on_interrupt(*, ask_before_delete_output_dir: bool = False) -> None
 
     if _ACTIVE_PUMP is not None:
         try:
-            _ACTIVE_PUMP.stop()
-            print("Syringe pump stopped")
+            pump_state = _ACTIVE_PUMP.get_state()
+            if pump_state in getattr(_ACTIVE_PUMP, "stopped_status", (":",)):
+                print("Syringe pump already stopped")
+            else:
+                _ACTIVE_PUMP.stop(already_stopped_ok=True)
+                print("Syringe pump stopped")
         except Exception as exc:
             print(f"Warning: Failed to stop syringe pump: {exc}")
 

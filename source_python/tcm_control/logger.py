@@ -122,6 +122,7 @@ class _TimestampedTee(io.TextIOBase):
         self._log_stream = log_stream
         self._stream_label = stream_label
         self._line_start = True
+        self._log_stream_broken = False
 
     def _timestamp_prefix(self) -> str:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -133,26 +134,44 @@ class _TimestampedTee(io.TextIOBase):
 
         self._terminal_stream.write(text)
 
-        for char in text:
-            if self._line_start:
-                self._log_stream.write(self._timestamp_prefix())
-                self._line_start = False
+        if self._log_stream_broken:
+            return len(text)
 
-            if char == "\r":
-                self._log_stream.write("\n")
-                self._line_start = True
-                continue
+        if getattr(self._log_stream, "closed", False):
+            self._log_stream_broken = True
+            return len(text)
 
-            self._log_stream.write(char)
+        try:
+            for char in text:
+                if self._line_start:
+                    self._log_stream.write(self._timestamp_prefix())
+                    self._line_start = False
 
-            if char == "\n":
-                self._line_start = True
+                if char == "\r":
+                    self._log_stream.write("\n")
+                    self._line_start = True
+                    continue
+
+                self._log_stream.write(char)
+
+                if char == "\n":
+                    self._line_start = True
+        except (ValueError, OSError):
+            self._log_stream_broken = True
 
         return len(text)
 
     def flush(self) -> None:
         self._terminal_stream.flush()
-        self._log_stream.flush()
+        if self._log_stream_broken:
+            return
+        try:
+            if not getattr(self._log_stream, "closed", False):
+                self._log_stream.flush()
+            else:
+                self._log_stream_broken = True
+        except (ValueError, OSError):
+            self._log_stream_broken = True
 
     def isatty(self) -> bool:
         return self._terminal_stream.isatty()
@@ -166,15 +185,20 @@ def capture_terminal_output(log_path: Path):
     with open(log_path, "a", encoding="utf-8") as log_stream:
         original_stdout = sys.stdout
         original_stderr = sys.stderr
-        sys.stdout = _TimestampedTee(original_stdout, log_stream, "STDOUT")
-        sys.stderr = _TimestampedTee(original_stderr, log_stream, "STDERR")
+        captured_stdout = _TimestampedTee(original_stdout, log_stream, "STDOUT")
+        captured_stderr = _TimestampedTee(original_stderr, log_stream, "STDERR")
+        sys.stdout = captured_stdout
+        sys.stderr = captured_stderr
         try:
             yield log_path
         finally:
-            sys.stdout.flush()
-            sys.stderr.flush()
             sys.stdout = original_stdout
             sys.stderr = original_stderr
+            for stream in (captured_stdout, captured_stderr, original_stdout, original_stderr):
+                try:
+                    stream.flush()
+                except Exception:
+                    pass
 
 
 def _to_jsonable(value: Any) -> Any:
