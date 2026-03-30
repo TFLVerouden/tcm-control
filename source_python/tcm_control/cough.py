@@ -2,7 +2,6 @@
 
 from contextlib import nullcontext
 import signal
-import shutil
 import time
 from pathlib import Path
 
@@ -10,166 +9,30 @@ from typing import Optional
 
 from tcm_control.devices import CoughMachine, VerticalStage, SyringePump, SprayTec
 from tcm_control import logger
-from tcm_control.init_config import load_experiment_config
+from tcm_control.config_init import load_experiment_config
+from tcm_control.interrupt_handling import (
+    cleanup_on_interrupt,
+    handle_sigint,
+    reset_interrupt_cleanup_state,
+    set_active_output_dir,
+    set_active_pump,
+    set_active_tcm,
+)
 from tcm_control.processing import plot_run_log
+from tcm_control.user_input import (
+    ask_start_confirmation,
+    ask_user_for_comments,
+    set_spraytec_xy,
+    wait_or_confirm_next_run,
+)
 from tcm_utils.file_dialogs import ensure_directory_path
 from tcm_utils.io_utils import (
     ensure_non_empty_text,
-    prompt_input,
     prompt_yes_no,
-    wait_with_progress,
 )
 from tcm_utils.time_utils import timestamp_str
 
 # TODO: Move variables around in config: wait_before_run_ms should be under cough_machine inputs, maybe have a cough_machine.tank category
-
-# References to currently active devices, used by the Ctrl+C cleanup path.
-_ACTIVE_TCM: Optional[CoughMachine] = None
-_ACTIVE_PUMP: Optional[SyringePump] = None
-_ACTIVE_OUTPUT_DIR: Optional[Path] = None
-_INTERRUPT_CLEANED_UP = False
-
-
-def _cleanup_on_interrupt(*, ask_before_delete_output_dir: bool = False) -> None:
-    """Stop active devices once after Ctrl+C.
-
-    Args:
-        ask_before_delete_output_dir: When True, prompt before deleting the output
-            directory. Keep this False in signal handlers to avoid re-entrant input.
-    """
-    global _INTERRUPT_CLEANED_UP
-    # Prevent duplicate cleanup attempts if SIGINT is received more than once.
-    if _INTERRUPT_CLEANED_UP:
-        return
-    _INTERRUPT_CLEANED_UP = True
-
-    if _ACTIVE_PUMP is not None:
-        try:
-            pump_state = _ACTIVE_PUMP.get_state()
-            if pump_state in getattr(_ACTIVE_PUMP, "stopped_status", (":",)):
-                print("Syringe pump already stopped")
-            else:
-                _ACTIVE_PUMP.stop(already_stopped_ok=True)
-                print("Syringe pump stopped")
-        except Exception as exc:
-            print(f"Warning: Failed to stop syringe pump: {exc}")
-
-    if _ACTIVE_TCM is not None:
-        try:
-            _ACTIVE_TCM.quit()
-            print("Cough machine returned to idle")
-        except Exception as exc:
-            print(f"Warning: Failed to quit cough machine: {exc}")
-
-    if _ACTIVE_OUTPUT_DIR is not None and _ACTIVE_OUTPUT_DIR.exists():
-        output_dir_full = _ACTIVE_OUTPUT_DIR.resolve()
-        if ask_before_delete_output_dir:
-            delete_output_dir = prompt_yes_no(
-                "Remove created experiment directory? "
-                f"{output_dir_full} "
-                "(press ENTER to cancel, type 'y' to delete)",
-                default=False,
-            )
-        else:
-            delete_output_dir = False
-            print(
-                "Skipping output-directory deletion prompt during Ctrl+C cleanup "
-                "to avoid re-entrant stdin access."
-            )
-
-        if delete_output_dir:
-            try:
-                shutil.rmtree(output_dir_full)
-                print(f"Removed experiment directory: {output_dir_full}")
-            except Exception as exc:
-                print(
-                    f"Warning: Failed to remove experiment directory {output_dir_full}: {exc}")
-        print("Exiting")
-
-
-def _handle_sigint(_signum, _frame) -> None:
-    """Handle Ctrl+C by raising KeyboardInterrupt.
-
-    Keep signal-handler work minimal and non-interactive; cleanup is performed
-    in regular exception handling flow.
-    """
-    print("\nCtrl+C detected; stopping experiment...")
-    raise KeyboardInterrupt
-
-
-# -----------------------------------------------------------------------------
-# User interaction helpers
-# -----------------------------------------------------------------------------
-
-
-def ask_start_confirmation(experiment_name: str):
-    """Ask the user to confirm experiment start."""
-    result = prompt_yes_no(
-        f"Press ENTER to start experiment \"{experiment_name}\"...", default=True)
-
-    if not result:
-        print("Aborted.")
-        exit(1)
-
-    return
-
-
-def ask_user_for_comments(output_dir: Path) -> str:
-    """Prompt user comments and store them in the experiment directory."""
-
-    print(
-        "Enter comments for this run "
-        "(press ENTER to confirm, leave empty to skip): "
-    )
-    comments = input(">> ")
-    if comments:
-        logger.write_comments(output_dir, comments)
-
-    return comments
-
-
-def set_spraytec_xy(tcm_trachea_exit_to_ref_x_mm: float,
-                    tcm_trachea_exit_to_ref_y_mm: float,
-                    spraytec_to_ref_x_mm: float,
-                    spraytec_to_ref_y_mm: float,
-                    stage_pos_x_zero_mm: float,
-                    stage_pos_y_zero_mm: float,
-                    stage_pos_x_mm: Optional[float] = None,
-                    stage_pos_y_mm: Optional[float] = None
-                    ) -> tuple[float, float, float, float]:
-    """Return SprayTec x/y from stage position and known geometry offsets.
-
-    If stage positions are not provided, they are prompted from the user.
-    """
-
-    if stage_pos_x_mm is None or stage_pos_y_mm is None:
-        # Ask user to read off x and y position of the cough machine
-        print("Read off the x and y scale on the cough machine stage.")
-        stage_pos_x_mm = prompt_input(
-            "x (cross-airflow) position in mm: ",
-            value_type="float",
-            min_value=2,
-            max_value=200,
-        )
-        stage_pos_y_mm = prompt_input(
-            "y (along-airflow) position in mm: ",
-            value_type="float",
-            min_value=0,
-            max_value=784,
-        )
-    else:
-        stage_pos_x_mm = stage_pos_x_mm
-        stage_pos_y_mm = stage_pos_y_mm
-
-    spraytec_x = stage_pos_x_zero_mm - stage_pos_x_mm - \
-        tcm_trachea_exit_to_ref_x_mm + spraytec_to_ref_x_mm
-    spraytec_y = stage_pos_y_zero_mm - stage_pos_y_mm - \
-        tcm_trachea_exit_to_ref_y_mm + spraytec_to_ref_y_mm
-    return spraytec_x, spraytec_y, stage_pos_x_mm, stage_pos_y_mm
-
-# -----------------------------------------------------------------------------
-# Main experiment flow
-# -----------------------------------------------------------------------------
 
 
 def cough(config_path: Path | str | None = None) -> Optional[Path]:
@@ -181,7 +44,15 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     Returns:
         The experiment output directory path, or None when saving is disabled.
     """
-    global _ACTIVE_TCM, _ACTIVE_PUMP, _ACTIVE_OUTPUT_DIR
+    # Reset interrupt state for a fresh run and clear stale references.
+    reset_interrupt_cleanup_state()
+    set_active_tcm(None)
+    set_active_pump(None)
+    set_active_output_dir(None)
+
+    # ------------------------------------------------------------------
+    # 1) Load and validate configuration
+    # ------------------------------------------------------------------
 
     # Load and unpack normalized config dictionaries.
     config = load_experiment_config(config_path)
@@ -235,7 +106,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     first_run_log_path = None
 
     # ------------------------------------------------------------------
-    # Prepare output folder and device state variables
+    # 2) Prepare output folder and host logging
     # ------------------------------------------------------------------
 
     # Capture run start timestamp once and reuse it across artifacts and metadata
@@ -248,19 +119,23 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         output_dir = logger.create_experiment_dir(
             series_directory, experiment_name, start_time=time_start)
         # Register folder globally so Ctrl+C cleanup can optionally remove it
-        _ACTIVE_OUTPUT_DIR = output_dir
+        set_active_output_dir(output_dir)
         # Derive fixed path for host console logging in this experiment folder
         console_log_path = logger.create_console_log_path(output_dir)
         # Mirror stdout/stderr to the file for reproducibility and debugging
         logging_context = logger.capture_terminal_output(console_log_path)
     else:
         # No output directory exists in non-saving mode
-        _ACTIVE_OUTPUT_DIR = None
+        set_active_output_dir(None)
         # Use a no-op context manager so code below stays linear
         logging_context = nullcontext()
 
     # Set up logger to write all prints to a file when saving is enabled.
     with logging_context:
+        # --------------------------------------------------------------
+        # 3) Initialize devices and resolve run geometry
+        # --------------------------------------------------------------
+
         if console_log_path is not None:
             print(f"Session console log file: {console_log_path}")
         print("Starting cough machine experiment, "
@@ -270,7 +145,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         tcm = CoughMachine(debug=core_inputs["debug_mode"])
 
         # Register device so interrupt cleanup can call quit() on it
-        _ACTIVE_TCM = tcm
+        set_active_tcm(tcm)
 
         tcm.set_pressure(
             # Drive tank to target pressure and hold until tolerance is satisfied
@@ -303,7 +178,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 syringe_volume_ml=pump_inputs["syringe_volume_ml"])
 
             # Register pump so interrupt cleanup can call stop() on it
-            _ACTIVE_PUMP = pump
+            set_active_pump(pump)
 
         # Optional SprayTec setup and geometry resolution
         if record_droplet_size:
@@ -349,11 +224,15 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 default=True)
 
         # ------------------------------------------------------------------
-        # Run mode-specific experiment behavior
+        # 4) Run mode-specific experiment behavior
         # ------------------------------------------------------------------
         match experiment_mode:
             # Droplet mode
             case "droplet":
+                # ------------------------------------------------------
+                # Mode: Droplet
+                # ------------------------------------------------------
+
                 assert pump is not None
 
                 # Wait for user to start the experiment
@@ -394,22 +273,22 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     # Skip inter-run wait/confirm prompts after the final run
                     is_last_run = run_idx == (core_inputs["nr_runs"] - 1)
                     if not is_last_run:
-                        if core_inputs["multi_run_interval_s"] > 0:
-                            # Optional cool-down/spacing between consecutive runs
-                            wait_with_progress(
-                                float(core_inputs["multi_run_interval_s"]),
-                                label=f"Waiting before starting run {run_idx + 2}/{core_inputs['nr_runs']}",
-                            )
-
-                        if core_inputs["confirm_before_starting_next_run"]:
-                            # Optional operator confirmation gate before continuing
-                            prompt_yes_no(
-                                f"Press ENTER to continue with run {run_idx + 2}/{core_inputs['nr_runs']}...",
-                                default=True,
-                            )
+                        wait_or_confirm_next_run(
+                            next_run_number=(run_idx + 2),
+                            nr_runs=core_inputs["nr_runs"],
+                            multi_run_interval_s=float(
+                                core_inputs["multi_run_interval_s"]),
+                            confirm_before_starting_next_run=core_inputs[
+                                "confirm_before_starting_next_run"
+                            ],
+                        )
 
             # Film mode
             case "film":
+                # ------------------------------------------------------
+                # Mode: Film
+                # ------------------------------------------------------
+
                 # Ask user to start the experiment
                 ask_start_confirmation(experiment_name=experiment_name)
 
@@ -420,19 +299,15 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 for run_idx in range(core_inputs["nr_runs"]):
                     # Wait between coughs if needed
                     if run_idx > 0:
-                        if core_inputs["multi_run_interval_s"] > 0:
-                            # Optional cool-down between consecutive runs
-                            wait_with_progress(
-                                float(core_inputs["multi_run_interval_s"]),
-                                label=f"Waiting before starting run {run_idx + 1}/{core_inputs['nr_runs']}",
-                            )
-
-                        if core_inputs["confirm_before_starting_next_run"]:
-                            # Optional operator confirmation before continuing
-                            prompt_yes_no(
-                                f"Press ENTER to continue with run {run_idx + 1}/{core_inputs['nr_runs']}...",
-                                default=True,
-                            )
+                        wait_or_confirm_next_run(
+                            next_run_number=(run_idx + 1),
+                            nr_runs=core_inputs["nr_runs"],
+                            multi_run_interval_s=float(
+                                core_inputs["multi_run_interval_s"]),
+                            confirm_before_starting_next_run=core_inputs[
+                                "confirm_before_starting_next_run"
+                            ],
+                        )
 
                     run_log_path = tcm.run(
                         output_dir=output_dir,
@@ -445,6 +320,10 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
             # PIV mode
             case "piv":
+                # ------------------------------------------------------
+                # Mode: PIV
+                # ------------------------------------------------------
+
                 assert pump is not None
 
                 piv_nebuliser_pressure_bar = pump_inputs["piv_nebuliser_pressure_bar"]
@@ -507,21 +386,19 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     # Skip inter-run wait/confirm prompts after the final run
                     is_last_run = run_idx == (core_inputs["nr_runs"] - 1)
                     if not is_last_run:
-                        if core_inputs["multi_run_interval_s"] > 0:
-                            # Optional cool-down between consecutive runs
-                            wait_with_progress(
-                                float(core_inputs["multi_run_interval_s"]),
-                                label=f"Waiting before starting run {run_idx + 2}/{core_inputs['nr_runs']}",
-                            )
+                        wait_or_confirm_next_run(
+                            next_run_number=(run_idx + 2),
+                            nr_runs=core_inputs["nr_runs"],
+                            multi_run_interval_s=float(
+                                core_inputs["multi_run_interval_s"]),
+                            confirm_before_starting_next_run=core_inputs[
+                                "confirm_before_starting_next_run"
+                            ],
+                        )
 
-                        if core_inputs["confirm_before_starting_next_run"]:
-                            # Optional operator confirmation before continuing
-                            prompt_yes_no(
-                                f"Press ENTER to continue with run {run_idx + 2}/{core_inputs['nr_runs']}...",
-                                default=True,
-                            )
-
-        # Finish off
+        # ------------------------------------------------------------------
+        # 5) Finalize run and write artifacts
+        # ------------------------------------------------------------------
         if save_data:
             assert output_dir is not None
             if first_run_log_path is not None:
@@ -603,6 +480,15 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 print("No data was saved (series_directory='None').")
             print("Exiting.")
 
+    # ------------------------------------------------------------------
+    # 6) Clear interrupt-handling references and return
+    # ------------------------------------------------------------------
+
+    # Clear registered devices after a normal, successful run.
+    set_active_tcm(None)
+    set_active_pump(None)
+    set_active_output_dir(None)
+
     # Return output directory
     return output_dir
 
@@ -610,14 +496,14 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 if __name__ == "__main__":
     # Temporarily install a SIGINT handler so Ctrl+C triggers device cleanup.
     previous_sigint_handler = signal.getsignal(signal.SIGINT)
-    signal.signal(signal.SIGINT, _handle_sigint)
+    signal.signal(signal.SIGINT, handle_sigint)
     try:
         cough()
     except KeyboardInterrupt:
-        _cleanup_on_interrupt(ask_before_delete_output_dir=True)
+        cleanup_on_interrupt(ask_before_delete_output_dir=True)
         raise SystemExit(130)
     except Exception:
-        _cleanup_on_interrupt(ask_before_delete_output_dir=False)
+        cleanup_on_interrupt(ask_before_delete_output_dir=False)
         raise
     finally:
         signal.signal(signal.SIGINT, previous_sigint_handler)
