@@ -226,7 +226,7 @@ RS-232 IN port pin numbering on the pump (front view):
 RJ12 to DB9 adapter pin numbering (front views):
 ![RJ12 to DB9 adapter](/docs/peripherals/pump_cable/L-COM_adapter_pinout.png)
 
-In the pump settings, make sure to set the correct syringe diameter. Commonly used Hamilton-Microliter Series Gastight syringes. Table also callable by cough machine control software in [syringe_sizes.csv](/source_python/tcm_control/config/syringe_sizes.csv)[^2]:
+In the pump settings, make sure to set the correct syringe diameter. Commonly used Hamilton-Microliter Series Gastight syringes. Table also callable by cough machine control software in [syringe_sizes.csv](/source_python/tcm_control/devices/parameters/syringe_sizes.csv)[^2]:
 | Volume (mL) | Diameter (mm) |
 | ----------- | ------------- |
 | 1.0         | 4.61          |
