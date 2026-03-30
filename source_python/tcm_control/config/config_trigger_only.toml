@@ -1,6 +1,6 @@
 [experiment]
 name = "trigger_test" # keep empty to prompt
-mode = "film" # droplet | film | piv | manual
+mode = "film" # droplet | film | piv
 series_directory = "C:\CoughMachineData\260320_tests" # keep empty to prompt; set to "None" to disable saving data
 
 [inputs.core]

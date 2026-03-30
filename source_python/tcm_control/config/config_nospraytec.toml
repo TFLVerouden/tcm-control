@@ -1,6 +1,6 @@
 [experiment]
 name = "" # keep empty to prompt
-mode = "droplet" # droplet | film | piv | manual
+mode = "droplet" # droplet | film | piv
 series_directory = "" # keep empty to prompt; set to "None" to disable saving data
 
 [inputs.core]

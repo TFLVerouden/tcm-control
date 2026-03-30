@@ -10,7 +10,7 @@ from tcm_utils.file_dialogs import ask_open_file
 import tomllib
 
 
-VALID_EXPERIMENT_MODES = {"droplet", "film", "piv", "manual"}
+VALID_EXPERIMENT_MODES = {"droplet", "film", "piv"}
 PUMP_REQUIRED_MODES = {"droplet", "piv"}
 
 

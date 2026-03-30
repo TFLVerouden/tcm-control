@@ -333,12 +333,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         # Run mode-specific experiment behavior
         # ------------------------------------------------------------------
         match experiment_mode:
-            # Manual mode
-            case "manual":
-                print(
-                    f"Running in manual mode, for direct serial communication with {tcm.name}")
-                tcm.manual_mode()
-
             # Droplet mode
             case "droplet":
                 assert pump is not None
@@ -491,7 +485,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             )
 
         # Finish off
-        if save_data and experiment_mode != "manual":
+        if save_data:
             assert output_dir is not None
             if first_run_log_path is not None:
                 plot_run_log(

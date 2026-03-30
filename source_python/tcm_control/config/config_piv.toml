@@ -1,6 +1,6 @@
 [experiment]
 name = "piv_test" # keep empty to prompt
-mode = "piv" # droplet | film | piv | manual
+mode = "piv" # droplet | film | piv
 series_directory = "C:\CoughMachineData\260330_piv_test" # keep empty to prompt; set to "None" to disable saving data
 
 [inputs.core]
