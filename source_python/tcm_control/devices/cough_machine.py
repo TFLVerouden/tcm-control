@@ -466,6 +466,13 @@ class CoughMachine(PoFSerialDevice):
             cmd, expected=expected, echo=echo)
         return reply or ""
 
+    def trigger_once(self, *, echo: Optional[bool] = None) -> str:
+        """Send one immediate trigger pulse using `G`."""
+        reply, _lines = self._query_and_drain(
+            "G", expected="TRIGGER_PULSE_SENT", echo=echo
+        )
+        return reply or ""
+
     def trigger_test(self, *, echo: Optional[bool] = None):
         """Load the "just_trigger.csv" flow curve and run it to test the trigger output."""
         test_csv = DEFAULT_FLOWCURVE_DIR / "just_trigger.csv"
