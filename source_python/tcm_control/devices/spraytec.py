@@ -1292,7 +1292,7 @@ def _save_spraytec_data(
         archive_now = prompt_yes_no(
             "SprayTec append file is large "
             f"({current_size_mb:.1f} MB > {max_size_mb:.1f} MB). Archive now (press ENTER for yes or type 'n')?",
-            default=False,
+            default=True,
         )
         if archive_now:
             archived_path = _archive_spraytec_append_file(append_path)
