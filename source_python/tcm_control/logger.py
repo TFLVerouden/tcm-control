@@ -122,6 +122,7 @@ class _TimestampedTee(io.TextIOBase):
         self._log_stream = log_stream
         self._stream_label = stream_label
         self._line_start = True
+        self._log_stream_broken = False
 
     def _timestamp_prefix(self) -> str:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -133,26 +134,44 @@ class _TimestampedTee(io.TextIOBase):
 
         self._terminal_stream.write(text)
 
-        for char in text:
-            if self._line_start:
-                self._log_stream.write(self._timestamp_prefix())
-                self._line_start = False
+        if self._log_stream_broken:
+            return len(text)
 
-            if char == "\r":
-                self._log_stream.write("\n")
-                self._line_start = True
-                continue
+        if getattr(self._log_stream, "closed", False):
+            self._log_stream_broken = True
+            return len(text)
 
-            self._log_stream.write(char)
+        try:
+            for char in text:
+                if self._line_start:
+                    self._log_stream.write(self._timestamp_prefix())
+                    self._line_start = False
 
-            if char == "\n":
-                self._line_start = True
+                if char == "\r":
+                    self._log_stream.write("\n")
+                    self._line_start = True
+                    continue
+
+                self._log_stream.write(char)
+
+                if char == "\n":
+                    self._line_start = True
+        except (ValueError, OSError):
+            self._log_stream_broken = True
 
         return len(text)
 
     def flush(self) -> None:
         self._terminal_stream.flush()
-        self._log_stream.flush()
+        if self._log_stream_broken:
+            return
+        try:
+            if not getattr(self._log_stream, "closed", False):
+                self._log_stream.flush()
+            else:
+                self._log_stream_broken = True
+        except (ValueError, OSError):
+            self._log_stream_broken = True
 
     def isatty(self) -> bool:
         return self._terminal_stream.isatty()
@@ -166,15 +185,20 @@ def capture_terminal_output(log_path: Path):
     with open(log_path, "a", encoding="utf-8") as log_stream:
         original_stdout = sys.stdout
         original_stderr = sys.stderr
-        sys.stdout = _TimestampedTee(original_stdout, log_stream, "STDOUT")
-        sys.stderr = _TimestampedTee(original_stderr, log_stream, "STDERR")
+        captured_stdout = _TimestampedTee(original_stdout, log_stream, "STDOUT")
+        captured_stderr = _TimestampedTee(original_stderr, log_stream, "STDERR")
+        sys.stdout = captured_stdout
+        sys.stderr = captured_stderr
         try:
             yield log_path
         finally:
-            sys.stdout.flush()
-            sys.stderr.flush()
             sys.stdout = original_stdout
             sys.stderr = original_stderr
+            for stream in (captured_stdout, captured_stderr, original_stdout, original_stderr):
+                try:
+                    stream.flush()
+                except Exception:
+                    pass
 
 
 def _to_jsonable(value: Any) -> Any:
@@ -201,32 +225,42 @@ def write_run_metadata(
 
 def build_run_metadata(
     *,
-    time_start: str,
-    time_finish: str,
-    experiment_name: str,
-    experiment_mode: str,
-    output_dir: Path,
-    wait_before_run_us: int,
-    temperature_start: float | None,
-    humidity_start: float | None,
-    temperature_finish: float | None,
-    humidity_finish: float | None,
-    comments: str,
-    core_inputs: dict[str, Any],
-    tcm: Any,
-    cough_machine_inputs: dict[str, Any],
-    pump: Any,
-    pump_inputs: dict[str, Any],
-    record_droplet_size: bool,
-    spraytec_inputs: dict[str, Any],
-    spraytec_x: float | None,
-    spraytec_y: float | None,
-    spraytec_z: float | None,
-    lift_height: float | None,
-    spraytec_audit_path: str | Path | None,
-    lift: Any,
+    run_context: dict[str, Any],
+    cough_inputs: dict[str, Any],
+    device_context: dict[str, Any],
 ) -> dict[str, Any]:
-    """Construct the run metadata dictionary before JSON serialization."""
+    """Construct the run metadata dictionary before JSON serialization.
+
+    This API keeps call sites compact by accepting grouped context dictionaries
+    instead of a long list of keyword arguments.
+    """
+    # Unpack run-level context values.
+    time_start = run_context["time_start"]
+    time_finish = run_context["time_finish"]
+    experiment_name = run_context["experiment_name"]
+    experiment_mode = run_context["experiment_mode"]
+    output_dir = run_context["output_dir"]
+    wait_before_run_us = run_context["wait_before_run_us"]
+    temperature_start = run_context["temperature_start"]
+    humidity_start = run_context["humidity_start"]
+    temperature_finish = run_context["temperature_finish"]
+    humidity_finish = run_context["humidity_finish"]
+    comments = run_context["comments"]
+
+    # Unpack device-level context values.
+    tcm = device_context["tcm"]
+    cough_machine_inputs = device_context["cough_machine_inputs"]
+    pump = device_context["pump"]
+    pump_inputs = device_context["pump_inputs"]
+    record_droplet_size = device_context["record_droplet_size"]
+    spraytec_inputs = device_context["spraytec_inputs"]
+    spraytec_x = device_context["spraytec_x"]
+    spraytec_y = device_context["spraytec_y"]
+    spraytec_z = device_context["spraytec_z"]
+    lift_height = device_context["lift_height"]
+    spraytec_audit_path = device_context["spraytec_audit_path"]
+    lift = device_context["lift"]
+
     return {
         "time": {
             "start": time_start,
@@ -244,7 +278,7 @@ def build_run_metadata(
             "output_dir": output_dir,
         },
         "inputs": {
-            "core": core_inputs,
+            "cough": cough_inputs,
         },
         "devices": {
             "cough_machine": {
@@ -273,7 +307,7 @@ def build_run_metadata(
                 "resolved": {
                     "syringe_volume_ml": getattr(pump, "syringe_volume_ml", None),
                     "rate_ml_per_min": (
-                        pump_inputs.get("droplet_pump_rate_ml_per_min")
+                        pump_inputs.get("pump_rate_ml_per_min")
                         if experiment_mode in ["droplet", "piv"]
                         else None
                     ),

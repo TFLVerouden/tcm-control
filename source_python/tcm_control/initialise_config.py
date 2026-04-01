@@ -10,7 +10,7 @@ from tcm_utils.file_dialogs import ask_open_file
 import tomllib
 
 
-VALID_EXPERIMENT_MODES = {"droplet", "film", "piv", "manual"}
+VALID_EXPERIMENT_MODES = {"droplet", "film", "piv"}
 PUMP_REQUIRED_MODES = {"droplet", "piv"}
 
 
@@ -65,7 +65,7 @@ def _sanitize_windows_path_separators_in_toml(raw_text: str) -> str:
         prefix = match.group(1)
         path_value = match.group(3)
         suffix = match.group(4)
-        return f"{prefix}{path_value.replace('\\', '/')}{suffix}"
+        return f"{prefix}{path_value.replace('\\', '/')}" + suffix
 
     return pattern.sub(_replace, raw_text)
 
@@ -113,7 +113,6 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
 
     If no path is provided, a file picker is shown so users can choose a config.
     """
-    # Resolve config file path: explicit path or interactive picker.
     if config_path is None:
         default_dir = Path(__file__).resolve().parent / "config"
         selected = ask_open_file(
@@ -165,38 +164,43 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
         )
 
     series_directory = _normalize_optional_path_string(series_directory_raw)
+    save_data = True
+    if series_directory is not None and series_directory.strip().lower() == "none":
+        series_directory = None
+        save_data = False
 
     # ------------------------------------------------------------------
-    # Core timing and run controls
+    # Cough run controls
     # ------------------------------------------------------------------
-    core_inputs = {
+    cough_inputs = {
         "debug_mode": bool(
-            _nested_get(raw, "inputs", "core", "debug_mode", default=False)
+            _nested_get(raw, "inputs", "cough", "debug_mode", default=False)
         ),
-        "nr_runs": int(_nested_get(raw, "inputs", "core", "nr_runs", default=1)),
+        "nr_runs": int(_nested_get(raw, "inputs", "cough", "nr_runs", default=1)),
         "multi_run_interval_s": float(
-            _nested_get(raw, "inputs", "core",
+            _nested_get(raw, "inputs", "cough",
                         "multi_run_interval_s", default=0.0)
         ),
         "confirm_before_starting_next_run": bool(
             _nested_get(
                 raw,
                 "inputs",
-                "core",
+                "cough",
                 "confirm_before_starting_next_run",
                 default=True,
             )
         ),
-        "wait_before_run_ms": float(
-            _nested_get(raw, "inputs", "core",
-                        "wait_before_run_ms", default=0.0)
+        "record_droplet_size": bool(
+            _nested_get(raw, "inputs", "cough",
+                        "record_droplet_size", default=False)
         ),
     }
-    if core_inputs["nr_runs"] < 1:
-        core_inputs["nr_runs"] = 1
-    core_inputs["wait_before_run_us"] = int(
-        core_inputs["wait_before_run_ms"] * 1000
-    )
+    if cough_inputs["nr_runs"] < 1:
+        cough_inputs["nr_runs"] = 1
+
+    # SprayTec is intentionally disabled in PIV mode.
+    if experiment_mode == "piv":
+        cough_inputs["record_droplet_size"] = False
 
     # ------------------------------------------------------------------
     # Cough machine inputs
@@ -211,88 +215,110 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
                 "flow_curve_csv_path",
             )
         ),
-        "tank_pressure_bar": float(
+        "wait_before_run_ms": float(
             _nested_get(
                 raw,
                 "devices",
                 "cough_machine",
                 "inputs",
-                "tank_pressure_bar",
+                "wait_before_run_ms",
                 default=0.0,
             )
         ),
-        "tank_pressure_settling_time_s": float(
-            _nested_get(
-                raw,
-                "devices",
-                "cough_machine",
-                "inputs",
-                "tank_pressure_settling_time_s",
-                default=60.0,
-            )
-        ),
-        "tank_pressure_avg_window_s": float(
-            _nested_get(
-                raw,
-                "devices",
-                "cough_machine",
-                "inputs",
-                "tank_pressure_avg_window_s",
-                default=5.0,
-            )
-        ),
-        "tank_pressure_tolerance_bar": float(
-            _nested_get(
-                raw,
-                "devices",
-                "cough_machine",
-                "inputs",
-                "tank_pressure_tolerance_bar",
-                default=0.05,
-            )
-        ),
-        "tank_pressure_poll_interval_s": float(
-            _nested_get(
-                raw,
-                "devices",
-                "cough_machine",
-                "inputs",
-                "tank_pressure_poll_interval_s",
-                default=0.2,
-            )
-        ),
-        "tank_pressure_intermediate_diff_bar": _optional_float(
-            _nested_get(
-                raw,
-                "devices",
-                "cough_machine",
-                "inputs",
-                "tank_pressure_intermediate_diff_bar",
-            )
-        ),
-        "tank_pressure_intermediate_time_s": _optional_float(
-            _nested_get(
-                raw,
-                "devices",
-                "cough_machine",
-                "inputs",
-                "tank_pressure_intermediate_time_s",
-            )
-        ),
+        "tank": {
+            "pressure_bar": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "tank",
+                    "pressure_bar",
+                    default=0.0,
+                )
+            ),
+            "settling_time_s": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "tank",
+                    "settling_time_s",
+                    default=60.0,
+                )
+            ),
+            "avg_window_s": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "tank",
+                    "avg_window_s",
+                    default=5.0,
+                )
+            ),
+            "tolerance_bar": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "tank",
+                    "tolerance_bar",
+                    default=0.05,
+                )
+            ),
+            "poll_interval_s": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "tank",
+                    "poll_interval_s",
+                    default=0.2,
+                )
+            ),
+            "intermediate_diff_bar": _optional_float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "tank",
+                    "intermediate_diff_bar",
+                )
+            ),
+            "intermediate_time_s": _optional_float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "tank",
+                    "intermediate_time_s",
+                )
+            ),
+        },
     }
 
     has_intermediate_diff = (
-        cough_machine_inputs["tank_pressure_intermediate_diff_bar"] is not None
+        cough_machine_inputs["tank"]["intermediate_diff_bar"] is not None
     )
     has_intermediate_time = (
-        cough_machine_inputs["tank_pressure_intermediate_time_s"] is not None
+        cough_machine_inputs["tank"]["intermediate_time_s"] is not None
     )
     if has_intermediate_diff != has_intermediate_time:
         raise ValueError(
-            "Config [devices.cough_machine.inputs] must define both "
-            "tank_pressure_intermediate_diff_bar and "
-            "tank_pressure_intermediate_time_s together."
+            "Config [devices.cough_machine.inputs.tank] must define both "
+            "intermediate_diff_bar and intermediate_time_s together."
         )
+
+    cough_machine_inputs["wait_before_run_us"] = int(
+        cough_machine_inputs["wait_before_run_ms"] * 1000
+    )
 
     # ------------------------------------------------------------------
     # Pump inputs (required in droplet/piv mode only)
@@ -302,14 +328,9 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
         "syringe_volume_ml": _optional_float(
             _nested_get(raw, "devices", "pump", "inputs", "syringe_volume_ml")
         ),
-        "droplet_pump_rate_ml_per_min": _optional_float(
-            _nested_get(
-                raw,
-                "devices",
-                "pump",
-                "inputs",
-                "droplet_pump_rate_ml_per_min",
-            )
+        "pump_rate_ml_per_min": _optional_float(
+            _nested_get(raw, "devices", "pump",
+                        "inputs", "pump_rate_ml_per_min")
         ),
         "nr_droplets_to_skip_before_recording": _required_non_negative_int(
             _nested_get(
@@ -320,18 +341,78 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
                 "nr_droplets_to_skip_before_recording",
             )
         ),
+        "piv_pump_start_before_run_s": float(
+            _nested_get(
+                raw,
+                "devices",
+                "pump",
+                "inputs",
+                "piv_pump_start_before_run_s",
+                default=0.0,
+            )
+        ),
+        "piv_pump_stop_after_run_s": float(
+            _nested_get(
+                raw,
+                "devices",
+                "pump",
+                "inputs",
+                "piv_pump_stop_after_run_s",
+                default=0.0,
+            )
+        ),
+        "piv_nebuliser_pressure_bar": float(
+            _nested_get(
+                raw,
+                "devices",
+                "pump",
+                "inputs",
+                "piv_nebuliser_pressure_bar",
+                default=0.5,
+            )
+        ),
     }
+    if pump_required and pump_inputs["syringe_volume_ml"] is None:
+        raise ValueError(
+            "Config [devices.pump.inputs].syringe_volume_ml must be set "
+            "for droplet and piv modes."
+        )
+
+    if experiment_mode in {"droplet", "piv"}:
+        if pump_inputs["pump_rate_ml_per_min"] is None:
+            raise ValueError(
+                "Config [devices.pump.inputs].pump_rate_ml_per_min "
+                "must be set for droplet and piv modes."
+            )
+
+    if experiment_mode == "piv":
+        if pump_inputs["piv_pump_start_before_run_s"] < 0:
+            raise ValueError(
+                "Config [devices.pump.inputs].piv_pump_start_before_run_s "
+                "must be >= 0."
+            )
+        if pump_inputs["piv_pump_stop_after_run_s"] < 0:
+            raise ValueError(
+                "Config [devices.pump.inputs].piv_pump_stop_after_run_s "
+                "must be >= 0."
+            )
+        if pump_inputs["piv_nebuliser_pressure_bar"] <= 0:
+            raise ValueError(
+                "Config [devices.pump.inputs].piv_nebuliser_pressure_bar "
+                "must be > 0."
+            )
+
     if not pump_required:
         pump_inputs = {
             "syringe_volume_ml": None,
-            "droplet_pump_rate_ml_per_min": None,
+            "pump_rate_ml_per_min": None,
             "nr_droplets_to_skip_before_recording": 0,
+            "piv_pump_start_before_run_s": 0.0,
+            "piv_pump_stop_after_run_s": 0.0,
+            "piv_nebuliser_pressure_bar": None,
         }
 
-    record_droplet_size = bool(
-        _nested_get(raw, "devices", "spraytec",
-                    "record_droplet_size", default=False)
-    )
+    record_droplet_size = bool(cough_inputs["record_droplet_size"])
 
     # ------------------------------------------------------------------
     # SprayTec inputs (validated only when enabled)
@@ -403,8 +484,11 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             "tcm_trachea_exit_to_ref_y_mm": None,
             "spraytec_to_ref_x_mm": None,
             "spraytec_to_ref_y_mm": None,
+            "stage_pos_x_zero_mm": None,
+            "stage_pos_y_zero_mm": None,
             "stage_pos_x_mm": None,
             "stage_pos_y_mm": None,
+            "table_height_mm": None,
         }
     else:
         required_spraytec_keys = [
@@ -416,6 +500,9 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             "tcm_trachea_exit_to_ref_y_mm",
             "spraytec_to_ref_x_mm",
             "spraytec_to_ref_y_mm",
+            "stage_pos_x_zero_mm",
+            "stage_pos_y_zero_mm",
+            "table_height_mm",
         ]
         missing = [
             key
@@ -429,15 +516,15 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
                 f"[devices.spraytec.inputs]: {missing_str}"
             )
 
-    # Return normalized configuration structure used by cough.cough().
     return {
         "experiment": {
             "name": experiment_name,
             "mode": experiment_mode,
             "series_directory": Path(series_directory) if series_directory else None,
+            "save_data": save_data,
         },
         "inputs": {
-            "core": core_inputs,
+            "cough": cough_inputs,
         },
         "devices": {
             "cough_machine": {
