@@ -70,24 +70,69 @@ class SprayTec:
         """Resolve and store append-file path for subsequent operations."""
         # Prefer explicit argument when provided, otherwise fall back to the
         # instance default configured at construction time.
-        candidate = append_file_path if append_file_path is not None else self.append_file_path
-        resolved_path = _resolve_append_file_path(candidate)
+        candidate = (
+            append_file_path if append_file_path is not None else self.append_file_path
+        )
+
+        # If no path is supplied, ask the user to pick the current SprayTec append file.
+        if candidate is None:
+            selected_path = ask_open_file(
+                key="spraytec_append_file",
+                title="Select SprayTec append file",
+                filetypes=[
+                    ("Text files", "*.txt"),
+                    ("CSV files", "*.csv"),
+                    ("All files", "*.*"),
+                ],
+            )
+            if selected_path is None:
+                raise ValueError("No SprayTec append file selected.")
+            resolved_path = Path(selected_path)
+        else:
+            # Normalize any string/Path-like input to a Path instance.
+            resolved_path = Path(candidate)
+
+        # Fail early when the configured file does not exist.
+        if not resolved_path.exists():
+            raise FileNotFoundError(
+                f"SprayTec append file not found: {resolved_path}"
+            )
+
         self.append_file_path = resolved_path
         return resolved_path
 
     def archive_append_file(self, append_file_path: str | Path | None = None) -> Path:
         """Archive append file and clear stored append path."""
-        candidate = append_file_path if append_file_path is not None else self.append_file_path
-        archived_path = _archive_spraytec_append_file(candidate)
+        # Resolve source file and ensure the archive target folder exists.
+        append_path = self.resolve_append_file_path(append_file_path)
+        archive_dir = append_path.parent / ARCHIVE_DIRNAME
+        archive_dir.mkdir(parents=True, exist_ok=True)
+
+        # Prefix the original filename with an archive timestamp, avoiding collisions.
+        archived_name = f"archived_{timestamp_str()}_{append_path.name}"
+        archive_target = _next_available_path(archive_dir / archived_name)
+        shutil.move(str(append_path), str(archive_target))
+
         self.append_file_path = None
-        return archived_path
+        return archive_target
 
     def list_runs(self, append_file_path: str | Path | None = None) -> list[dict[str, str]]:
         """Refresh audit rows and store latest list/audit path in instance state."""
-        resolved_append_path = self.resolve_append_file_path(append_file_path)
-        rows = _list_spraytec_runs(resolved_append_path)
+        append_path = self.resolve_append_file_path(append_file_path)
+        _header, blocks = _build_blocks(append_path)
+
+        audit_path = append_path.parent / AUDIT_FILENAME
+        previous_rows = _load_audit_rows(audit_path)
+
+        rows: list[dict[str, str]] = []
+        for block in blocks:
+            previous = previous_rows.get(block.block_id)
+            rows.append(_block_to_audit_row(block, previous=previous))
+
+        _write_audit_rows(audit_path, rows)
+
         self.last_listed_runs = rows
-        self.audit_path = resolved_append_path.parent / AUDIT_FILENAME
+        self.audit_path = audit_path
         return rows
 
     def save_data(
@@ -305,8 +350,7 @@ class SprayTec:
                         default=True,
                     )
                     if archive_now:
-                        archived_path = _archive_spraytec_append_file(
-                            append_path)
+                        archived_path = self.archive_append_file(append_path)
                         print(
                             f"SprayTec: append file archived to {archived_path}")
 
@@ -338,52 +382,6 @@ class SprayTec:
         self.audit_path = audit_path
 
         return audit_path
-
-
-# =============================================================================
-# Append file path + archiving
-# =============================================================================
-
-
-def _resolve_append_file_path(append_file_path: str | Path | None) -> Path:
-    """Return a validated append-file path, prompting the user when omitted."""
-    # If no path is supplied, ask the user to pick the current SprayTec append file.
-    if append_file_path is None:
-        selected_path = ask_open_file(
-            key="spraytec_append_file",
-            title="Select SprayTec append file",
-            filetypes=[("Text files", "*.txt"),
-                       ("CSV files", "*.csv"), ("All files", "*.*")],
-        )
-        if selected_path is None:
-            raise ValueError("No SprayTec append file selected.")
-        append_path = Path(selected_path)
-    else:
-        # Normalize any string/Path-like input to a Path instance.
-        append_path = Path(append_file_path)
-
-    # Fail early when the configured file does not exist.
-    if not append_path.exists():
-        raise FileNotFoundError(
-            f"SprayTec append file not found: {append_path}")
-
-    return append_path
-
-
-def _archive_spraytec_append_file(
-    append_file_path: str | Path | None = None,
-) -> Path:
-    """Move the current append file into an archive folder with a timestamp."""
-    # Resolve source file and ensure the archive target folder exists.
-    append_path = _resolve_append_file_path(append_file_path)
-    archive_dir = append_path.parent / ARCHIVE_DIRNAME
-    archive_dir.mkdir(parents=True, exist_ok=True)
-
-    # Prefix the original filename with an archive timestamp, avoiding collisions.
-    archived_name = f"archived_{timestamp_str()}_{append_path.name}"
-    archive_target = _next_available_path(archive_dir / archived_name)
-    shutil.move(str(append_path), str(archive_target))
-    return archive_target
 
 
 @dataclass
@@ -727,20 +725,3 @@ def _build_blocks(append_path: Path) -> tuple[list[str], list[SpraytecBlock]]:
     return top_header, blocks
 
 
-def _list_spraytec_runs(
-        append_file_path: str | Path | None = None,
-) -> list[dict[str, str]]:
-    """Refresh and return audit rows without writing measurement CSV outputs."""
-    append_path = _resolve_append_file_path(append_file_path)
-
-    _header, blocks = _build_blocks(append_path)
-    audit_path = append_path.parent / AUDIT_FILENAME
-    previous_rows = _load_audit_rows(audit_path)
-
-    audit_rows: list[dict[str, str]] = []
-    for block in blocks:
-        previous = previous_rows.get(block.block_id)
-        audit_rows.append(_block_to_audit_row(block, previous=previous))
-
-    _write_audit_rows(audit_path, audit_rows)
-    return audit_rows
