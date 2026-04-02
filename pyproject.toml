@@ -34,10 +34,10 @@ dependencies = [
 ]
 
 [tool.setuptools]
-package-dir = {"" = "source_python"}
+package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
-where = ["source_python"]
+where = ["src"]
 include = ["tcm_control*"]
 
 [tool.setuptools.package-data]

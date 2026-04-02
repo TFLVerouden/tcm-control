@@ -7,9 +7,9 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SOURCE_PYTHON = REPO_ROOT / "source_python"
-if str(SOURCE_PYTHON) not in sys.path:
-    sys.path.insert(0, str(SOURCE_PYTHON))
+SOURCE_ROOT = REPO_ROOT / "src"
+if str(SOURCE_ROOT) not in sys.path:
+    sys.path.insert(0, str(SOURCE_ROOT))
 
 
 def main() -> int:
