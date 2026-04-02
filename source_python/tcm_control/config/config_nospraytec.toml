@@ -12,7 +12,7 @@ record_droplet_size = false
 
 [devices.cough_machine.inputs]
 flow_curve_csv_path = "step300ms"
-wait_before_run_ms = 67.5
+wait_before_run_ms = 68.5
 
 [devices.cough_machine.inputs.tank]
 pressure_bar = 1.5

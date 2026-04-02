@@ -1,7 +1,7 @@
 [experiment]
-name = "piv_test" # keep empty to prompt
+name = "" # keep empty to prompt
 mode = "piv" # droplet | film | piv
-series_directory = "C:\CoughMachineData\260330_piv_test" # keep empty to prompt; set to "None" to disable saving data
+series_directory = "C:\CoughMachineData\260330_piv_sideview" # keep empty to prompt; set to "None" to disable saving data
 
 [inputs.cough]
 debug_mode = false
@@ -15,7 +15,7 @@ flow_curve_csv_path = "tijn_cough"
 wait_before_run_ms = 0
 
 [devices.cough_machine.inputs.tank]
-pressure_bar = 1.5
+pressure_bar = 2.5
 settling_time_s = 60.0
 avg_window_s = 5.0
 tolerance_bar = 0.05
