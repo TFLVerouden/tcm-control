@@ -723,5 +723,3 @@ def _build_blocks(append_path: Path) -> tuple[list[str], list[SpraytecBlock]]:
         raise ValueError("Could not find SprayTec header row in append file.")
 
     return top_header, blocks
-
-

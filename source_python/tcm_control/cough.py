@@ -398,6 +398,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             assert output_dir is not None
             if first_run_log_path is not None:
                 # Generate a quick diagnostic plot from the first run log
+                # TODO: Optionally, plot all run logs
                 plot_run_log(
                     run_log_path=first_run_log_path,
                     experiment_dir=output_dir,
