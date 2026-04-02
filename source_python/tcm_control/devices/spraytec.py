@@ -155,6 +155,7 @@ class SprayTec:
         ask_retry_on_permission_error: bool = True,
         export_combined_metadata: bool = True,
         combined_metadata_filename: str = "spraytec_metadata.json",
+        min_rows_per_block: int = 1,
     ) -> Path:
         """Extract new measurements and update stored audit/metadata state.
 
@@ -188,6 +189,7 @@ class SprayTec:
                     offer_archive_if_large=self.offer_archive_if_large,
                     export_combined_metadata=export_combined_metadata,
                     combined_metadata_filename=combined_metadata_filename,
+                    min_rows_per_block=min_rows_per_block,
                 )
                 break
             except PermissionError as err:
@@ -476,6 +478,41 @@ def _normalize_missing_value(value: Any) -> str | None:
     if cleaned.lower() in _MISSING_MARKERS or _is_absurd_negative_sentinel(cleaned):
         return None
     return cleaned
+
+
+def _apply_min_rows_filter(
+    blocks: list[SpraytecBlock],
+    min_rows_per_block: int,
+    debug: bool = False,
+) -> list[SpraytecBlock]:
+    """Optionally drop short blocks after explicit user confirmation."""
+    if min_rows_per_block <= 1:
+        return blocks
+
+    short_blocks = [block for block in blocks if len(block.rows) < min_rows_per_block]
+    if not short_blocks:
+        return blocks
+
+    should_reject = prompt_yes_no(
+        "SprayTec: found "
+        f"{len(short_blocks)} block(s) with fewer than {min_rows_per_block} row(s). "
+        "Reject these short outputs (press ENTER for yes or type 'n')?",
+        default=True,
+    )
+    if not should_reject:
+        return blocks
+
+    kept_blocks = [block for block in blocks if len(block.rows) >= min_rows_per_block]
+    for idx, block in enumerate(kept_blocks, start=1):
+        block.measurement_idx = idx
+
+    if debug:
+        print(
+            "SprayTec debug: rejected "
+            f"{len(short_blocks)} short block(s) with min_rows_per_block={min_rows_per_block}."
+        )
+
+    return kept_blocks
 
 
 def _parse_scalar(value: str | None) -> Any:
@@ -1103,6 +1140,7 @@ def _save_spraytec_data(
         offer_archive_if_large: bool = True,
         export_combined_metadata: bool = True,
         combined_metadata_filename: str = "spraytec_metadata.json",
+        min_rows_per_block: int = 1,
 ) -> Path:
     """Extract new SprayTec measurements and optionally copy them to experiment folder.
 
@@ -1124,6 +1162,11 @@ def _save_spraytec_data(
     )
 
     header_row, blocks = _build_blocks(append_path)
+    blocks = _apply_min_rows_filter(
+        blocks=blocks,
+        min_rows_per_block=max(1, int(min_rows_per_block)),
+        debug=debug,
+    )
     audit_path = append_path.parent / AUDIT_FILENAME
     redundancy_dir = append_path.parent / REDUNDANCY_DIRNAME
     audit_file_created = not audit_path.exists()
