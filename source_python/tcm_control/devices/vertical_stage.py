@@ -22,6 +22,8 @@ class VerticalStage(PoFSerialDevice):
             **kwargs,
         )
 
+    # TODO: Add method to set height (syntax "m#.###" where #.### is the height in mm)
+
     def get_lift_height(
         self, *, echo: Optional[bool] = None, timeout: float = 2.0
     ) -> Optional[float]:

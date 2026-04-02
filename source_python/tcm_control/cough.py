@@ -32,6 +32,8 @@ from tcm_utils.io_utils import (
 )
 from tcm_utils.time_utils import timestamp_str
 
+# TODO: Script to rename experiment folders
+
 
 def cough(config_path: Path | str | None = None) -> Optional[Path]:
     """Run a full experiment using a TOML configuration.
@@ -377,6 +379,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
                         # Run cleaning routine every cycle
                         tcm.clean()
+                        # TODO: Somehow warn user audibly that this will happen
 
                     # Skip inter-run wait/confirm prompts after the final run
                     is_last_run = run_idx == (cough_inputs["nr_runs"] - 1)
