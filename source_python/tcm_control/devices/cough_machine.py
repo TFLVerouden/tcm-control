@@ -3,6 +3,11 @@ import time
 from pathlib import Path
 from typing import Callable, Optional
 
+try:
+    import winsound
+except ImportError:
+    winsound = None
+
 from tcm_utils.file_dialogs import ask_open_file, find_repo_root
 from tcm_utils.io_utils import make_minimal_progress_bar
 
@@ -408,6 +413,11 @@ class CoughMachine(PoFSerialDevice):
 
                 self.set_valve_current(20, echo=echo)
                 try:
+                    if winsound is not None:
+                        winsound.Beep(1000, 200)
+                    else:
+                        print("\a", end="", flush=True)
+                    time.sleep(2)
                     self.open_solenoid(echo=echo)
                     time.sleep(open_duration_s)
                     self.close_solenoid(echo=echo)
