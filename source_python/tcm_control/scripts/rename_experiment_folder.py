@@ -98,6 +98,73 @@ def update_metadata_output_dir(
     return changed, unexpected_hits
 
 
+def _replace_folder_name_in_payload_strings(
+        payload: Any,
+        *,
+        old_folder_name: str,
+        new_folder_name: str,
+) -> tuple[Any, int]:
+    """Recursively replace folder name in all string values."""
+    if isinstance(payload, dict):
+        total_replacements = 0
+        updated_dict: dict[str, Any] = {}
+        for key, value in payload.items():
+            updated_value, replacements = _replace_folder_name_in_payload_strings(
+                value,
+                old_folder_name=old_folder_name,
+                new_folder_name=new_folder_name,
+            )
+            updated_dict[key] = updated_value
+            total_replacements += replacements
+        return updated_dict, total_replacements
+
+    if isinstance(payload, list):
+        total_replacements = 0
+        updated_list: list[Any] = []
+        for value in payload:
+            updated_value, replacements = _replace_folder_name_in_payload_strings(
+                value,
+                old_folder_name=old_folder_name,
+                new_folder_name=new_folder_name,
+            )
+            updated_list.append(updated_value)
+            total_replacements += replacements
+        return updated_list, total_replacements
+
+    if isinstance(payload, str):
+        updated = _replace_path_segment(
+            payload,
+            old_name=old_folder_name,
+            new_name=new_folder_name,
+        )
+        if updated != payload:
+            return updated, 1
+
+    return payload, 0
+
+
+def update_additional_folder_references(
+        metadata_path: Path,
+        *,
+        old_folder_name: str,
+        new_folder_name: str,
+) -> int:
+    """Update all remaining folder-name references in one metadata JSON file."""
+    with metadata_path.open("r", encoding="utf-8") as fh:
+        payload = json.load(fh)
+
+    updated_payload, replacements = _replace_folder_name_in_payload_strings(
+        payload,
+        old_folder_name=old_folder_name,
+        new_folder_name=new_folder_name,
+    )
+    if replacements > 0:
+        with metadata_path.open("w", encoding="utf-8") as fh:
+            json.dump(updated_payload, fh, indent=2)
+
+    return replacements
+
+
 def main() -> int:
     selected = ask_directory(
         key="rename_experiment_folder_selected_dir",
@@ -144,7 +211,7 @@ def main() -> int:
     confirm = prompt_yes_no(
         (
             f"Rename folder '{source_folder.name}' to '{target_folder.name}' "
-            "and update metadata JSON files? [Y/n]"
+            "and update metadata JSON files? (press ENTER to rename, type 'n' to cancel)"
         ),
         default=True,
     )
@@ -184,6 +251,34 @@ def main() -> int:
         for path, json_paths in unexpected_occurrences.items():
             locations = ", ".join(json_paths)
             print(f"  - {path}: {locations}")
+
+        update_additional = prompt_yes_no(
+            (
+                "Also update these additional JSON field references now? "
+                "(press ENTER to update, type 'n' to skip)"
+            ),
+            default=True,
+        )
+        if update_additional:
+            updated_files = 0
+            updated_references = 0
+            for metadata_path in unexpected_occurrences:
+                replacements = update_additional_folder_references(
+                    metadata_path,
+                    old_folder_name=source_folder.name,
+                    new_folder_name=target_folder.name,
+                )
+                if replacements > 0:
+                    updated_files += 1
+                    updated_references += replacements
+
+            print(
+                "Updated additional references in "
+                f"{updated_files} metadata JSON file(s) "
+                f"({updated_references} replacement(s))."
+            )
+        else:
+            print("Skipped updating additional JSON references.")
     else:
         print("No old folder-name references found outside experiment.output_dir.")
 
