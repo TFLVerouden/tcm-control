@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from datetime import datetime
 import io
 from pathlib import Path
+import shutil
 import sys
 import time
 from typing import Any, TextIO
@@ -80,15 +81,27 @@ def write_comments(
 
 def copy_flow_curve(
         experiment_dir: Path,
-        flow_curve_path: Path):
+        flow_curve_path: Path) -> Path:
     """Copy the active flow-curve file for traceability of each run."""
 
     # Copy the flow curve file to the experiment directory for record-keeping
     dest_path = experiment_dir / f"flow_curve_{flow_curve_path.name}"
-    with open(flow_curve_path, "r") as src, open(dest_path, "w") as dst:
-        dst.write(src.read())
+    shutil.copy2(flow_curve_path, dest_path)
 
     print(f"Flow curve copied to {dest_path}")
+    return dest_path
+
+
+def copy_experiment_config(
+    experiment_dir: Path,
+        config_path: Path) -> Path:
+    """Copy the active experiment TOML into the experiment directory."""
+
+    dest_path = experiment_dir / f"{config_path.name}"
+    shutil.copy2(config_path, dest_path)
+
+    print(f"Config file copied to {dest_path}")
+    return dest_path
 
 
 def create_labeled_csv_filename(
@@ -185,8 +198,10 @@ def capture_terminal_output(log_path: Path):
     with open(log_path, "a", encoding="utf-8") as log_stream:
         original_stdout = sys.stdout
         original_stderr = sys.stderr
-        captured_stdout = _TimestampedTee(original_stdout, log_stream, "STDOUT")
-        captured_stderr = _TimestampedTee(original_stderr, log_stream, "STDERR")
+        captured_stdout = _TimestampedTee(
+            original_stdout, log_stream, "STDOUT")
+        captured_stderr = _TimestampedTee(
+            original_stderr, log_stream, "STDERR")
         sys.stdout = captured_stdout
         sys.stderr = captured_stderr
         try:
@@ -235,6 +250,7 @@ def build_run_metadata(
     instead of a long list of keyword arguments.
     """
     # Unpack run-level context values.
+    config_file_path = run_context["config_file_path"]
     time_start = run_context["time_start"]
     time_finish = run_context["time_finish"]
     experiment_name = run_context["experiment_name"]
@@ -267,6 +283,7 @@ def build_run_metadata(
             "finish": time_finish,
         },
         "experiment": {
+            "config_file_path": config_file_path,
             "name": experiment_name,
             "mode": experiment_mode,
             "wait_before_run_us": wait_before_run_us,

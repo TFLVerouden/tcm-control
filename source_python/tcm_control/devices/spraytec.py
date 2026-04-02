@@ -11,24 +11,17 @@ This module handles four main tasks:
 """
 
 import csv
-import re
 import shutil
-import time
 from dataclasses import dataclass
 from datetime import datetime
-from collections import OrderedDict
-from natsort import natsorted
 from tcm_utils.io_utils import (
     ask_open_file,
     make_minimal_progress_bar,
     prompt_yes_no,
-    save_metadata_json,
 )
 from tcm_utils.time_utils import timestamp_str
 from pathlib import Path
-from typing import Any
 
-import pandas as pd
 from tcm_control.logger import create_labeled_csv_filename
 
 
@@ -41,39 +34,12 @@ AUDIT_FILENAME = "spraytec_parsing_audit.csv"
 REDUNDANCY_DIRNAME = "spraytec_individual_measurements"
 ARCHIVE_DIRNAME = "archive"
 EXPERIMENT_SPRAYTEC_SUBDIR = "spraytec"
+SPRAYTEC_APPEND_FILE = "SPRAYTEC_APPEND_FILE.txt"
 DEFAULT_APPEND_MAX_FILE_SIZE_BYTES = 500 * 1024 * 1024
-
-DEFAULT_SPRAYTEC_CSV_GLOB = "spraytec*.csv"
-
-_MISSING_MARKERS = {
-    "",
-    "---",
-    "nan",
-    "none",
-    "na",
-    "n/a",
-}
-
-_CATEGORY_SORT_ORDER = [
-    "general",
-    "Trans",
-    "Dn",
-    "D",
-    "Cv",
-    "Span",
-    "%N < 10�",
-    "Sc",
-    "Sr",
-    "Bl",
-    "Bd",
-    "Dc",
-]
-
-# TODO: Processing functions (from Inge's beuncode) could be part of the class too?
 
 
 class SprayTec:
-    """Stateful SprayTec helper storing configuration and loaded metadata/data."""
+    """Stateful SprayTec helper storing append parsing and export configuration."""
 
     def __init__(
         self,
@@ -93,29 +59,10 @@ class SprayTec:
         self.max_append_file_size_bytes = max_append_file_size_bytes
         self.offer_archive_if_large = offer_archive_if_large
 
-        # Runtime state populated by listing/saving/loading/export operations.
+        # Runtime state populated by listing/saving operations.
         # These fields allow callers to inspect outcomes after each step.
         self.audit_path: Path | None = None
         self.last_listed_runs: list[dict[str, str]] = []
-        self.loaded_csvs: list[SpraytecCsvData] = []
-        self.combined_metadata: dict[str, Any] | None = None
-        self.combined_metadata_json_path: Path | None = None
-
-    @classmethod
-    def from_append(
-        cls,
-        append_file_path: str | Path,
-        experiment_dir: str | Path | None = None,
-    ) -> "SprayTec":
-        """Construct instance seeded with append-file workflow context."""
-        return cls(append_file_path=append_file_path, experiment_dir=experiment_dir)
-
-    @classmethod
-    def from_csv(cls, file_path: str | Path) -> "SprayTec":
-        """Construct instance and preload a single SprayTec CSV."""
-        instance = cls()
-        instance.load_csv(file_path)
-        return instance
 
     def resolve_append_file_path(
         self,
@@ -124,24 +71,73 @@ class SprayTec:
         """Resolve and store append-file path for subsequent operations."""
         # Prefer explicit argument when provided, otherwise fall back to the
         # instance default configured at construction time.
-        candidate = append_file_path if append_file_path is not None else self.append_file_path
-        resolved_path = _resolve_append_file_path(candidate)
+        candidate = (
+            append_file_path if append_file_path is not None else self.append_file_path
+        )
+
+        # If no path is supplied, ask the user to pick the current SprayTec append file.
+        if candidate is None:
+            selected_path = ask_open_file(
+                key="spraytec_append_file",
+                title="Select SprayTec append file",
+                filetypes=[
+                    ("Text files", "*.txt"),
+                    ("CSV files", "*.csv"),
+                    ("All files", "*.*"),
+                ],
+            )
+            if selected_path is None:
+                raise ValueError("No SprayTec append file selected.")
+            resolved_path = Path(selected_path)
+        else:
+            # Normalize any string/Path-like input to a Path instance.
+            resolved_path = Path(candidate)
+
+        # Fail early when the configured file does not exist.
+        if not resolved_path.exists():
+            raise FileNotFoundError(
+                f"SprayTec append file not found: {resolved_path}"
+            )
+
         self.append_file_path = resolved_path
         return resolved_path
 
     def archive_append_file(self, append_file_path: str | Path | None = None) -> Path:
-        """Archive append file and clear stored append path."""
-        candidate = append_file_path if append_file_path is not None else self.append_file_path
-        archived_path = _archive_spraytec_append_file(candidate)
-        self.append_file_path = None
-        return archived_path
+        """Archive append file and create a fresh empty append file."""
+        # Resolve source file and ensure the archive target folder exists.
+        append_path = self.resolve_append_file_path(append_file_path)
+        archive_dir = append_path.parent / ARCHIVE_DIRNAME
+        archive_dir.mkdir(parents=True, exist_ok=True)
+
+        # Prefix the original filename with an archive timestamp, avoiding collisions.
+        archived_name = f"archived_{timestamp_str()}_{append_path.name}"
+        archive_target = _next_available_path(archive_dir / archived_name)
+        shutil.move(str(append_path), str(archive_target))
+
+        new_append_path = append_path.parent / SPRAYTEC_APPEND_FILE
+        with open(new_append_path, "w", encoding="utf-8", newline=""):
+            pass
+
+        self.append_file_path = new_append_path
+        return archive_target
 
     def list_runs(self, append_file_path: str | Path | None = None) -> list[dict[str, str]]:
         """Refresh audit rows and store latest list/audit path in instance state."""
-        resolved_append_path = self.resolve_append_file_path(append_file_path)
-        rows = _list_spraytec_runs(resolved_append_path)
+        append_path = self.resolve_append_file_path(append_file_path)
+        _header, blocks = _build_blocks(append_path)
+
+        audit_path = append_path.parent / AUDIT_FILENAME
+        previous_rows = _load_audit_rows(audit_path)
+
+        rows: list[dict[str, str]] = []
+        for block in blocks:
+            previous = previous_rows.get(block.block_id)
+            rows.append(_block_to_audit_row(block, previous=previous))
+
+        _write_audit_rows(audit_path, rows)
+
         self.last_listed_runs = rows
-        self.audit_path = resolved_append_path.parent / AUDIT_FILENAME
+        self.audit_path = audit_path
         return rows
 
     def save_data(
@@ -153,10 +149,9 @@ class SprayTec:
         max_append_file_size_bytes: int | None = None,
         offer_archive_if_large: bool | None = None,
         ask_retry_on_permission_error: bool = True,
-        export_combined_metadata: bool = True,
-        combined_metadata_filename: str = "spraytec_metadata.json",
+        min_rows_per_block: int = 1,
     ) -> Path:
-        """Extract new measurements and update stored audit/metadata state.
+        """Extract new measurements and update stored audit state.
 
         When ``ask_retry_on_permission_error`` is True, this method catches
         ``PermissionError`` (for example when the SprayTec append file is still
@@ -175,20 +170,195 @@ class SprayTec:
         if offer_archive_if_large is not None:
             self.offer_archive_if_large = offer_archive_if_large
 
-        # Step 2: Run the core extraction/copy workflow and persist audit location.
+        # Step 2: Run extraction in a retry loop to handle temporary file locks.
         default_audit_path = resolved_append_path.parent / AUDIT_FILENAME
         while True:
             try:
-                audit_path = _save_spraytec_data(
-                    append_file_path=resolved_append_path,
-                    experiment_dir=self.experiment_dir,
-                    start_time=start_time,
-                    debug=debug,
-                    max_append_file_size_bytes=self.max_append_file_size_bytes,
-                    offer_archive_if_large=self.offer_archive_if_large,
-                    export_combined_metadata=export_combined_metadata,
-                    combined_metadata_filename=combined_metadata_filename,
+                # 2a) Resolve file size/archive policy and parse append blocks.
+                append_path = resolved_append_path
+                append_file_size_bytes = append_path.stat().st_size
+                should_offer_archive = (
+                    self.offer_archive_if_large
+                    and self.max_append_file_size_bytes > 0
+                    and append_file_size_bytes > self.max_append_file_size_bytes
                 )
+
+                header_row, blocks = _build_blocks(append_path)
+                blocks = _apply_min_rows_filter(
+                    blocks=blocks,
+                    min_rows_per_block=max(1, int(min_rows_per_block)),
+                    debug=debug,
+                )
+
+                # 2b) Prepare audit/cache/output paths and optional start-time filter.
+                audit_path = append_path.parent / AUDIT_FILENAME
+                redundancy_dir = append_path.parent / REDUNDANCY_DIRNAME
+                audit_file_created = not audit_path.exists()
+                previous_rows = _load_audit_rows(audit_path)
+
+                start_dt = _parse_start_time(start_time)
+                experiment_path = (
+                    self.experiment_dir / EXPERIMENT_SPRAYTEC_SUBDIR
+                    if self.experiment_dir is not None
+                    else None
+                )
+                if experiment_path is not None:
+                    experiment_path.mkdir(parents=True, exist_ok=True)
+
+                # 2c) Initialize counters/state for per-block processing.
+                audit_rows: list[dict[str, str]] = []
+                extracted_count = 0
+                copied_count = 0
+                older_unprocessed_count = 0
+                first_experiment_csv: Path | None = None
+                first_experiment_timestamp: str | None = None
+                first_experiment_row: dict[str, str] | None = None
+
+                # Count historical blocks that are before start time and still uncopied.
+                for block in blocks:
+                    if start_dt is None or block.timestamp_dt is None:
+                        continue
+                    if block.timestamp_dt <= start_dt:
+                        previous = previous_rows.get(block.block_id)
+                        copied = previous is not None and previous.get(
+                            "copied_to_experiment") == "1"
+                        if not copied:
+                            older_unprocessed_count += 1
+
+                # 2d) Process all blocks and persist/copy only new measurements.
+                with make_minimal_progress_bar(
+                    total=len(blocks),
+                    label="SprayTec",
+                    unit_label="blocks",
+                ) as pbar:
+                    for block in blocks:
+                        previous = previous_rows.get(block.block_id)
+                        row = _block_to_audit_row(block, previous=previous)
+
+                        is_after_start = (
+                            start_dt is None
+                            or (block.timestamp_dt is not None and block.timestamp_dt > start_dt)
+                        )
+                        already_copied = row.get("copied_to_experiment") == "1"
+
+                        if is_after_start and not already_copied:
+                            # Always save parsed measurement in local redundancy cache first.
+                            redundancy_dir.mkdir(parents=True, exist_ok=True)
+                            timestamp_label = timestamp_str(
+                                block.timestamp_dt,
+                                include_us=True,
+                            )
+                            local_filename = f"spraytec_{timestamp_label}.csv"
+                            local_path = _next_available_path(
+                                redundancy_dir / local_filename)
+
+                            _write_block_csv(
+                                block, local_path, fallback_header=header_row)
+                            extracted_count += 1
+
+                            row["cached_saved"] = "1"
+                            row["cached_csv"] = str(local_path)
+
+                            should_copy_to_experiment = experiment_path is not None
+                            if should_copy_to_experiment:
+                                assert experiment_path is not None
+                                next_copy_index = copied_count + 1
+
+                                # If this becomes a multi-file batch, rename first copied file to
+                                # label 1 so copied files are consistently numbered 1..N.
+                                if (
+                                    next_copy_index == 2
+                                    and first_experiment_csv is not None
+                                    and first_experiment_timestamp is not None
+                                    and first_experiment_row is not None
+                                ):
+                                    first_labeled_filename = create_labeled_csv_filename(
+                                        prefix="spraytec",
+                                        label=1,
+                                        timestamp=first_experiment_timestamp,
+                                    )
+                                    first_labeled_path = _next_available_path(
+                                        experiment_path / first_labeled_filename
+                                    )
+                                    first_experiment_csv.rename(
+                                        first_labeled_path)
+                                    first_experiment_csv = first_labeled_path
+                                    first_experiment_row["experiment_csv"] = str(
+                                        first_labeled_path
+                                    )
+
+                                label = next_copy_index if next_copy_index > 1 else None
+                                experiment_filename = create_labeled_csv_filename(
+                                    prefix="spraytec",
+                                    label=label,
+                                    timestamp=timestamp_label,
+                                )
+                                experiment_csv = _next_available_path(
+                                    experiment_path / experiment_filename
+                                )
+                                shutil.copy2(local_path, experiment_csv)
+                                copied_count += 1
+
+                                row["copied_to_experiment"] = "1"
+                                row["experiment_dir"] = str(experiment_path)
+                                row["experiment_csv"] = str(experiment_csv)
+                                row["copied_at"] = datetime.now().isoformat(
+                                    timespec="seconds"
+                                )
+
+                                # Keep first copied file state for potential retroactive label.
+                                if copied_count == 1:
+                                    first_experiment_csv = experiment_csv
+                                    first_experiment_timestamp = timestamp_label
+                                    first_experiment_row = row
+
+                        audit_rows.append(row)
+                        pbar.update(1)
+
+                # 2e) Persist audit and print run summary.
+                _write_audit_rows(audit_path, audit_rows)
+
+                if audit_file_created:
+                    print(f"SprayTec: created new audit file at {audit_path}")
+
+                if older_unprocessed_count > 0:
+                    print(
+                        "SprayTec warning: "
+                        f"{older_unprocessed_count} measurement(s) before start time are still unprocessed."
+                    )
+
+                if not debug:
+                    if experiment_path is None:
+                        print(
+                            f"SprayTec: extracted {extracted_count} file(s) to {redundancy_dir}."
+                        )
+                    else:
+                        print(
+                            f"SprayTec: extracted {extracted_count} file(s) to {redundancy_dir}; "
+                            f"copied {copied_count} to {experiment_path}."
+                        )
+                else:
+                    print(
+                        "SprayTec debug: "
+                        f"detected={len(blocks)}, extracted={extracted_count}, copied={copied_count}, "
+                        f"audit={audit_path}"
+                    )
+
+                # 2f) Optionally archive oversized append files after successful processing.
+                if should_offer_archive:
+                    max_size_mb = self.max_append_file_size_bytes / \
+                        (1024 * 1024)
+                    current_size_mb = append_file_size_bytes / (1024 * 1024)
+                    archive_now = prompt_yes_no(
+                        "SprayTec append file is large "
+                        f"({current_size_mb:.1f} MB > {max_size_mb:.1f} MB). Archive now (press ENTER for yes or type 'n')?",
+                        default=True,
+                    )
+                    if archive_now:
+                        archived_path = self.archive_append_file(append_path)
+                        print(
+                            f"SprayTec: append file archived to {archived_path}")
+
                 break
             except PermissionError as err:
                 if not ask_retry_on_permission_error:
@@ -216,125 +386,7 @@ class SprayTec:
 
         self.audit_path = audit_path
 
-        # Step 3: Refresh in-memory CSV/metadata cache from experiment outputs,
-        # when an experiment directory is configured.
-        if self.experiment_dir is not None:
-            spraytec_dir = self.experiment_dir / EXPERIMENT_SPRAYTEC_SUBDIR
-            if spraytec_dir.exists() and spraytec_dir.is_dir():
-                try:
-                    self.loaded_csvs = load_spraytec_csvs(spraytec_dir)
-                    self.combined_metadata = build_combined_spraytec_metadata(
-                        self.loaded_csvs
-                    )
-                # TODO: It is inefficient to load the data again here.
-                except ValueError:
-                    self.loaded_csvs = []
-                    self.combined_metadata = None
-
         return audit_path
-
-    def load_csv(self, file_path: str | Path | None = None) -> "SpraytecCsvData":
-        """Load one SprayTec CSV and append result to instance state."""
-        result = load_spraytec_csv(file_path)
-        # Keep cumulative loaded files for downstream combined metadata export.
-        self.loaded_csvs.append(result)
-        # Invalidate derived combined artifacts after mutating loaded input set.
-        self.combined_metadata = None
-        self.combined_metadata_json_path = None
-        return result
-
-    def load_csvs(
-        self,
-        folder_path: str | Path,
-        pattern: str = DEFAULT_SPRAYTEC_CSV_GLOB,
-    ) -> list["SpraytecCsvData"]:
-        """Load all SprayTec CSV files and replace instance-loaded data."""
-        results = load_spraytec_csvs(folder_path=folder_path, pattern=pattern)
-        # Replace rather than append: this method represents a fresh folder scan.
-        self.loaded_csvs = results
-        self.combined_metadata = None
-        self.combined_metadata_json_path = None
-        return results
-
-    def export_combined_metadata_json(
-        self,
-        spraytec_data_list: list["SpraytecCsvData"] | None = None,
-        output_dir: str | Path | None = None,
-        filename: str = "spraytec_metadata.json",
-    ) -> Path:
-        """Export combined metadata JSON from provided or stored loaded CSVs."""
-        # Allow explicit data override, otherwise use whatever is currently loaded
-        # on this instance.
-        selected_data = spraytec_data_list if spraytec_data_list is not None else self.loaded_csvs
-        if not selected_data:
-            raise ValueError("No SprayTec CSV data loaded to export.")
-
-        # Resolve output directory from argument, instance context, or fallback
-        # to the folder of the first selected source CSV.
-        if output_dir is None:
-            if self.experiment_dir is not None:
-                resolved_output_dir = self.experiment_dir / EXPERIMENT_SPRAYTEC_SUBDIR
-            else:
-                resolved_output_dir = selected_data[0].file_path.parent
-        else:
-            resolved_output_dir = Path(output_dir)
-
-        # Export and store both the generated path and in-memory combined payload.
-        json_path = export_combined_spraytec_metadata_json(
-            spraytec_data_list=selected_data,
-            output_dir=resolved_output_dir,
-            filename=filename,
-        )
-        self.combined_metadata = build_combined_spraytec_metadata(
-            selected_data)
-        self.combined_metadata_json_path = json_path
-        return json_path
-
-
-# =============================================================================
-# Append file path + archiving
-# =============================================================================
-
-
-def _resolve_append_file_path(append_file_path: str | Path | None) -> Path:
-    """Return a validated append-file path, prompting the user when omitted."""
-    # If no path is supplied, ask the user to pick the current SprayTec append file.
-    if append_file_path is None:
-        selected_path = ask_open_file(
-            key="spraytec_append_file",
-            title="Select SprayTec append file",
-            filetypes=[("Text files", "*.txt"),
-                       ("CSV files", "*.csv"), ("All files", "*.*")],
-        )
-        if selected_path is None:
-            raise ValueError("No SprayTec append file selected.")
-        append_path = Path(selected_path)
-    else:
-        # Normalize any string/Path-like input to a Path instance.
-        append_path = Path(append_file_path)
-
-    # Fail early when the configured file does not exist.
-    if not append_path.exists():
-        raise FileNotFoundError(
-            f"SprayTec append file not found: {append_path}")
-
-    return append_path
-
-
-def _archive_spraytec_append_file(
-    append_file_path: str | Path | None = None,
-) -> Path:
-    """Move the current append file into an archive folder with a timestamp."""
-    # Resolve source file and ensure the archive target folder exists.
-    append_path = _resolve_append_file_path(append_file_path)
-    archive_dir = append_path.parent / ARCHIVE_DIRNAME
-    archive_dir.mkdir(parents=True, exist_ok=True)
-
-    # Prefix the original filename with an archive timestamp, avoiding collisions.
-    archived_name = f"archived_{timestamp_str()}_{append_path.name}"
-    archive_target = _next_available_path(archive_dir / archived_name)
-    shutil.move(str(append_path), str(archive_target))
-    return archive_target
 
 
 @dataclass
@@ -350,21 +402,6 @@ class SpraytecBlock:
     header_mode: str
     header_row: list[str]
     rows: list[list[str]]
-
-
-@dataclass
-class SpraytecCsvData:
-    """Typed result for one loaded SprayTec CSV file."""
-
-    file_path: Path
-    data_df: pd.DataFrame
-    measurement_df: pd.DataFrame
-    measurement_columns: list[str]
-    metadata_flat: dict[str, Any]
-    metadata_by_category: dict[str, dict[str, Any]]
-    bin_edges_um: list[float]
-    bin_centers_um: list[float]
-    absurd_values_converted_count: int
 
 
 # =============================================================================
@@ -442,416 +479,41 @@ def _measurement_id(start_line: int, timestamp_raw: str, lot_value: str) -> str:
     return f"L{start_line}|T{timestamp_raw.strip()}|V{lot_value.strip()}"
 
 
-# =============================================================================
-# SprayTec CSV loading helpers
-# =============================================================================
+def _apply_min_rows_filter(
+    blocks: list[SpraytecBlock],
+    min_rows_per_block: int,
+    debug: bool = False,
+) -> list[SpraytecBlock]:
+    """Optionally drop short blocks after explicit user confirmation."""
+    if min_rows_per_block <= 1:
+        return blocks
 
+    short_blocks = [block for block in blocks if len(
+        block.rows) < min_rows_per_block]
+    if not short_blocks:
+        return blocks
 
-def _try_parse_float(value: str) -> float | None:
-    """Return float(value) when parseable, else None."""
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _is_absurd_negative_sentinel(value: str) -> bool:
-    """Detect extremely negative numeric sentinels used as overflow placeholders."""
-    parsed = _try_parse_float(value)
-    return parsed is not None and parsed < -1e20
-
-
-def _is_bin_edge_column(column_name: str) -> bool:
-    """Identify bin-edge columns by numeric headers (e.g., 0.10000020, 0.1165...)."""
-    parsed = _try_parse_float(column_name.strip())
-    return parsed is not None and parsed > 0
-
-
-def _normalize_missing_value(value: Any) -> str | None:
-    """Normalize blanks/sentinels to None, otherwise return stripped string."""
-    if value is None:
-        return None
-
-    cleaned = str(value).strip()
-    if cleaned.lower() in _MISSING_MARKERS or _is_absurd_negative_sentinel(cleaned):
-        return None
-    return cleaned
-
-
-def _parse_scalar(value: str | None) -> Any:
-    """Convert scalar text values to Python primitives where safe."""
-    if value is None:
-        return None
-
-    numeric_pattern = re.compile(
-        r"^[+-]?(?:\d+\.?\d*|\d*\.\d+)(?:[eE][+-]?\d+)?$")
-    if numeric_pattern.match(value):
-        numeric_value = float(value)
-        if numeric_value.is_integer() and "e" not in value.lower() and "." not in value:
-            return int(numeric_value)
-        return numeric_value
-
-    return value
-
-
-def _extract_prefix_category(column_name: str) -> str:
-    """Extract prefix category from column names using delimiter-based grouping."""
-    stripped = column_name.strip()
-    if not stripped:
-        return "general"
-
-    for delimiter in ("(", "["):
-        delimiter_pos = stripped.find(delimiter)
-        if delimiter_pos > 0:
-            prefix = stripped[:delimiter_pos].strip()
-            return prefix if prefix else "general"
-
-    return "general"
-
-
-def _group_metadata_by_prefix(metadata_flat: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    """Group metadata columns by prefix-derived category with deterministic ordering."""
-    grouped: dict[str, dict[str, Any]] = {}
-    for column_name, value in metadata_flat.items():
-        category = _extract_prefix_category(column_name)
-        grouped.setdefault(category, {})[column_name] = value
-
-    ordered = OrderedDict()
-    sorted_categories = natsorted(
-        grouped.keys(),
-        key=lambda name: (
-            _CATEGORY_SORT_ORDER.index(name)
-            if name in _CATEGORY_SORT_ORDER
-            else len(_CATEGORY_SORT_ORDER),
-            name.lower(),
-        ),
+    should_reject = prompt_yes_no(
+        "SprayTec: found "
+        f"{len(short_blocks)} block(s) with fewer than {min_rows_per_block} row(s). "
+        "Reject these short outputs (press ENTER for yes or type 'n')?",
+        default=True,
     )
+    if not should_reject:
+        return blocks
 
-    for category in sorted_categories:
-        ordered[category] = dict(
-            natsorted(grouped[category].items(),
-                      key=lambda item: item[0].lower())
-        )
-    return dict(ordered)
+    kept_blocks = [block for block in blocks if len(
+        block.rows) >= min_rows_per_block]
+    for idx, block in enumerate(kept_blocks, start=1):
+        block.measurement_idx = idx
 
-
-def _coerce_numeric_if_possible(series: pd.Series) -> pd.Series:
-    """Return numeric series only when most non-missing values are numeric."""
-    raw = series.astype(str).str.strip()
-    missing_mask = raw.str.lower().isin(
-        _MISSING_MARKERS) | raw.apply(_is_absurd_negative_sentinel)
-    cleaned = raw.mask(missing_mask, pd.NA)
-
-    numeric = pd.to_numeric(cleaned, errors="coerce")
-    non_missing_count = cleaned.notna().sum()
-    if non_missing_count == 0:
-        return cleaned
-
-    numeric_non_missing_count = numeric.notna().sum()
-    if numeric_non_missing_count / non_missing_count >= 0.90:
-        return numeric
-    return cleaned
-
-
-def _read_spraytec_csv_dataframe(file_path: Path) -> pd.DataFrame:
-    """Read SprayTec CSV robustly while preserving column ordering."""
-    dataframe = pd.read_csv(
-        file_path,
-        dtype=str,
-        keep_default_na=False,
-        encoding="utf-8",
-        encoding_errors="replace",
-    )
-
-    dataframe.columns = [str(column).strip() for column in dataframe.columns]
-    dataframe = dataframe.apply(lambda series: series.astype(str).str.strip())
-    return dataframe
-
-
-def _count_absurd_negative_sentinels(dataframe: pd.DataFrame) -> int:
-    """Count absurdly negative numeric sentinel values in a dataframe."""
-    count = 0
-    for column_name in dataframe.columns:
-        count += int(
-            dataframe[column_name]
-            .astype(str)
-            .str.strip()
-            .apply(_is_absurd_negative_sentinel)
-            .sum()
-        )
-    return count
-
-
-def _compute_bin_edges_from_columns(columns: list[str]) -> list[float]:
-    """Extract bin-edge values from numeric column headers in file order."""
-    bin_edges: list[float] = []
-    for column_name in columns:
-        if not _is_bin_edge_column(column_name):
-            continue
-        parsed = _try_parse_float(column_name)
-        if parsed is not None:
-            bin_edges.append(parsed)
-    return bin_edges
-
-
-def _compute_bin_centers(bin_edges_um: list[float]) -> list[float]:
-    """Compute consecutive bin centers from ordered edge values."""
-    if len(bin_edges_um) < 2:
-        return []
-    return [
-        (bin_edges_um[idx - 1] + bin_edges_um[idx]) / 2.0
-        for idx in range(1, len(bin_edges_um))
-    ]
-
-
-def resolve_spraytec_csv_file_path(file_path: str | Path | None) -> Path:
-    """Return a validated SprayTec measurement CSV path."""
-    if file_path is None:
-        selected_path = ask_open_file(
-            key="spraytec_csv_file",
-            title="Select SprayTec CSV file",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
-        )
-        if selected_path is None:
-            raise ValueError("No SprayTec CSV file selected.")
-        resolved_path = Path(selected_path)
-    else:
-        resolved_path = Path(file_path)
-
-    if not resolved_path.exists():
-        raise FileNotFoundError(
-            f"SprayTec CSV file not found: {resolved_path}")
-    if not resolved_path.is_file():
-        raise ValueError(f"Path is not a file: {resolved_path}")
-    return resolved_path
-
-
-def load_spraytec_csv(file_path: str | Path | None = None) -> SpraytecCsvData:
-    """Load one SprayTec CSV and split constant metadata vs measurement data.
-
-    Metadata columns are detected as columns containing at most one effective
-    non-missing value over all rows.
-    """
-    resolved_path = resolve_spraytec_csv_file_path(file_path)
-    dataframe = _read_spraytec_csv_dataframe(resolved_path)
-    absurd_values_converted_count = _count_absurd_negative_sentinels(dataframe)
-
-    if dataframe.empty:
-        raise ValueError(
-            f"SprayTec CSV contains no data rows: {resolved_path}")
-
-    print(
-        "SprayTec warning: converted "
-        f"{absurd_values_converted_count} absurdly large negative value(s) to NaN "
-        f"while loading {resolved_path.name}."
-    )
-
-    metadata_flat: dict[str, Any] = {}
-    measurement_columns: list[str] = []
-    bin_edges_um = _compute_bin_edges_from_columns(list(dataframe.columns))
-    bin_centers_um = _compute_bin_centers(bin_edges_um)
-
-    for column_name in dataframe.columns:
-        # Bin-edge columns belong to time-dependent spray size data even when
-        # a specific edge column has no recorded values.
-        if _is_bin_edge_column(column_name):
-            measurement_columns.append(column_name)
-            continue
-
-        normalized_values = [
-            _normalize_missing_value(value) for value in dataframe[column_name].tolist()
-        ]
-        unique_non_missing_values = {
-            value for value in normalized_values if value is not None
-        }
-
-        if len(unique_non_missing_values) <= 1:
-            only_value = next(iter(unique_non_missing_values), None)
-            metadata_flat[column_name] = _parse_scalar(only_value)
-        else:
-            measurement_columns.append(column_name)
-
-    measurement_df = dataframe[measurement_columns].copy()
-    for column_name in measurement_df.columns:
-        measurement_df[column_name] = _coerce_numeric_if_possible(
-            measurement_df[column_name]
+    if debug:
+        print(
+            "SprayTec debug: rejected "
+            f"{len(short_blocks)} short block(s) with min_rows_per_block={min_rows_per_block}."
         )
 
-    metadata_by_category = _group_metadata_by_prefix(metadata_flat)
-
-    return SpraytecCsvData(
-        file_path=resolved_path,
-        data_df=dataframe,
-        measurement_df=measurement_df,
-        measurement_columns=list(measurement_df.columns),
-        metadata_flat=metadata_flat,
-        metadata_by_category=metadata_by_category,
-        bin_edges_um=bin_edges_um,
-        bin_centers_um=bin_centers_um,
-        absurd_values_converted_count=absurd_values_converted_count,
-    )
-
-
-def load_spraytec_csvs(
-    folder_path: str | Path,
-    pattern: str = DEFAULT_SPRAYTEC_CSV_GLOB,
-) -> list[SpraytecCsvData]:
-    """Load all SprayTec CSV files in a folder and return typed results."""
-    folder = Path(folder_path)
-    if not folder.exists():
-        raise FileNotFoundError(f"SprayTec folder not found: {folder}")
-    if not folder.is_dir():
-        raise ValueError(f"Path is not a folder: {folder}")
-
-    csv_paths = natsorted(
-        path for path in folder.glob(pattern) if path.is_file())
-    if not csv_paths:
-        raise ValueError(
-            f"No SprayTec CSV files found in {folder} with pattern '{pattern}'")
-
-    return [load_spraytec_csv(path) for path in csv_paths]
-
-
-def _to_jsonable(value: Any) -> Any:
-    """Recursively convert values to JSON-safe primitives."""
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, dict):
-        return {str(key): _to_jsonable(val) for key, val in value.items()}
-    if isinstance(value, (list, tuple, set)):
-        return [_to_jsonable(val) for val in value]
-    return value
-
-
-def export_spraytec_metadata_json(
-    spraytec_data: SpraytecCsvData,
-    output_dir: str | Path,
-    filename: str | None = None,
-) -> Path:
-    """Export one loaded SprayTec metadata payload as JSON."""
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    resolved_filename = (
-        filename
-        if filename is not None
-        else f"{spraytec_data.file_path.stem}_metadata.json"
-    )
-    json_path = output_path / resolved_filename
-
-    payload = {
-        "source_csv": spraytec_data.file_path,
-        "metadata_by_category": spraytec_data.metadata_by_category,
-        "time_dependent_columns": spraytec_data.measurement_columns,
-        "bin_edges_um": spraytec_data.bin_edges_um,
-        "bin_centers_um": spraytec_data.bin_centers_um,
-    }
-
-    save_metadata_json(_to_jsonable(payload), json_path)
-    return json_path
-
-
-def export_spraytec_metadata_jsons(
-    spraytec_data_list: list[SpraytecCsvData],
-    output_dir: str | Path,
-) -> list[Path]:
-    """Export metadata JSON files for multiple loaded SprayTec CSV files."""
-    return [
-        export_spraytec_metadata_json(
-            spraytec_data=data, output_dir=output_dir)
-        for data in spraytec_data_list
-    ]
-
-
-def _merge_metadata_values(values: list[Any]) -> Any:
-    """Return shared scalar when all equal; otherwise keep per-file list."""
-    if not values:
-        return None
-    first_value = values[0]
-    if all(value == first_value for value in values[1:]):
-        return first_value
-    return values
-
-
-def _build_combined_metadata_by_category(
-    spraytec_data_list: list[SpraytecCsvData],
-) -> dict[str, dict[str, Any]]:
-    """Merge categorized metadata across files, listing differing values."""
-    all_categories: set[str] = set()
-    for data in spraytec_data_list:
-        all_categories.update(data.metadata_by_category.keys())
-
-    combined: dict[str, dict[str, Any]] = {}
-    for category in natsorted(all_categories):
-        all_keys: set[str] = set()
-        for data in spraytec_data_list:
-            category_dict = data.metadata_by_category.get(category, {})
-            all_keys.update(category_dict.keys())
-
-        combined_category: dict[str, Any] = {}
-        for key in natsorted(all_keys):
-            values = [
-                data.metadata_by_category.get(category, {}).get(key)
-                for data in spraytec_data_list
-            ]
-            combined_category[key] = _merge_metadata_values(values)
-
-        combined[category] = combined_category
-
-    return combined
-
-
-def build_combined_spraytec_metadata(
-    spraytec_data_list: list[SpraytecCsvData],
-) -> dict[str, Any]:
-    """Build one combined metadata dict across multiple SprayTec CSV files."""
-    if not spraytec_data_list:
-        raise ValueError("spraytec_data_list is empty")
-
-    source_csvs = [str(data.file_path) for data in spraytec_data_list]
-    file_names = [data.file_path.name for data in spraytec_data_list]
-
-    all_time_dependent_columns: set[str] = set()
-    for data in spraytec_data_list:
-        all_time_dependent_columns.update(data.measurement_columns)
-
-    all_bin_edges = [data.bin_edges_um for data in spraytec_data_list]
-    all_bin_centers = [data.bin_centers_um for data in spraytec_data_list]
-    absurd_counts = [
-        data.absurd_values_converted_count for data in spraytec_data_list]
-    combined_metadata_by_category = _build_combined_metadata_by_category(
-        spraytec_data_list
-    )
-
-    return {
-        "source_csvs": source_csvs,
-        "source_file_names": file_names,
-        "metadata_by_category": combined_metadata_by_category,
-        "time_dependent_columns": natsorted(all_time_dependent_columns),
-        "bin_edges_um": _merge_metadata_values(all_bin_edges),
-        "bin_centers_um": _merge_metadata_values(all_bin_centers),
-        "absurd_values_converted_count": {
-            "per_file": dict(zip(file_names, absurd_counts, strict=True)),
-            "total": sum(absurd_counts),
-        },
-    }
-
-
-def export_combined_spraytec_metadata_json(
-    spraytec_data_list: list[SpraytecCsvData],
-    output_dir: str | Path,
-    filename: str = "spraytec_metadata.json",
-) -> Path:
-    """Export one combined metadata JSON for multiple loaded SprayTec CSV files."""
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-    json_path = output_path / filename
-
-    payload = build_combined_spraytec_metadata(spraytec_data_list)
-    save_metadata_json(_to_jsonable(payload), json_path)
-    return json_path
-
-
+    return kept_blocks
 # =============================================================================
 # Append parsing + audit persistence helpers
 # =============================================================================
@@ -919,13 +581,6 @@ def _write_block_csv(block: SpraytecBlock, file_path: Path, fallback_header: lis
         writer = csv.writer(handle)
         writer.writerow(header_row)
         writer.writerows(block.rows)
-
-
-def _timestamp_for_filename(dt_value: datetime | None) -> str:
-    """Format a timestamp label for output filenames."""
-    if dt_value is None:
-        return time.strftime("%y%m%d_%H%M%S_%f")
-    return dt_value.strftime("%y%m%d_%H%M%S_%f")
 
 
 def _block_to_audit_row(
@@ -1073,229 +728,3 @@ def _build_blocks(append_path: Path) -> tuple[list[str], list[SpraytecBlock]]:
         raise ValueError("Could not find SprayTec header row in append file.")
 
     return top_header, blocks
-
-
-def _list_spraytec_runs(
-        append_file_path: str | Path | None = None,
-) -> list[dict[str, str]]:
-    """Refresh and return audit rows without writing measurement CSV outputs."""
-    append_path = _resolve_append_file_path(append_file_path)
-
-    _header, blocks = _build_blocks(append_path)
-    audit_path = append_path.parent / AUDIT_FILENAME
-    previous_rows = _load_audit_rows(audit_path)
-
-    audit_rows: list[dict[str, str]] = []
-    for block in blocks:
-        previous = previous_rows.get(block.block_id)
-        audit_rows.append(_block_to_audit_row(block, previous=previous))
-
-    _write_audit_rows(audit_path, audit_rows)
-    return audit_rows
-
-
-def _save_spraytec_data(
-        append_file_path: str | Path | None = None,
-        experiment_dir: str | Path | None = None,
-        start_time: str | None = None,
-        debug: bool = False,
-        max_append_file_size_bytes: int = DEFAULT_APPEND_MAX_FILE_SIZE_BYTES,
-        offer_archive_if_large: bool = True,
-        export_combined_metadata: bool = True,
-        combined_metadata_filename: str = "spraytec_metadata.json",
-) -> Path:
-    """Extract new SprayTec measurements and optionally copy them to experiment folder.
-
-    Processing steps:
-    1) Parse append file into measurement blocks.
-    2) Reconcile against prior audit rows.
-    3) Cache each new block in redundancy folder.
-    4) Optionally copy to experiment folder.
-    5) Persist updated audit and emit summary messages.
-    6) Optionally export combined SprayTec metadata JSON for copied CSVs.
-    """
-    # Resolve append file and determine whether the archive prompt should be shown.
-    append_path = _resolve_append_file_path(append_file_path)
-    append_file_size_bytes = append_path.stat().st_size
-    should_offer_archive = (
-        offer_archive_if_large
-        and max_append_file_size_bytes > 0
-        and append_file_size_bytes > max_append_file_size_bytes
-    )
-
-    header_row, blocks = _build_blocks(append_path)
-    audit_path = append_path.parent / AUDIT_FILENAME
-    redundancy_dir = append_path.parent / REDUNDANCY_DIRNAME
-    audit_file_created = not audit_path.exists()
-    previous_rows = _load_audit_rows(audit_path)
-
-    # Parse optional start-time filter and create experiment output folder if needed.
-    start_dt = _parse_start_time(start_time)
-    experiment_path = Path(experiment_dir).resolve(
-    ) if experiment_dir is not None else None
-    if experiment_path is not None:
-        experiment_path = experiment_path / EXPERIMENT_SPRAYTEC_SUBDIR
-        experiment_path.mkdir(parents=True, exist_ok=True)
-
-    audit_rows: list[dict[str, str]] = []
-    extracted_count = 0
-    copied_count = 0
-    older_unprocessed_count = 0
-    first_experiment_csv: Path | None = None
-    first_experiment_timestamp: str | None = None
-    first_experiment_row: dict[str, str] | None = None
-
-    # Count historical blocks that are before start time and still uncopied.
-    for block in blocks:
-        if start_dt is None or block.timestamp_dt is None:
-            continue
-        if block.timestamp_dt <= start_dt:
-            previous = previous_rows.get(block.block_id)
-            copied = previous is not None and previous.get(
-                "copied_to_experiment") == "1"
-            if not copied:
-                older_unprocessed_count += 1
-
-    # Process all blocks and persist/copy only those that are new for this run.
-    with make_minimal_progress_bar(
-        total=len(blocks),
-        label="SprayTec",
-        unit_label="blocks",
-    ) as pbar:
-        for block in blocks:
-            previous = previous_rows.get(block.block_id)
-            row = _block_to_audit_row(block, previous=previous)
-
-            is_after_start = (
-                start_dt is None
-                or (block.timestamp_dt is not None and block.timestamp_dt > start_dt)
-            )
-            already_copied = row.get("copied_to_experiment") == "1"
-
-            if is_after_start and not already_copied:
-                # Always save parsed measurement in local redundancy cache first.
-                redundancy_dir.mkdir(parents=True, exist_ok=True)
-                timestamp_label = _timestamp_for_filename(block.timestamp_dt)
-                local_filename = f"spraytec_{timestamp_label}.csv"
-                local_path = _next_available_path(
-                    redundancy_dir / local_filename)
-
-                _write_block_csv(block, local_path, fallback_header=header_row)
-                extracted_count += 1
-
-                row["cached_saved"] = "1"
-                row["cached_csv"] = str(local_path)
-
-                should_copy_to_experiment = experiment_path is not None
-
-                if should_copy_to_experiment:
-                    assert experiment_path is not None
-                    next_copy_index = copied_count + 1
-
-                    # If this becomes a multi-file batch, rename first copied file to label 1
-                    # so copied files are consistently numbered 1..N in experiment folder.
-                    if (
-                        next_copy_index == 2
-                        and first_experiment_csv is not None
-                        and first_experiment_timestamp is not None
-                        and first_experiment_row is not None
-                    ):
-                        first_labeled_filename = create_labeled_csv_filename(
-                            prefix="spraytec",
-                            label=1,
-                            timestamp=first_experiment_timestamp,
-                        )
-                        first_labeled_path = _next_available_path(
-                            experiment_path / first_labeled_filename
-                        )
-                        first_experiment_csv.rename(first_labeled_path)
-                        first_experiment_csv = first_labeled_path
-                        first_experiment_row["experiment_csv"] = str(
-                            first_labeled_path)
-
-                    label = next_copy_index if next_copy_index > 1 else None
-                    experiment_filename = create_labeled_csv_filename(
-                        prefix="spraytec",
-                        label=label,
-                        timestamp=timestamp_label,
-                    )
-                    experiment_csv = _next_available_path(
-                        experiment_path / experiment_filename)
-                    shutil.copy2(local_path, experiment_csv)
-                    copied_count += 1
-
-                    row["copied_to_experiment"] = "1"
-                    row["experiment_dir"] = str(experiment_path)
-                    row["experiment_csv"] = str(experiment_csv)
-                    row["copied_at"] = datetime.now(
-                    ).isoformat(timespec="seconds")
-
-                    # Remember the first copied file in case a second copy later requires
-                    # retroactive numbering of that first file.
-                    if copied_count == 1:
-                        first_experiment_csv = experiment_csv
-                        first_experiment_timestamp = timestamp_label
-                        first_experiment_row = row
-
-            audit_rows.append(row)
-            pbar.update(1)
-
-    _write_audit_rows(audit_path, audit_rows)
-
-    if audit_file_created:
-        print(f"SprayTec: created new audit file at {audit_path}")
-
-    if older_unprocessed_count > 0:
-        print(
-            "SprayTec warning: "
-            f"{older_unprocessed_count} measurement(s) before start time are still unprocessed."
-        )
-
-    if not debug:
-        if experiment_path is None:
-            print(
-                f"SprayTec: extracted {extracted_count} file(s) to {redundancy_dir}.")
-        else:
-            print(
-                f"SprayTec: extracted {extracted_count} file(s) to {redundancy_dir}; "
-                f"copied {copied_count} to {experiment_path}."
-            )
-    else:
-        print(
-            "SprayTec debug: "
-            f"detected={len(blocks)}, extracted={extracted_count}, copied={copied_count}, "
-            f"audit={audit_path}"
-        )
-
-    if export_combined_metadata and experiment_path is not None:
-        try:
-            spraytec_data_list = load_spraytec_csvs(experiment_path)
-            spraytec_metadata_json_path = export_combined_spraytec_metadata_json(
-                spraytec_data_list=spraytec_data_list,
-                output_dir=experiment_path,
-                filename=combined_metadata_filename,
-            )
-            print(
-                "SprayTec combined metadata JSON exported to "
-                f"{spraytec_metadata_json_path}"
-            )
-        except ValueError:
-            print(
-                "SprayTec combined metadata JSON export skipped: "
-                f"no SprayTec CSV files found in {experiment_path}."
-            )
-
-    if should_offer_archive:
-        # Optionally archive oversized append files after successful processing.
-        max_size_mb = max_append_file_size_bytes / (1024 * 1024)
-        current_size_mb = append_file_size_bytes / (1024 * 1024)
-        archive_now = prompt_yes_no(
-            "SprayTec append file is large "
-            f"({current_size_mb:.1f} MB > {max_size_mb:.1f} MB). Archive now (press ENTER for yes or type 'n')?",
-            default=False,
-        )
-        if archive_now:
-            archived_path = _archive_spraytec_append_file(append_path)
-            print(f"SprayTec: append file archived to {archived_path}")
-
-    return audit_path
