@@ -34,6 +34,7 @@ AUDIT_FILENAME = "spraytec_parsing_audit.csv"
 REDUNDANCY_DIRNAME = "spraytec_individual_measurements"
 ARCHIVE_DIRNAME = "archive"
 EXPERIMENT_SPRAYTEC_SUBDIR = "spraytec"
+SPRAYTEC_APPEND_FILE = "SPRAYTEC_APPEND_FILE.txt"
 DEFAULT_APPEND_MAX_FILE_SIZE_BYTES = 500 * 1024 * 1024
 
 
@@ -102,7 +103,7 @@ class SprayTec:
         return resolved_path
 
     def archive_append_file(self, append_file_path: str | Path | None = None) -> Path:
-        """Archive append file and clear stored append path."""
+        """Archive append file and create a fresh empty append file."""
         # Resolve source file and ensure the archive target folder exists.
         append_path = self.resolve_append_file_path(append_file_path)
         archive_dir = append_path.parent / ARCHIVE_DIRNAME
@@ -113,7 +114,11 @@ class SprayTec:
         archive_target = _next_available_path(archive_dir / archived_name)
         shutil.move(str(append_path), str(archive_target))
 
-        self.append_file_path = None
+        new_append_path = append_path.parent / SPRAYTEC_APPEND_FILE
+        with open(new_append_path, "w", encoding="utf-8", newline=""):
+            pass
+
+        self.append_file_path = new_append_path
         return archive_target
 
     def list_runs(self, append_file_path: str | Path | None = None) -> list[dict[str, str]]:
