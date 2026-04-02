@@ -5,14 +5,14 @@ series_directory = "" # keep empty to prompt; set to "None" to disable saving da
 
 [inputs.cough]
 debug_mode = false
-nr_runs = 5
+nr_runs = 1
 multi_run_interval_s = 40
 confirm_before_starting_next_run = false
 record_droplet_size = true
 
 [devices.cough_machine.inputs]
 flow_curve_csv_path = "step300ms"
-wait_before_run_ms =  68.5
+wait_before_run_ms = 68.5
 
 [devices.cough_machine.inputs.tank]
 pressure_bar = 1.5
@@ -42,5 +42,5 @@ spraytec_to_ref_x_mm = 44
 spraytec_to_ref_y_mm = 483
 stage_pos_x_zero_mm = 96
 stage_pos_y_zero_mm = 655
-stage_pos_x_mm = "" # keep empty to prompt
-stage_pos_y_mm = "" # keep empty to prompt
+stage_pos_x_mm = 96 # keep empty to prompt
+stage_pos_y_mm = 655 # keep empty to prompt

@@ -18,7 +18,7 @@ from tcm_control.interrupt_handling import (
     set_active_pump,
     set_active_tcm,
 )
-from tcm_control.processing import plot_run_log
+from tcm_control.processing.run_log_processing import plot_run_log
 from tcm_control.user_input import (
     ask_start_confirmation,
     ask_user_for_comments,
@@ -119,6 +119,10 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         # Create output directory for this experiment.
         output_dir = logger.create_experiment_dir(
             series_directory, experiment_name, start_time=time_start)
+        logger.copy_experiment_config(
+            experiment_dir=output_dir,
+            config_path=exp_conf["config_file_path"],
+        )
         # Register folder globally so Ctrl+C cleanup can optionally remove it
         set_active_output_dir(output_dir)
         # Derive fixed path for host console logging in this experiment folder
@@ -401,6 +405,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             assert output_dir is not None
             if first_run_log_path is not None:
                 # Generate a quick diagnostic plot from the first run log
+                # TODO: Optionally, plot all run logs
                 plot_run_log(
                     run_log_path=first_run_log_path,
                     experiment_dir=output_dir,
@@ -431,6 +436,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             # Group run-level values in one dictionary to keep metadata wiring compact
             # Add new run-wide metadata values here
             run_context = {
+                "config_file_path": exp_conf["config_file_path"],
                 "time_start": time_start,
                 "time_finish": time_finish,
                 "experiment_name": experiment_name,

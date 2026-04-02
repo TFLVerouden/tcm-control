@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from tcm_control.processing import plot_run_log
+from tcm_control.processing.run_log_processing import plot_run_log
 from tcm_utils.file_dialogs import ask_directory, ask_open_file
 
 
