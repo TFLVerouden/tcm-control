@@ -117,6 +117,10 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         # Create output directory for this experiment.
         output_dir = logger.create_experiment_dir(
             series_directory, experiment_name, start_time=time_start)
+        logger.copy_experiment_config(
+            experiment_dir=output_dir,
+            config_path=exp_conf["config_file_path"],
+        )
         # Register folder globally so Ctrl+C cleanup can optionally remove it
         set_active_output_dir(output_dir)
         # Derive fixed path for host console logging in this experiment folder
@@ -429,6 +433,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             # Group run-level values in one dictionary to keep metadata wiring compact
             # Add new run-wide metadata values here
             run_context = {
+                "config_file_path": exp_conf["config_file_path"],
                 "time_start": time_start,
                 "time_finish": time_finish,
                 "experiment_name": experiment_name,

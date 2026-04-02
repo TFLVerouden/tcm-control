@@ -522,6 +522,7 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             "mode": experiment_mode,
             "series_directory": Path(series_directory) if series_directory else None,
             "save_data": save_data,
+            "config_file_path": config_file,
         },
         "inputs": {
             "cough": cough_inputs,
