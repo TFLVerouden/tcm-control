@@ -18,7 +18,7 @@ from tcm_control.interrupt_handling import (
     set_active_pump,
     set_active_tcm,
 )
-from tcm_control.processing import plot_run_log
+from tcm_control.processing.run_log_processing import plot_run_log
 from tcm_control.user_input import (
     ask_start_confirmation,
     ask_user_for_comments,

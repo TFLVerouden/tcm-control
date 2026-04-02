@@ -8,15 +8,7 @@ from tcm_utils.cvd_check import set_cvd_friendly_colors, get_color
 import numpy as np
 import matplotlib.pyplot as plt
 
-
-PROCESSED_SUBDIR_NAME = "processed"
-
-
-def get_processed_dir(experiment_dir: Path) -> Path:
-    """Return (and create) the processed output directory for an experiment."""
-    processed_dir = Path(experiment_dir) / PROCESSED_SUBDIR_NAME
-    processed_dir.mkdir(parents=True, exist_ok=True)
-    return processed_dir
+from tcm_control.processing.common import get_processed_dir
 
 
 def plot_run_log(

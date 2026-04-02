@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-"""SprayTec CSV loading and processing helpers.
-"""
+"""SprayTec CSV loading and processing helpers."""
 
 import re
 from pathlib import Path
@@ -9,6 +8,7 @@ from typing import Any
 
 import pandas as pd
 from natsort import natsorted
+from tcm_control.processing.common import get_processed_dir
 from tcm_utils.io_utils import ask_open_file, save_metadata_json
 
 DEFAULT_SPRAYTEC_CSV_GLOB = "spraytec*.csv"
@@ -43,7 +43,6 @@ __all__ = [
     "load_spraytec_csvs",
     "build_metadata",
     "time_average_distribution",
-    "plot_time_average",
     "export_spraytec_metadata_json",
     "export_spraytec_metadata_jsons",
     "build_combined_spraytec_metadata",
@@ -66,18 +65,14 @@ def resolve_spraytec_csv_file_path(file_path: str | Path | None) -> Path:
         resolved_path = Path(file_path)
 
     if not resolved_path.exists():
-        raise FileNotFoundError(
-            f"SprayTec CSV file not found: {resolved_path}")
+        raise FileNotFoundError(f"SprayTec CSV file not found: {resolved_path}")
     if not resolved_path.is_file():
         raise ValueError(f"Path is not a file: {resolved_path}")
     return resolved_path
 
 
 def load_spraytec_csv(file_path: str | Path | None = None) -> dict[str, Any]:
-    """Load one SprayTec CSV and split metadata from time-dependent columns.
-
-    Returns a plain dictionary payload that is easy to pass around in scripts.
-    """
+    """Load one SprayTec CSV and split metadata from time-dependent columns."""
     resolved_path = resolve_spraytec_csv_file_path(file_path)
 
     dataframe = pd.read_csv(
@@ -91,11 +86,9 @@ def load_spraytec_csv(file_path: str | Path | None = None) -> dict[str, Any]:
     dataframe = dataframe.apply(lambda series: series.astype(str).str.strip())
 
     if dataframe.empty:
-        raise ValueError(
-            f"SprayTec CSV contains no data rows: {resolved_path}")
+        raise ValueError(f"SprayTec CSV contains no data rows: {resolved_path}")
 
-    numeric_pattern = re.compile(
-        r"^[+-]?(?:\d+\.?\d*|\d*\.\d+)(?:[eE][+-]?\d+)?$")
+    numeric_pattern = re.compile(r"^[+-]?(?:\d+\.?\d*|\d*\.\d+)(?:[eE][+-]?\d+)?$")
 
     def try_parse_float(value: str) -> float | None:
         try:
@@ -124,11 +117,7 @@ def load_spraytec_csv(file_path: str | Path | None = None) -> dict[str, Any]:
     absurd_values_converted_count = 0
     for column_name in dataframe.columns:
         absurd_values_converted_count += int(
-            dataframe[column_name]
-            .astype(str)
-            .str.strip()
-            .apply(is_absurd_negative_sentinel)
-            .sum()
+            dataframe[column_name].astype(str).str.strip().apply(is_absurd_negative_sentinel).sum()
         )
 
     print(
@@ -157,8 +146,7 @@ def load_spraytec_csv(file_path: str | Path | None = None) -> dict[str, Any]:
             else:
                 normalized_values.append(cleaned)
 
-        unique_non_missing = {
-            value for value in normalized_values if value is not None}
+        unique_non_missing = {value for value in normalized_values if value is not None}
         if len(unique_non_missing) <= 1:
             only_value = next(iter(unique_non_missing), None)
             metadata_flat[column_name] = parse_scalar(only_value)
@@ -212,11 +200,9 @@ def load_spraytec_csvs(
     if not folder.is_dir():
         raise ValueError(f"Path is not a folder: {folder}")
 
-    csv_paths = natsorted(
-        path for path in folder.glob(pattern) if path.is_file())
+    csv_paths = natsorted(path for path in folder.glob(pattern) if path.is_file())
     if not csv_paths:
-        raise ValueError(
-            f"No SprayTec CSV files found in {folder} with pattern '{pattern}'")
+        raise ValueError(f"No SprayTec CSV files found in {folder} with pattern '{pattern}'")
 
     return [load_spraytec_csv(path) for path in csv_paths]
 
@@ -253,11 +239,36 @@ def build_metadata(metadata_flat: dict[str, Any]) -> dict[str, dict[str, Any]]:
     metadata_by_category: dict[str, dict[str, Any]] = {}
     for category in sorted_categories:
         metadata_by_category[category] = dict(
-            natsorted(grouped[category].items(),
-                      key=lambda item: item[0].lower())
+            natsorted(grouped[category].items(), key=lambda item: item[0].lower())
         )
 
     return metadata_by_category
+
+
+def _build_time_interval_labels(
+    start_time_s: float | None,
+    end_time_s: float | None,
+) -> tuple[str, str]:
+    """Return (human label, filename-safe label) with ms precision."""
+    if start_time_s is None and end_time_s is None:
+        return "all time", "all_time"
+
+    if start_time_s is not None and end_time_s is not None:
+        return (
+            f"{start_time_s:.3f}s to {end_time_s:.3f}s",
+            f"t_{start_time_s:.3f}_to_{end_time_s:.3f}s",
+        )
+
+    if start_time_s is not None:
+        return (
+            f"from {start_time_s:.3f}s",
+            f"t_from_{start_time_s:.3f}s",
+        )
+
+    return (
+        f"until {end_time_s:.3f}s",
+        f"t_until_{end_time_s:.3f}s",
+    )
 
 
 def time_average_distribution(
@@ -265,24 +276,29 @@ def time_average_distribution(
     start_time_s: float | None = None,
     end_time_s: float | None = None,
     time_column: str = "Time [s]",
+    export_csv: bool = True,
+    csv_filename: str | None = None,
+    plot: bool = False,
+    ax: Any | None = None,
+    export_pdf: bool = False,
+    pdf_filename: str | None = None,
+    **plot_kwargs: Any,
 ) -> pd.Series:
-    """Compute the time-averaged size distribution over selected time range.
+    """Compute a time-averaged distribution, with optional export and plotting.
 
-    Returns a Series indexed by bin center (um).
+    Plot kwargs are forwarded to matplotlib's ax.plot(...).
     """
     measurement_df = spraytec_data["measurement_df"]
     bin_edges_um = spraytec_data["bin_edges_um"]
 
     if len(bin_edges_um) < 2:
-        raise ValueError(
-            "No valid bin edges found; cannot compute time average distribution.")
+        raise ValueError("No valid bin edges found; cannot compute time average distribution.")
 
     bin_edge_labels = {str(edge) for edge in bin_edges_um}
     bin_columns = [
-        column
-        for column in measurement_df.columns
-        if str(column).strip() in bin_edge_labels
+        column for column in measurement_df.columns if str(column).strip() in bin_edge_labels
     ]
+
     if not bin_columns:
         bin_columns = []
         for column in measurement_df.columns:
@@ -294,8 +310,7 @@ def time_average_distribution(
                 bin_columns.append(column)
 
     if not bin_columns:
-        raise ValueError(
-            "No bin distribution columns found in measurement_df.")
+        raise ValueError("No bin distribution columns found in measurement_df.")
 
     working_df = measurement_df
     if time_column in working_df.columns and (start_time_s is not None or end_time_s is not None):
@@ -322,50 +337,67 @@ def time_average_distribution(
         averaged.index = centers
         averaged.index.name = "bin_center_um"
 
-    return averaged
-
-
-def plot_time_average(
-    spraytec_data: dict[str, Any],
-    start_time_s: float | None = None,
-    end_time_s: float | None = None,
-    ax: Any | None = None,
-) -> Any:
-    """Plot the time-averaged size distribution and return matplotlib axis."""
-    import matplotlib.pyplot as plt
-
-    averaged = time_average_distribution(
-        spraytec_data=spraytec_data,
+    interval_title, interval_filename = _build_time_interval_labels(
         start_time_s=start_time_s,
         end_time_s=end_time_s,
     )
 
-    if ax is None:
-        _, ax = plt.subplots(figsize=(7, 4))
+    source_path = Path(spraytec_data["file_path"])
+    output_path = get_processed_dir(source_path.parent)
 
-    x_values = pd.to_numeric(pd.Series(averaged.index), errors="coerce")
-    y_values = pd.to_numeric(averaged, errors="coerce")
+    if export_csv:
+        resolved_csv_filename = (
+            csv_filename
+            if csv_filename is not None
+            else f"{source_path.stem}_time_average_{interval_filename}.csv"
+        )
+        csv_path = output_path / resolved_csv_filename
+        export_df = averaged.rename(f"mean_distribution ({interval_title})").to_frame()
+        if export_df.index.name is None:
+            export_df.index.name = "bin_center_um"
+        export_df.to_csv(csv_path)
 
-    ax.plot(x_values, y_values, linewidth=2)
-    ax.set_xlabel("Particle size (um)")
-    ax.set_ylabel("Mean distribution")
-    ax.set_title("SprayTec time-averaged distribution")
-    ax.grid(True, alpha=0.3)
+    if plot or export_pdf or ax is not None:
+        import matplotlib.pyplot as plt
 
-    return ax
+        if ax is None:
+            _, ax = plt.subplots(figsize=(7, 4))
+
+        x_values = pd.to_numeric(pd.Series(averaged.index), errors="coerce")
+        y_values = pd.to_numeric(averaged, errors="coerce")
+
+        if "linewidth" not in plot_kwargs:
+            plot_kwargs["linewidth"] = 2
+        ax.plot(x_values, y_values, **plot_kwargs)
+        ax.set_xlabel("Particle size (um)")
+        ax.set_ylabel("Mean distribution")
+        ax.set_title(f"SprayTec time-averaged distribution ({interval_title})")
+        ax.grid(True, alpha=0.3)
+
+        if export_pdf:
+            resolved_pdf_filename = (
+                pdf_filename
+                if pdf_filename is not None
+                else f"{source_path.stem}_time_average_{interval_filename}.pdf"
+            )
+            pdf_path = output_path / resolved_pdf_filename
+            ax.figure.tight_layout()
+            ax.figure.savefig(pdf_path, bbox_inches="tight")
+
+    return averaged
 
 
 def export_spraytec_metadata_json(
     spraytec_data: dict[str, Any],
-    output_dir: str | Path,
     filename: str | None = None,
 ) -> Path:
     """Export one loaded SprayTec metadata payload as JSON."""
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-
     source_path = Path(spraytec_data["file_path"])
-    resolved_filename = filename if filename is not None else f"{source_path.stem}_metadata.json"
+    output_path = get_processed_dir(source_path.parent)
+
+    resolved_filename = (
+        filename if filename is not None else f"{source_path.stem}_metadata.json"
+    )
     json_path = output_path / resolved_filename
 
     payload = {
@@ -391,14 +423,9 @@ def export_spraytec_metadata_json(
 
 def export_spraytec_metadata_jsons(
     spraytec_data_list: list[dict[str, Any]],
-    output_dir: str | Path,
 ) -> list[Path]:
     """Export metadata JSON files for multiple loaded SprayTec CSV files."""
-    return [
-        export_spraytec_metadata_json(
-            spraytec_data=data, output_dir=output_dir)
-        for data in spraytec_data_list
-    ]
+    return [export_spraytec_metadata_json(spraytec_data=data) for data in spraytec_data_list]
 
 
 def build_combined_spraytec_metadata(
@@ -425,8 +452,7 @@ def build_combined_spraytec_metadata(
 
     all_bin_edges = [data["bin_edges_um"] for data in spraytec_data_list]
     all_bin_centers = [data["bin_centers_um"] for data in spraytec_data_list]
-    absurd_counts = [data["absurd_values_converted_count"]
-                     for data in spraytec_data_list]
+    absurd_counts = [data["absurd_values_converted_count"] for data in spraytec_data_list]
 
     all_categories: set[str] = set()
     for data in spraytec_data_list:
@@ -436,8 +462,7 @@ def build_combined_spraytec_metadata(
     for category in natsorted(all_categories):
         all_keys: set[str] = set()
         for data in spraytec_data_list:
-            all_keys.update(
-                data["metadata_by_category"].get(category, {}).keys())
+            all_keys.update(data["metadata_by_category"].get(category, {}).keys())
 
         combined_category: dict[str, Any] = {}
         for key in natsorted(all_keys):
@@ -465,12 +490,18 @@ def build_combined_spraytec_metadata(
 
 def export_combined_spraytec_metadata_json(
     spraytec_data_list: list[dict[str, Any]],
-    output_dir: str | Path,
     filename: str = "spraytec_metadata.json",
 ) -> Path:
     """Export one combined metadata JSON for multiple loaded SprayTec CSV files."""
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
+    source_folders = {Path(data["file_path"]).parent.resolve() for data in spraytec_data_list}
+    if not source_folders:
+        raise ValueError("spraytec_data_list is empty")
+    if len(source_folders) > 1:
+        raise ValueError(
+            "Combined metadata export requires all source CSV files in the same folder."
+        )
+
+    output_path = get_processed_dir(next(iter(source_folders)))
     json_path = output_path / filename
 
     payload = build_combined_spraytec_metadata(spraytec_data_list)
