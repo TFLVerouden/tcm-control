@@ -7,7 +7,7 @@ from tcm_utils.file_dialogs import read_repo_config_value, write_repo_config_val
 from tcm_utils.io_utils import prompt_input
 
 DEFAULT_SYRINGE_TABLE_PATH = Path(
-    __file__).resolve().parent / "parameters/syringe_sizes.csv"
+    __file__).resolve().parent / "lookup_tables/syringe_sizes.csv"
 
 # Source code and documentation: https://github.com/Wetenschaap/pumpy3
 # First ensure RS-232 settings on the PHD 2000 are configured.

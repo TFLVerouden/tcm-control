@@ -14,7 +14,7 @@ from tcm_utils.io_utils import make_minimal_progress_bar
 from .base import PoFSerialDevice
 from ..logger import copy_flow_curve, create_labeled_csv_filename
 
-DEFAULT_FLOWCURVE_DIR = Path("src/tcm_control/flow_curves")
+DEFAULT_FLOWCURVE_DIR = Path(__file__).resolve().parent.parent / "flow_curves"
 DEFAULT_RUN_LOG_DIR = Path(".logs")
 EXPERIMENT_RUN_LOG_SUBDIR = "run_logs"
 MAX_PRESSURE_BAR = 4.3
