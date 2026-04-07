@@ -1,5 +1,7 @@
 """Run the cough-machine channel cleaning routine without a TOML config."""
 
+# This script assumes an editable install. Install once from repo root: `pip install -e .`
+
 from tcm_control.devices import CoughMachine
 
 PRESSURE_BAR = 4.0

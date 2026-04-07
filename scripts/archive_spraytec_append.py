@@ -1,15 +1,10 @@
 from __future__ import annotations
-from tcm_control.devices import SprayTec
 
 import argparse
-import sys
-from pathlib import Path
 
+# This script assumes an editable install. Install once from repo root: `pip install -e .`
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-SOURCE_ROOT = REPO_ROOT / "src"
-if str(SOURCE_ROOT) not in sys.path:
-    sys.path.insert(0, str(SOURCE_ROOT))
+from tcm_control.devices import SprayTec
 
 
 def main() -> int:

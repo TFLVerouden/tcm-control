@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+# This script assumes an editable install. Install once from repo root: `pip install -e .`
+
 from tcm_control.processing.spraytec_processing import (
     export_combined_spraytec_metadata_json,
     export_spraytec_metadata_json,

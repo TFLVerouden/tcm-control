@@ -5,6 +5,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+# This script assumes an editable install. Install once from repo root: `pip install -e .`
+
 from tcm_utils.file_dialogs import ask_directory
 from tcm_utils.io_utils import prompt_input, prompt_yes_no
 

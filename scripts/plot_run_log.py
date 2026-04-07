@@ -1,5 +1,7 @@
 from pathlib import Path
 
+# This script assumes an editable install. Install once from repo root: `pip install -e .`
+
 from tcm_control.processing.run_log_processing import plot_run_log
 from tcm_utils.file_dialogs import ask_directory, ask_open_file
 
