@@ -1,7 +1,6 @@
 """Main experiment runner for the Twente Cough Machine."""
 
 from contextlib import nullcontext
-import signal
 import time
 from pathlib import Path
 
@@ -11,8 +10,6 @@ from tcm_control.devices import CoughMachine, VerticalStage, SyringePump, SprayT
 from tcm_control import logger
 from tcm_control.initialise_config import load_experiment_config
 from tcm_control.interrupt_handling import (
-    cleanup_on_interrupt,
-    handle_sigint,
     reset_interrupt_cleanup_state,
     set_active_output_dir,
     set_active_pump,
@@ -495,19 +492,3 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
     # Return output directory
     return output_dir
-
-
-if __name__ == "__main__":
-    # Temporarily install a SIGINT handler so Ctrl+C triggers device cleanup.
-    previous_sigint_handler = signal.getsignal(signal.SIGINT)
-    signal.signal(signal.SIGINT, handle_sigint)
-    try:
-        cough()
-    except KeyboardInterrupt:
-        cleanup_on_interrupt(ask_before_delete_output_dir=True)
-        raise SystemExit(130)
-    except Exception:
-        cleanup_on_interrupt(ask_before_delete_output_dir=False)
-        raise
-    finally:
-        signal.signal(signal.SIGINT, previous_sigint_handler)
