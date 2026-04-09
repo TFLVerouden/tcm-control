@@ -8,8 +8,8 @@ from tcm_control.processing.spraytec_processing import (
     export_combined_spraytec_metadata_json,
     export_spraytec_metadata_json,
     load_spraytec_csvs,
-    time_average_distribution,
 )
+from tcm_control.processing.spraytec_plotting import time_average_distribution
 from tcm_control.processing.common import get_processed_dir
 from tcm_utils.file_dialogs import ask_directory
 
