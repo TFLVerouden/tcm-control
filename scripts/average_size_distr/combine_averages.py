@@ -21,21 +21,21 @@ from tcm_utils.plot_style import (
 # ------------------------------
 # Set to a parent folder containing experiment subfolders,
 # or leave as None to select via folder dialog.
-PARENT_DIR: str | None = "/Users/tommieverouden/Library/CloudStorage/OneDrive-UniversityofTwente/Cough machine/260318_varying_z_water"
+PARENT_DIR: str | None = r"C:\CoughMachineData\260401_varying_x_water"
 
 # The interval to combine; used to match files named ...t_xxx_to_yyyms.csv
-INTERVAL_MS = (30, 130)
+INTERVAL_MS = (20, 220)
 
 # Height labels associated with stacked subplots.
 # Bottom subplot should be -80 mm; top subplot should be 50 mm.
-HEIGHTS_MM = list(range(-80, 51, 10))
+HEIGHTS_MM = list(range(-20, 21, 10))
 
 PLOT_COLOR = "C0"
 PLOT_ALPHA = 0.18
 
 # Optional manual axis limits. Set to None for automatic limits from data.
 X_LIMITS: tuple[float, float] | None = None
-Y_LIMITS: tuple[float, float] | None = (0, 30)
+Y_LIMITS: tuple[float, float] | None = (0, 50)
 Y_LIMITS_LOG: tuple[float, float] | None = (0.001, 100)
 
 
