@@ -3,6 +3,7 @@ from __future__ import annotations
 """SprayTec CSV loading and processing helpers."""
 
 import re
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -191,6 +192,9 @@ def load_spraytec_csv(file_path: str | Path | None = None) -> dict[str, Any]:
 def load_spraytec_csvs(
     folder_path: str | Path,
     pattern: str = DEFAULT_SPRAYTEC_CSV_GLOB,
+    *,
+    parallel: bool = True,
+    max_workers: int | None = None,
 ) -> list[dict[str, Any]]:
     """Load all SprayTec CSV files in a folder and return list payloads."""
     folder = Path(folder_path)
@@ -205,7 +209,12 @@ def load_spraytec_csvs(
         raise ValueError(
             f"No SprayTec CSV files found in {folder} with pattern '{pattern}'")
 
-    return [load_spraytec_csv(path) for path in csv_paths]
+    if not parallel or len(csv_paths) <= 1:
+        return [load_spraytec_csv(path) for path in csv_paths]
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # executor.map preserves input ordering so output remains deterministic.
+        return list(executor.map(load_spraytec_csv, csv_paths))
 
 
 def build_metadata(metadata_flat: dict[str, Any]) -> dict[str, dict[str, Any]]:

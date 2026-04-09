@@ -6,8 +6,6 @@ from pathlib import Path
 
 from tcm_control.processing.common import get_processed_dir
 from tcm_control.processing.spraytec_processing import (
-    export_combined_spraytec_metadata_json,
-    export_spraytec_metadata_json,
     load_spraytec_csvs,
 )
 from tcm_control.processing.spraytec_plotting import time_average_distribution
@@ -38,11 +36,6 @@ def process_experiment(experiment_dir: Path) -> tuple[int, Path, Path]:
     spraytec_data_list = load_spraytec_csvs(spraytec_dir, pattern=CSV_PATTERN)
 
     for spraytec_data in spraytec_data_list:
-        export_spraytec_metadata_json(
-            spraytec_data,
-            output_dir=output_dir,
-        )
-
         time_average_distribution(
             spraytec_data=spraytec_data,
             start_time_ms=INTERVAL_MS[0],
@@ -53,11 +46,6 @@ def process_experiment(experiment_dir: Path) -> tuple[int, Path, Path]:
             plot=True,
             output_dir=output_dir,
         )
-
-    export_combined_spraytec_metadata_json(
-        spraytec_data_list,
-        output_dir=output_dir,
-    )
 
     return len(spraytec_data_list), spraytec_dir, output_dir
 

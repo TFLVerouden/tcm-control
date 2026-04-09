@@ -9,7 +9,101 @@ import pandas as pd
 
 from tcm_control.processing.common import get_processed_dir
 
-__all__ = ["time_average_distribution"]
+__all__ = [
+    "time_average_distribution",
+    "extract_time_dependent_columns",
+    "export_time_dependent_columns_csv",
+]
+
+
+def _find_required_column(measurement_df: pd.DataFrame, expected_names: list[str]) -> str:
+    normalized_to_column = {
+        str(column_name).strip().lower(): str(column_name)
+        for column_name in measurement_df.columns
+    }
+    for expected_name in expected_names:
+        resolved = normalized_to_column.get(expected_name.strip().lower())
+        if resolved is not None:
+            return resolved
+    raise KeyError(f"Required column not found: any of {expected_names}")
+
+
+def extract_time_dependent_columns(
+    spraytec_data: dict[str, Any],
+    time_column_candidates: list[str] | None = None,
+) -> pd.DataFrame:
+    """Return numeric time-dependent columns used for transmission diagnostics.
+
+    The returned DataFrame columns are:
+    - time_s
+    - transmission_percent
+    - residual
+    - cv_ppm
+    """
+    measurement_df = spraytec_data["measurement_df"].copy()
+    resolved_time_candidates = (
+        time_column_candidates
+        if time_column_candidates is not None
+        else ["Time (relative)", "Time(relative)", "Time", "Time [s]", "Time(s)"]
+    )
+
+    time_col = _find_required_column(measurement_df, resolved_time_candidates)
+    transmission_col = _find_required_column(
+        measurement_df,
+        ["Trans(Value)", "Transmission", "Transmission(Value)"],
+    )
+    residual_col = _find_required_column(
+        measurement_df, ["R(Value)", "Residual"])
+    cv_ppm_col = _find_required_column(
+        measurement_df,
+        ["Cv(Value)", "Cv (Value)", "Cv(ppm)"],
+    )
+
+    export_df = pd.DataFrame(
+        {
+            "time_s": pd.to_numeric(measurement_df[time_col], errors="coerce"),
+            "transmission_percent": pd.to_numeric(
+                measurement_df[transmission_col], errors="coerce"
+            ),
+            "residual": pd.to_numeric(measurement_df[residual_col], errors="coerce"),
+            "cv_ppm": pd.to_numeric(measurement_df[cv_ppm_col], errors="coerce"),
+        }
+    )
+
+    if export_df["time_s"].isna().all():
+        raise ValueError(
+            f"Resolved time column '{time_col}' could not be converted to numeric values."
+        )
+
+    return export_df
+
+
+def export_time_dependent_columns_csv(
+    spraytec_data: dict[str, Any],
+    output_dir: str | Path | None = None,
+    filename: str | None = None,
+    time_column_candidates: list[str] | None = None,
+) -> Path:
+    """Extract time-dependent columns and export them to CSV."""
+    source_path = Path(spraytec_data["file_path"])
+    if output_dir is None:
+        output_path = get_processed_dir(source_path.parent)
+    else:
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+    export_df = extract_time_dependent_columns(
+        spraytec_data,
+        time_column_candidates=time_column_candidates,
+    )
+    resolved_filename = (
+        filename
+        if filename is not None
+        else f"{source_path.stem}_time_dependent_columns.csv"
+    )
+    csv_path = output_path / resolved_filename
+    export_df.to_csv(csv_path, index=False)
+    return csv_path
 
 
 def _build_time_interval_labels(
@@ -255,7 +349,7 @@ def time_average_distribution(
         export_df = averaged.rename(
             f"mean_distribution ({interval_title})").to_frame()
         if export_df.index.name is None:
-            export_df.index.name = "bin_center_um"
+            export_df.index.name = "bin_edge_um"
         export_df.to_csv(csv_path)
 
     if plot or export_pdf or ax is not None:
