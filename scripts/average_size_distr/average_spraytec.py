@@ -10,6 +10,7 @@ from tcm_control.processing.spraytec_processing import (
     load_spraytec_csvs,
     time_average_distribution,
 )
+from tcm_control.processing.common import get_processed_dir
 from tcm_utils.file_dialogs import ask_directory
 
 # ------------------------------
@@ -18,22 +19,15 @@ from tcm_utils.file_dialogs import ask_directory
 # Set to an experiment folder, or leave as None to select via folder dialog.
 EXPERIMENT_DIR: str | None = None
 
-# Optional override for the folder containing spraytec*.csv files.
-# If None, script tries <experiment>/spraytec and then <experiment>.
-SPRAYTEC_DIR: str | None = None
-
 CSV_PATTERN = "spraytec*.csv"
 
-# Two required averaging intervals in seconds.
-INTERVAL_1 = (0.000, 1.000)
-INTERVAL_2 = (1.000, 2.000)
+# One required averaging interval in milliseconds, relative to trigger (t = 0).
+INTERVAL_MS = (30, 130)
 
 
 def main() -> int:
-    if INTERVAL_1[1] <= INTERVAL_1[0]:
-        raise ValueError(f"INTERVAL_1 invalid: {INTERVAL_1}")
-    if INTERVAL_2[1] <= INTERVAL_2[0]:
-        raise ValueError(f"INTERVAL_2 invalid: {INTERVAL_2}")
+    if INTERVAL_MS[1] <= INTERVAL_MS[0]:
+        raise ValueError(f"INTERVAL_MS invalid: {INTERVAL_MS}")
 
     if EXPERIMENT_DIR is None:
         selected = ask_directory(
@@ -49,48 +43,52 @@ def main() -> int:
         experiment_dir = Path(EXPERIMENT_DIR).expanduser().resolve()
 
     if not experiment_dir.exists() or not experiment_dir.is_dir():
-        raise FileNotFoundError(f"Experiment directory not found: {experiment_dir}")
+        raise FileNotFoundError(
+            f"Experiment directory not found: {experiment_dir}")
 
-    if SPRAYTEC_DIR is not None:
-        spraytec_dir = Path(SPRAYTEC_DIR).expanduser().resolve()
-    else:
-        candidate = experiment_dir / "spraytec"
-        spraytec_dir = candidate if candidate.exists() and candidate.is_dir() else experiment_dir
+    candidate = experiment_dir / "spraytec"
+    spraytec_dir = candidate if candidate.exists(
+    ) and candidate.is_dir() else experiment_dir
+    dir_name = f"spraytec_averages_{INTERVAL_MS[0]}-{INTERVAL_MS[1]}ms"
+    output_dir = get_processed_dir(experiment_dir) / dir_name
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     spraytec_data_list = load_spraytec_csvs(spraytec_dir, pattern=CSV_PATTERN)
 
     metadata_paths: list[Path] = []
     for spraytec_data in spraytec_data_list:
-        metadata_paths.append(export_spraytec_metadata_json(spraytec_data))
+        metadata_paths.append(
+            export_spraytec_metadata_json(
+                spraytec_data,
+                output_dir=output_dir,
+            )
+        )
 
         time_average_distribution(
             spraytec_data=spraytec_data,
-            start_time_s=INTERVAL_1[0],
-            end_time_s=INTERVAL_1[1],
+            start_time_ms=INTERVAL_MS[0],
+            end_time_ms=INTERVAL_MS[1],
+            trigger_column="Trigger",
             export_csv=True,
             export_pdf=True,
             plot=True,
-        )
-        time_average_distribution(
-            spraytec_data=spraytec_data,
-            start_time_s=INTERVAL_2[0],
-            end_time_s=INTERVAL_2[1],
-            export_csv=True,
-            export_pdf=True,
-            plot=True,
+            output_dir=output_dir,
         )
 
-    combined_metadata_path = export_combined_spraytec_metadata_json(spraytec_data_list)
+    combined_metadata_path = export_combined_spraytec_metadata_json(
+        spraytec_data_list,
+        output_dir=output_dir,
+    )
 
     print(f"Processed SprayTec directory: {spraytec_dir}")
+    print(f"Output directory: {output_dir}")
     print(f"Files processed: {len(spraytec_data_list)}")
     for path in metadata_paths:
         print(f"Saved metadata: {path}")
     print(f"Saved combined metadata: {combined_metadata_path}")
     print(
-        "Generated time-average CSV and PDF outputs for intervals: "
-        f"[{INTERVAL_1[0]:.3f}, {INTERVAL_1[1]:.3f}] s and "
-        f"[{INTERVAL_2[0]:.3f}, {INTERVAL_2[1]:.3f}] s."
+        "Generated time-average CSV and PDF outputs for trigger-relative interval: "
+        f"[{INTERVAL_MS[0]}, {INTERVAL_MS[1]}] ms."
     )
 
     return 0
