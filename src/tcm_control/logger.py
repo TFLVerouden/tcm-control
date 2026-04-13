@@ -270,10 +270,13 @@ def build_run_metadata(
     pump_inputs = device_context["pump_inputs"]
     record_droplet_size = device_context["record_droplet_size"]
     spraytec_inputs = device_context["spraytec_inputs"]
-    spraytec_x = device_context["spraytec_x"]
-    spraytec_y = device_context["spraytec_y"]
-    spraytec_z = device_context["spraytec_z"]
-    lift_height = device_context["lift_height"]
+    spraytec_x_mm = device_context["spraytec_x_mm"]
+    spraytec_y_mm = device_context["spraytec_y_mm"]
+    spraytec_z_mm = device_context["spraytec_z_mm"]
+    lift_pos_z_mm = device_context["lift_pos_z_mm"]
+    stage_pos_x_mm = device_context["stage_pos_x_mm"]
+    stage_pos_y_mm = device_context["stage_pos_y_mm"]
+    spraytec_target_z_mm = device_context["spraytec_target_z_mm"]
     spraytec_audit_path = device_context["spraytec_audit_path"]
     lift = device_context["lift"]
 
@@ -334,9 +337,14 @@ def build_run_metadata(
                 "mode": "enabled" if record_droplet_size else "disabled",
                 "inputs": spraytec_inputs,
                 "measurement_position_mm": {
-                    "x": spraytec_x,
-                    "y": spraytec_y,
-                    "z": spraytec_z,
+                    "x": spraytec_x_mm,
+                    "y": spraytec_y_mm,
+                    "z": spraytec_z_mm,
+                },
+                "operator_visible_position_mm": {
+                    "stage_x_read_off": stage_pos_x_mm,
+                    "stage_y_read_off": stage_pos_y_mm,
+                    "lift_pos_z_set": lift_pos_z_mm,
                 },
                 "audit_csv": spraytec_audit_path,
             },
@@ -354,10 +362,10 @@ def build_run_metadata(
                         if lift is None
                         else lift.serial_settings.get("timeout")
                     ),
-                    "lift_height_mm": (
+                    "lift_pos_z_mm": (
                         None
                         if lift is None
-                        else lift_height
+                        else lift_pos_z_mm
                     ),
                 },
             },

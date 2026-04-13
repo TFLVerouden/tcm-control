@@ -41,5 +41,6 @@ spraytec_to_ref_x_mm = 44
 spraytec_to_ref_y_mm = 483
 stage_pos_x_zero_mm = 96
 stage_pos_y_zero_mm = 655 
+spraytec_target_z_mm = "" # keep empty to prompt, or set target SprayTec z height in mm
 stage_pos_x_mm = 95 # keep empty to prompt
 stage_pos_y_mm = 660 # keep empty to prompt

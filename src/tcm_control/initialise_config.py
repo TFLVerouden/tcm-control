@@ -453,6 +453,9 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             _nested_get(raw, "devices", "spraytec",
                         "inputs", "spraytec_to_ref_y_mm")
         ),
+        "spraytec_target_z_mm": _optional_float(
+            _nested_get(raw, "devices", "spraytec", "inputs", "spraytec_target_z_mm")
+        ),
         "stage_pos_x_zero_mm": _optional_float(
             _nested_get(raw, "devices", "spraytec",
                         "inputs", "stage_pos_x_zero_mm")
@@ -484,6 +487,7 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             "tcm_trachea_exit_to_ref_y_mm": None,
             "spraytec_to_ref_x_mm": None,
             "spraytec_to_ref_y_mm": None,
+            "spraytec_target_z_mm": None,
             "stage_pos_x_zero_mm": None,
             "stage_pos_y_zero_mm": None,
             "stage_pos_x_mm": None,

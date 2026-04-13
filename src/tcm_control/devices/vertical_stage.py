@@ -23,6 +23,20 @@ class VerticalStage(PoFSerialDevice):
             **kwargs,
         )
 
+    def get_lift_height(
+        self, *, echo: Optional[bool] = None, timeout: float = 2.0
+    ) -> Optional[float]:
+        _reply, lines = self._query_and_drain(
+            "?", echo=echo, extra_timeout=timeout)
+        prefix = "Platform height [mm]: "
+        for line in lines:
+            if line.startswith(prefix):
+                try:
+                    return float(line.split(": ", 1)[1].strip())
+                except (IndexError, ValueError):
+                    return None
+        return None
+
     def set_lift_height(
         self,
         height_mm: float,
@@ -70,20 +84,6 @@ class VerticalStage(PoFSerialDevice):
             f"last_measured={last_height!r} mm"
         )
 
-    def get_lift_height(
-        self, *, echo: Optional[bool] = None, timeout: float = 2.0
-    ) -> Optional[float]:
-        _reply, lines = self._query_and_drain(
-            "?", echo=echo, extra_timeout=timeout)
-        prefix = "Platform height [mm]: "
-        for line in lines:
-            if line.startswith(prefix):
-                try:
-                    return float(line.split(": ", 1)[1].strip())
-                except (IndexError, ValueError):
-                    return None
-        return None
-
     def get_spraytec_height(self,
                             tcm_trachea_bottom_z_mm: float,
                             tcm_trachea_height_mm: float,
@@ -96,13 +96,13 @@ class VerticalStage(PoFSerialDevice):
                             - trachea bottom - (trachea height / 2)
         """
         # Get the height of the measurement volume of the SprayTec
-        lift_height = self.get_lift_height()
-        if lift_height is None:
+        lift_pos_z_mm = self.get_lift_height()
+        if lift_pos_z_mm is None:
             raise RuntimeError(
                 "Failed to get lift height, cannot calculate SprayTec height.")
 
-        return ((lift_height + lift_zero_z_mm + spraytec_to_lift_z_mm
-                - table_height_mm - tcm_trachea_bottom_z_mm - tcm_trachea_height_mm), lift_height)
+        return ((lift_pos_z_mm + lift_zero_z_mm + spraytec_to_lift_z_mm
+                 - table_height_mm - tcm_trachea_bottom_z_mm - tcm_trachea_height_mm), lift_pos_z_mm)
 
     def set_spraytec_height(
         self,
@@ -121,7 +121,7 @@ class VerticalStage(PoFSerialDevice):
     ) -> tuple[Optional[float], Optional[float]]:
         """Set SprayTec measurement height by inverting the current geometry equation.
 
-        Returns ``(spraytec_height, lift_height)`` where values are measured when
+        Returns ``(spraytec_height, lift_pos_z_mm)`` where values are measured when
         ``wait_for_target`` is True, else ``(None, None)``.
         """
         target_lift_height_mm = (
