@@ -1,6 +1,6 @@
 [experiment]
 name = "" # keep empty to prompt
-mode = "film" # droplet | film | piv
+mode = "droplet" # droplet | film | piv
 series_directory = "" # keep empty to prompt; set to "None" to disable saving data
 
 [inputs.cough]
@@ -50,5 +50,5 @@ stage_pos_y_zero_mm = 655
 
 [devices.spraytec.inputs.position]
 spraytec_target_z_mm = "" # keep empty to prompt, or set target SprayTec z height in mm
-stage_pos_x_mm = 96 # keep empty to prompt
+stage_pos_x_mm = "" # keep empty to prompt
 stage_pos_y_mm = "" # keep empty to prompt
