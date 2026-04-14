@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-# This script assumes an editable install. Install once from repo root: `pip install -e .`
-
 from tcm_control.processing.common import get_processed_dir
+from tcm_control.processing.spraytec_plotting import export_time_dependent_columns_csv
 from tcm_control.processing.spraytec_processing import (
+    export_combined_spraytec_metadata_json,
+    export_spraytec_metadata_json,
     load_spraytec_csvs,
 )
-from tcm_control.processing.spraytec_plotting import time_average_distribution
-from tcm_utils.file_dialogs import ask_directory
+from tcm_utils.io_utils import ask_directory
 
 # ------------------------------
 # Simple settings (edit these)
@@ -20,43 +20,53 @@ PARENT_DIR: str | None = None
 
 CSV_PATTERN = "spraytec*.csv"
 
-# One required averaging interval in milliseconds, relative to trigger (t = 0).
-INTERVAL_MS = (0, )
-
 
 def process_experiment(experiment_dir: Path) -> tuple[int, Path, Path]:
     candidate = experiment_dir / "spraytec"
     spraytec_dir = candidate if candidate.exists(
     ) and candidate.is_dir() else experiment_dir
-
-    dir_name = f"spraytec_averages_{INTERVAL_MS[0]}-{INTERVAL_MS[1]}ms"
-    output_dir = get_processed_dir(experiment_dir) / dir_name
+    output_dir = get_processed_dir(experiment_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     spraytec_data_list = load_spraytec_csvs(spraytec_dir, pattern=CSV_PATTERN)
 
+    exported_paths: list[Path] = []
+    metadata_paths: list[Path] = []
     for spraytec_data in spraytec_data_list:
-        time_average_distribution(
-            spraytec_data=spraytec_data,
-            start_time_ms=INTERVAL_MS[0],
-            end_time_ms=INTERVAL_MS[1],
-            trigger_column="Trigger",
-            export_csv=True,
-            export_pdf=True,
-            plot=True,
+        metadata_paths.append(
+            export_spraytec_metadata_json(
+                spraytec_data,
+                output_dir=output_dir,
+            )
+        )
+
+        exported_path = export_time_dependent_columns_csv(
+            spraytec_data,
             output_dir=output_dir,
         )
+        exported_paths.append(exported_path)
+
+    combined_metadata_path = export_combined_spraytec_metadata_json(
+        spraytec_data_list,
+        output_dir=output_dir,
+    )
+
+    print(f"Processed SprayTec directory: {spraytec_dir}")
+    print(f"Output directory: {output_dir}")
+    print(f"Files processed: {len(spraytec_data_list)}")
+    for path in metadata_paths:
+        print(f"Saved metadata: {path}")
+    print(f"Saved combined metadata: {combined_metadata_path}")
+    for path in exported_paths:
+        print(f"Saved time-dependent columns CSV: {path}")
 
     return len(spraytec_data_list), spraytec_dir, output_dir
 
 
 def main() -> int:
-    if INTERVAL_MS[1] <= INTERVAL_MS[0]:
-        raise ValueError(f"INTERVAL_MS invalid: {INTERVAL_MS}")
-
     if PARENT_DIR is None:
         selected = ask_directory(
-            key="average_spraytec_parent_dir",
+            key="residuals_transmission_parent_dir",
             title="Select parent directory containing experiment folders",
             start=Path(__file__).resolve().parent,
         )
@@ -102,8 +112,7 @@ def main() -> int:
     print(f"Failed: {len(failed)}")
     print(f"Total SprayTec files processed: {total_files_processed}")
     print(
-        "Generated time-average CSV and PDF outputs for trigger-relative interval: "
-        f"[{INTERVAL_MS[0]}, {INTERVAL_MS[1]}] ms."
+        "Generated time-dependent CSV outputs and metadata in each experiment's processed folder."
     )
 
     if failed:
