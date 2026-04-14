@@ -42,8 +42,8 @@ class VerticalStage(PoFSerialDevice):
         height_mm: float,
         *,
         wait_for_target: bool = True,
-        tolerance_mm: float = 0.1,
-        timeout_s: float = 15.0,
+        tolerance_mm: float = 0.3,
+        timeout_s: float = 30.0,
         poll_interval_s: float = 0.2,
         echo: Optional[bool] = None,
     ) -> Optional[float]:
@@ -114,8 +114,8 @@ class VerticalStage(PoFSerialDevice):
         table_height_mm: float,
         spraytec_to_lift_z_mm: float,
         wait_for_target: bool = True,
-        tolerance_mm: float = 0.1,
-        timeout_s: float = 15.0,
+        tolerance_mm: float = 0.3,
+        timeout_s: float = 30.0,
         poll_interval_s: float = 0.2,
         echo: Optional[bool] = None,
     ) -> tuple[Optional[float], Optional[float]]:

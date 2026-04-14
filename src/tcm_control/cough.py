@@ -58,6 +58,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     cough_machine_inputs = config["devices"]["cough_machine"]["inputs"]
     tank_inputs = cough_machine_inputs["tank"]
     pump_inputs = config["devices"]["pump"]["inputs"]
+    vertical_stage_inputs = config["devices"]["vertical_stage"]["inputs"]
     spraytec_inputs = config["devices"]["spraytec"]["inputs"]
     # Cache the selected mode for the central match/case branch below
     experiment_mode = exp_conf["mode"]
@@ -196,14 +197,17 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 spraytec_inputs["spraytec_to_lift_z_mm"],
                 spraytec_inputs["stage_pos_x_zero_mm"],
                 spraytec_inputs["stage_pos_y_zero_mm"],
-                spraytec_target_z_mm=spraytec_inputs["spraytec_target_z_mm"],
-                stage_pos_x_mm=spraytec_inputs["stage_pos_x_mm"],
-                stage_pos_y_mm=spraytec_inputs["stage_pos_y_mm"],
+                spraytec_target_z_mm=spraytec_inputs["position"]["spraytec_target_z_mm"],
+                stage_pos_x_mm=spraytec_inputs["position"]["stage_pos_x_mm"],
+                stage_pos_y_mm=spraytec_inputs["position"]["stage_pos_y_mm"],
+                tolerance_mm=vertical_stage_inputs["tolerance_mm"],
+                timeout_s=vertical_stage_inputs["timeout_s"],
+                poll_interval_s=vertical_stage_inputs["poll_interval_s"],
             )
             # Persist resolved/manual stage inputs for traceability in metadata.
-            spraytec_inputs["stage_pos_x_mm"] = stage_pos_x_mm
-            spraytec_inputs["stage_pos_y_mm"] = stage_pos_y_mm
-            spraytec_inputs["spraytec_target_z_mm"] = spraytec_target_z_mm
+            spraytec_inputs["position"]["stage_pos_x_mm"] = stage_pos_x_mm
+            spraytec_inputs["position"]["stage_pos_y_mm"] = stage_pos_y_mm
+            spraytec_inputs["position"]["spraytec_target_z_mm"] = spraytec_target_z_mm
 
             spraytec = SprayTec(
                 append_file_path=spraytec_inputs["append_file_path"],

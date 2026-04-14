@@ -51,6 +51,9 @@ def set_spraytec_pos(
     spraytec_target_z_mm: Optional[float] = None,
     stage_pos_x_mm: Optional[float] = None,
     stage_pos_y_mm: Optional[float] = None,
+    tolerance_mm: float = 0.3,
+    timeout_s: float = 30.0,
+    poll_interval_s: float = 0.2,
 ) -> tuple[float, float, float, float, float, float, float]:
     """Return SprayTec x/y/z from known geometry and requested stage position.
 
@@ -88,6 +91,9 @@ def set_spraytec_pos(
         lift_zero_z_mm=lift_zero_z_mm,
         table_height_mm=table_height_mm,
         spraytec_to_lift_z_mm=spraytec_to_lift_z_mm,
+        tolerance_mm=tolerance_mm,
+        timeout_s=timeout_s,
+        poll_interval_s=poll_interval_s,
     )
     if spraytec_z_mm is None or lift_pos_z_mm is None:
         raise RuntimeError("Failed to set SprayTec z position.")
