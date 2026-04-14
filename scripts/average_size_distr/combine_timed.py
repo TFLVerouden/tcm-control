@@ -34,7 +34,7 @@ X_LIMITS: tuple[float, float] | None = None
 Y_LIMITS: tuple[float, float] | None = None
 
 # Interval in milliseconds (like combine_averages).
-INTERVAL_MS = (30, 130)
+INTERVAL_MS = (20, 40)
 
 # Optional per-column y-limits using source column names.
 # Example:
@@ -44,9 +44,9 @@ INTERVAL_MS = (30, 130)
 #     "cv_ppm": (0, 200),
 # }
 Y_LIMITS_BY_COLUMN: dict[str, tuple[float, float] | None] = {
-    "transmission_percent": (98, 100.5),
+    "transmission_percent": (99, 100.5),
     "residual": (0, 100),
-    "cv_ppm": (0, 40),
+    "cv_ppm": (0, 20),
 }
 
 DISPLAY_LABELS_BY_COLUMN: dict[str, str] = {

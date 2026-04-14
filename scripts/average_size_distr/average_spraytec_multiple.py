@@ -21,7 +21,7 @@ PARENT_DIR: str | None = None
 CSV_PATTERN = "spraytec*.csv"
 
 # One required averaging interval in milliseconds, relative to trigger (t = 0).
-INTERVAL_MS = (20, 220)
+INTERVAL_MS = (0, )
 
 
 def process_experiment(experiment_dir: Path) -> tuple[int, Path, Path]:
