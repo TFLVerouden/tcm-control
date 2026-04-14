@@ -219,7 +219,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             )
 
             print("SprayTec measurement volume position (x, y, z) in mm: ",
-                spraytec_x_mm, spraytec_y_mm, spraytec_z_mm)
+                  spraytec_x_mm, spraytec_y_mm, spraytec_z_mm)
             print(
                 f"SprayTec append file: {spraytec_inputs['append_file_path']}")
 
@@ -461,8 +461,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 "pump_inputs": pump_inputs,
                 "record_droplet_size": record_droplet_size,
                 "spraytec_inputs": spraytec_inputs,
-                "spraytec_x": spraytec_x_mm,
-                "spraytec_y": spraytec_y_mm,
+                "spraytec_x_mm": spraytec_x_mm,
+                "spraytec_y_mm": spraytec_y_mm,
                 "spraytec_z_mm": spraytec_z_mm,
                 "spraytec_audit_path": spraytec_audit_path,
                 "lift_pos_z_mm": lift_pos_z_mm,

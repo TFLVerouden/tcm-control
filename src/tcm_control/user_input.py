@@ -62,20 +62,22 @@ def set_spraytec_pos(
     asked for the target height in mm and the lift is moved automatically.
     """
     if stage_pos_x_mm is None or stage_pos_y_mm is None:
-        # Ask user to read x/y directly from the physical cough-machine stages.
+        # Ask user to read only missing x/y values from the physical stages.
         print("Set the cough machine stage to the desired position and read off the x/y values")
-        stage_pos_x_mm = prompt_input(
-            "  x: from cough machine stage ruler (cross-airflow) [mm]: ",
-            value_type="float",
-            min_value=2,
-            max_value=200,
-        )
-        stage_pos_y_mm = prompt_input(
-            "  y: from cough machine stage ruler (along-airflow) [mm]: ",
-            value_type="float",
-            min_value=0,
-            max_value=784,
-        )
+        if stage_pos_x_mm is None:
+            stage_pos_x_mm = prompt_input(
+                "  x: from cough machine stage ruler (cross-airflow) [mm]: ",
+                value_type="float",
+                min_value=2,
+                max_value=200,
+            )
+        if stage_pos_y_mm is None:
+            stage_pos_y_mm = prompt_input(
+                "  y: from cough machine stage ruler (along-airflow) [mm]: ",
+                value_type="float",
+                min_value=0,
+                max_value=784,
+            )
 
     if spraytec_target_z_mm is None:
         print("Enter the desired measurement height z in mm; the lift will be moved automatically")
