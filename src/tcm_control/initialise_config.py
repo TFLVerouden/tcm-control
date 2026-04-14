@@ -415,6 +415,54 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
     record_droplet_size = bool(cough_inputs["record_droplet_size"])
 
     # ------------------------------------------------------------------
+    # Vertical stage inputs
+    # ------------------------------------------------------------------
+    vertical_stage_inputs = {
+        "tolerance_mm": float(
+            _nested_get(
+                raw,
+                "devices",
+                "vertical_stage",
+                "inputs",
+                "tolerance_mm",
+                default=0.3,
+            )
+        ),
+        "timeout_s": float(
+            _nested_get(
+                raw,
+                "devices",
+                "vertical_stage",
+                "inputs",
+                "timeout_s",
+                default=30.0,
+            )
+        ),
+        "poll_interval_s": float(
+            _nested_get(
+                raw,
+                "devices",
+                "vertical_stage",
+                "inputs",
+                "poll_interval_s",
+                default=0.2,
+            )
+        ),
+    }
+    if vertical_stage_inputs["tolerance_mm"] < 0:
+        raise ValueError(
+            "Config [devices.vertical_stage.inputs].tolerance_mm must be >= 0."
+        )
+    if vertical_stage_inputs["timeout_s"] <= 0:
+        raise ValueError(
+            "Config [devices.vertical_stage.inputs].timeout_s must be > 0."
+        )
+    if vertical_stage_inputs["poll_interval_s"] <= 0:
+        raise ValueError(
+            "Config [devices.vertical_stage.inputs].poll_interval_s must be > 0."
+        )
+
+    # ------------------------------------------------------------------
     # SprayTec inputs (validated only when enabled)
     # ------------------------------------------------------------------
     spraytec_inputs = {
@@ -461,16 +509,63 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             _nested_get(raw, "devices", "spraytec",
                         "inputs", "stage_pos_y_zero_mm")
         ),
-        "stage_pos_x_mm": _optional_float(
-            _nested_get(raw, "devices", "spraytec", "inputs", "stage_pos_x_mm")
-        ),
-        "stage_pos_y_mm": _optional_float(
-            _nested_get(raw, "devices", "spraytec", "inputs", "stage_pos_y_mm")
-        ),
         "table_height_mm": _optional_float(
             _nested_get(raw, "devices", "spraytec",
                         "inputs", "table_height_mm")
         ),
+        "position": {
+            "spraytec_target_z_mm": _optional_float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "spraytec",
+                    "inputs",
+                    "position",
+                    "spraytec_target_z_mm",
+                    default=_nested_get(
+                        raw,
+                        "devices",
+                        "spraytec",
+                        "inputs",
+                        "spraytec_target_z_mm",
+                    ),
+                )
+            ),
+            "stage_pos_x_mm": _optional_float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "spraytec",
+                    "inputs",
+                    "position",
+                    "stage_pos_x_mm",
+                    default=_nested_get(
+                        raw,
+                        "devices",
+                        "spraytec",
+                        "inputs",
+                        "stage_pos_x_mm",
+                    ),
+                )
+            ),
+            "stage_pos_y_mm": _optional_float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "spraytec",
+                    "inputs",
+                    "position",
+                    "stage_pos_y_mm",
+                    default=_nested_get(
+                        raw,
+                        "devices",
+                        "spraytec",
+                        "inputs",
+                        "stage_pos_y_mm",
+                    ),
+                )
+            ),
+        },
     }
 
     if not record_droplet_size:
@@ -486,9 +581,12 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             "spraytec_to_ref_y_mm": None,
             "stage_pos_x_zero_mm": None,
             "stage_pos_y_zero_mm": None,
-            "stage_pos_x_mm": None,
-            "stage_pos_y_mm": None,
             "table_height_mm": None,
+            "position": {
+                "spraytec_target_z_mm": None,
+                "stage_pos_x_mm": None,
+                "stage_pos_y_mm": None,
+            },
         }
     else:
         required_spraytec_keys = [
@@ -534,6 +632,9 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             "pump": {
                 "required": pump_required,
                 "inputs": pump_inputs,
+            },
+            "vertical_stage": {
+                "inputs": vertical_stage_inputs,
             },
             "spraytec": {
                 "enabled": record_droplet_size,
