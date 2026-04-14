@@ -19,7 +19,7 @@ from tcm_control.processing.run_log_processing import plot_run_log
 from tcm_control.user_input import (
     ask_start_confirmation,
     ask_user_for_comments,
-    set_spraytec_xy,
+    set_spraytec_pos,
     wait_or_confirm_next_run,
 )
 from tcm_utils.file_dialogs import ensure_directory_path
@@ -58,6 +58,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     cough_machine_inputs = config["devices"]["cough_machine"]["inputs"]
     tank_inputs = cough_machine_inputs["tank"]
     pump_inputs = config["devices"]["pump"]["inputs"]
+    vertical_stage_inputs = config["devices"]["vertical_stage"]["inputs"]
     spraytec_inputs = config["devices"]["spraytec"]["inputs"]
     # Cache the selected mode for the central match/case branch below
     experiment_mode = exp_conf["mode"]
@@ -93,11 +94,14 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
     pump = None
     lift = None
-    lift_height = None
+    lift_pos_z_mm = None
+    stage_pos_x_mm = None
+    stage_pos_y_mm = None
+    spraytec_target_z_mm = None
     spraytec = None
-    spraytec_x = None
-    spraytec_y = None
-    spraytec_z = None
+    spraytec_x_mm = None
+    spraytec_y_mm = None
+    spraytec_z_mm = None
     spraytec_audit_path = None
     first_run_log_path = None
 
@@ -180,26 +184,30 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         if record_droplet_size:
             # Vertical stage is only needed when SprayTec measurements are enabled.
             lift = VerticalStage()
-            spraytec_z, lift_height = lift.get_spraytec_height(
-                tcm_trachea_bottom_z_mm=spraytec_inputs["tcm_trachea_bottom_z_mm"],
-                tcm_trachea_height_mm=spraytec_inputs["tcm_trachea_height_mm"],
-                lift_zero_z_mm=spraytec_inputs["lift_zero_z_mm"],
-                table_height_mm=spraytec_inputs["table_height_mm"],
-                spraytec_to_lift_z_mm=spraytec_inputs["spraytec_to_lift_z_mm"],
-            )
-            spraytec_x, spraytec_y, stage_pos_x_mm, stage_pos_y_mm = set_spraytec_xy(
+            spraytec_x_mm, spraytec_y_mm, spraytec_z_mm, stage_pos_x_mm, stage_pos_y_mm, spraytec_target_z_mm, lift_pos_z_mm = set_spraytec_pos(
+                lift,
                 spraytec_inputs["tcm_trachea_exit_to_ref_x_mm"],
                 spraytec_inputs["tcm_trachea_exit_to_ref_y_mm"],
                 spraytec_inputs["spraytec_to_ref_x_mm"],
                 spraytec_inputs["spraytec_to_ref_y_mm"],
+                spraytec_inputs["tcm_trachea_bottom_z_mm"],
+                spraytec_inputs["tcm_trachea_height_mm"],
+                spraytec_inputs["lift_zero_z_mm"],
+                spraytec_inputs["table_height_mm"],
+                spraytec_inputs["spraytec_to_lift_z_mm"],
                 spraytec_inputs["stage_pos_x_zero_mm"],
                 spraytec_inputs["stage_pos_y_zero_mm"],
-                stage_pos_x_mm=spraytec_inputs["stage_pos_x_mm"],
-                stage_pos_y_mm=spraytec_inputs["stage_pos_y_mm"],
+                spraytec_target_z_mm=spraytec_inputs["position"]["spraytec_target_z_mm"],
+                stage_pos_x_mm=spraytec_inputs["position"]["stage_pos_x_mm"],
+                stage_pos_y_mm=spraytec_inputs["position"]["stage_pos_y_mm"],
+                tolerance_mm=vertical_stage_inputs["tolerance_mm"],
+                timeout_s=vertical_stage_inputs["timeout_s"],
+                poll_interval_s=vertical_stage_inputs["poll_interval_s"],
             )
             # Persist resolved/manual stage inputs for traceability in metadata.
-            spraytec_inputs["stage_pos_x_mm"] = stage_pos_x_mm
-            spraytec_inputs["stage_pos_y_mm"] = stage_pos_y_mm
+            spraytec_inputs["position"]["stage_pos_x_mm"] = stage_pos_x_mm
+            spraytec_inputs["position"]["stage_pos_y_mm"] = stage_pos_y_mm
+            spraytec_inputs["position"]["spraytec_target_z_mm"] = spraytec_target_z_mm
 
             spraytec = SprayTec(
                 append_file_path=spraytec_inputs["append_file_path"],
@@ -211,7 +219,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             )
 
             print("SprayTec measurement volume position (x, y, z) in mm: ",
-                  spraytec_x, spraytec_y, spraytec_z)
+                  spraytec_x_mm, spraytec_y_mm, spraytec_z_mm)
             print(
                 f"SprayTec append file: {spraytec_inputs['append_file_path']}")
 
@@ -453,11 +461,14 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 "pump_inputs": pump_inputs,
                 "record_droplet_size": record_droplet_size,
                 "spraytec_inputs": spraytec_inputs,
-                "spraytec_x": spraytec_x,
-                "spraytec_y": spraytec_y,
-                "spraytec_z": spraytec_z,
+                "spraytec_x_mm": spraytec_x_mm,
+                "spraytec_y_mm": spraytec_y_mm,
+                "spraytec_z_mm": spraytec_z_mm,
                 "spraytec_audit_path": spraytec_audit_path,
-                "lift_height": lift_height,
+                "lift_pos_z_mm": lift_pos_z_mm,
+                "stage_pos_x_mm": stage_pos_x_mm,
+                "stage_pos_y_mm": stage_pos_y_mm,
+                "spraytec_target_z_mm": spraytec_target_z_mm,
                 "lift": lift,
             }
 
