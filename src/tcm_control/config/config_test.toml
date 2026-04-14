@@ -1,7 +1,7 @@
 [experiment]
 name = "" # keep empty to prompt
 mode = "film" # droplet | film | piv
-series_directory = "" # keep empty to prompt; set to "None" to disable saving data
+series_directory = "None" # keep empty to prompt; set to "None" to disable saving data
 
 [inputs.cough]
 debug_mode = false
@@ -20,8 +20,8 @@ settling_time_s = 60.0
 avg_window_s = 5.0
 tolerance_bar = 0.05
 poll_interval_s = 0.2
-intermediate_diff_bar = -0.1 # set together with intermediate_time_s (empty disables)
-intermediate_time_s = 2 # set together with intermediate_diff_bar (empty disables)
+intermediate_diff_bar = "" # set together with intermediate_time_s (empty disables)
+intermediate_time_s = "" # set together with intermediate_diff_bar (empty disables)
 
 [devices.pump.inputs]
 syringe_volume_ml = 2.5
@@ -49,6 +49,6 @@ stage_pos_x_zero_mm = 96
 stage_pos_y_zero_mm = 655
 
 [devices.spraytec.inputs.position]
-stage_pos_x_mm = "" # keep empty to prompt
+stage_pos_x_mm = 76 # keep empty to prompt
 stage_pos_y_mm = "" # keep empty to prompt
-spraytec_target_z_mm = "" # keep empty to prompt, or set target SprayTec z height in mm
+spraytec_target_z_mm = -20 # keep empty to prompt, or set target SprayTec z height in mm

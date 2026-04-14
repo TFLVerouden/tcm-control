@@ -133,6 +133,7 @@ class VerticalStage(PoFSerialDevice):
             - spraytec_to_lift_z_mm
         )
 
+        print(f"{self.long_name} setting lift to {target_lift_height_mm:.3f} mm to achieve SprayTec height of {spraytec_height_mm:.3f} mm")
         final_lift_height_mm = self.set_lift_height(
             target_lift_height_mm,
             wait_for_target=wait_for_target,
