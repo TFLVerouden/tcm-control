@@ -17,7 +17,7 @@ from ..logger import copy_flow_curve, create_labeled_csv_filename
 DEFAULT_FLOWCURVE_DIR = Path(__file__).resolve().parent.parent / "flow_curves"
 DEFAULT_RUN_LOG_DIR = Path(".logs")
 EXPERIMENT_RUN_LOG_SUBDIR = "run_logs"
-MAX_PRESSURE_BAR = 4.3
+MAX_PRESSURE_BAR = 7.2
 # Keep protocol version as a single integer. Bump only for breaking serial changes.
 DEFAULT_SUPPORTED_PROTOCOL_VERSION = 4
 
