@@ -25,6 +25,7 @@ from tcm_control.user_input import (
 from tcm_utils.file_dialogs import ensure_directory_path
 from tcm_utils.io_utils import (
     ensure_non_empty_text,
+    prompt_input,
     prompt_yes_no,
 )
 from tcm_utils.time_utils import timestamp_str
@@ -103,6 +104,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     spraytec_y_mm = None
     spraytec_z_mm = None
     spraytec_audit_path = None
+    spraytec_laser_intensity = None
     first_run_log_path = None
 
     # ------------------------------------------------------------------
@@ -222,6 +224,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                   spraytec_x_mm, spraytec_y_mm, spraytec_z_mm)
             print(
                 f"SprayTec append file: {spraytec_inputs['append_file_path']}")
+
+            spraytec_laser_intensity = prompt_input("Enter SprayTec laser intensity (%) and press ENTER: ",
+                                                    value_type="float", min_value=0, max_value=100)
 
             prompt_yes_no(
                 "Press ENTER to confirm that SprayTec SOP is waiting for a trigger...",
@@ -465,6 +470,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 "spraytec_y_mm": spraytec_y_mm,
                 "spraytec_z_mm": spraytec_z_mm,
                 "spraytec_audit_path": spraytec_audit_path,
+                "spraytec_laser_intensity": spraytec_laser_intensity,
                 "lift_pos_z_mm": lift_pos_z_mm,
                 "stage_pos_x_mm": stage_pos_x_mm,
                 "stage_pos_y_mm": stage_pos_y_mm,

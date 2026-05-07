@@ -278,6 +278,7 @@ def build_run_metadata(
     stage_pos_y_mm = device_context["stage_pos_y_mm"]
     spraytec_target_z_mm = device_context["spraytec_target_z_mm"]
     spraytec_audit_path = device_context["spraytec_audit_path"]
+    spraytec_laser_intensity = device_context["spraytec_laser_intensity"]
     lift = device_context["lift"]
 
     return {
@@ -347,6 +348,7 @@ def build_run_metadata(
                     "lift_pos_z_set": lift_pos_z_mm,
                 },
                 "audit_csv": spraytec_audit_path,
+                "laser_intensity": spraytec_laser_intensity,
             },
             "spraytec_lift": {
                 "name": getattr(lift, "name", None),
