@@ -76,7 +76,7 @@ def set_spraytec_pos(
                 "  y: from cough machine stage ruler (along-airflow) [mm]: ",
                 value_type="float",
                 min_value=0,
-                max_value=784,
+                max_value=990,
             )
 
     if spraytec_target_z_mm is None:
