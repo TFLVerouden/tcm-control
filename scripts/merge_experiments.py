@@ -13,7 +13,7 @@ from tcm_utils.io_utils import prompt_input, prompt_yes_no
 
 INVALID_FOLDER_CHARS = re.compile(r"[<>:\"/\\|?*\x00]")
 
-
+# hallo
 def is_valid_folder_name(name: str) -> tuple[bool, str | None]:
     # Keep folder-name validation conservative so merged output is portable.
     if name == "":
