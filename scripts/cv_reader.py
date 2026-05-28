@@ -144,8 +144,8 @@ def main() -> int:
     for key in list(cv_by_height.keys()):
         cv_max = []
         for run in np.arange(10):
-            max_cv = np.max(cv_by_height[key][run])
-            cv_max.append(max_cv)
+         if np.max(cv_by_height[key][run]) < 200:
+            cv_max.append(np.max(cv_by_height[key][run]))
         cv_average_by_height.update({key: np.mean(cv_max)})
         std_by_height.update({key: np.std(cv_max)})
     print(cv_average_by_height)  
