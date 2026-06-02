@@ -29,6 +29,15 @@ syringe_volume_ml = 2.5
 pump_rate_ml_per_min = 0.1
 nr_droplets_to_skip_before_recording = 5
 
+[devices.pump.infuse]
+volume_ml = 0.5
+rate_ml_min = 6
+
+[devices.pump.withdraw]
+volume_ml = 0.5
+rate_ml_min = 5
+
+
 [devices.vertical_stage.inputs]
 tolerance_mm = 0.3
 timeout_s = 30.0

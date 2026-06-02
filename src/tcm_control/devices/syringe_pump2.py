@@ -11,7 +11,9 @@ except ModuleNotFoundError:  # Python < 3.11
 import serial
 
 DEFAULT_SPECS_PATH = Path(__file__).resolve().parent.parent / \
-    "config" / "config_syringepump2.toml"
+    "config" / "config.toml"
+DEFAULT_SYRINGES_PATH = Path(__file__).resolve().parent / \
+    "lookup_tables" / "syringes.toml"
 
 STATUS_PATTERN = re.compile(
     r"^\s*(?:(?P<addr>\d{1,2}):)?\s*"
@@ -34,11 +36,28 @@ PROMPT_DESCRIPTIONS = {
 
 
 class SyringePump2:
-    def __init__(self, specs: dict):
-        self.specs = specs
+    DEFAULT_SERIAL_CFG = {
+        "port": "COM4",
+        "baudrate": 9600,
+        "timeout_s": 0.2,
+        "pump_address": 2,
+        "command_delay_s": 0.2,
+        "active_profile": "has_20ml_1913mm",
+    }
 
-        serial_cfg = specs["serial"]
-        pump_cfg = specs["pump"]
+    DEFAULT_PUMP_CFG = {
+        "rate_unit": "m/m",
+        "volume_unit": "m",
+        "status_poll_s": 1.0,
+        "phase_timeout_s": 3600,
+    }
+
+    def __init__(self, specs: dict | None = None):
+        self.specs = specs or {}
+
+        serial_cfg = {**self.DEFAULT_SERIAL_CFG,
+                      **self.specs.get("serial", {})}
+        pump_cfg = {**self.DEFAULT_PUMP_CFG, **self.specs.get("pump", {})}
 
         self.port = serial_cfg["port"]
         self.baudrate = int(serial_cfg.get("baudrate", 9600))
@@ -79,6 +98,10 @@ class SyringePump2:
 
     def _sanitize_response_text(self, text: str) -> str:
         return text.replace("\x11", "").replace("\x13", "").replace("\x00", "")
+
+    def _is_error_text(self, text: str) -> bool:
+        low = text.lower()
+        return "pump command error:" in low or "pump argument error:" in low
 
     def _strip_optional_address_prefix(self, line: str) -> tuple[str | None, str]:
         match = re.match(r"^\s*(\d{1,2}):(.*)$", line)
@@ -207,8 +230,7 @@ class SyringePump2:
         else:
             response = raw.decode(errors="ignore").strip()
         sentence, _ = self._decode_response(response)
-        low_sentence = sentence.lower()
-        if log_errors and ("pump command error:" in low_sentence or "pump argument error:" in low_sentence):
+        if log_errors and self._is_error_text(sentence):
             self._log_error(f"{cmd}: {sentence}")
         return response
 
@@ -264,8 +286,38 @@ class SyringePump2:
         if "pump command error:" in low_sentence and "unknown command" in low_sentence:
             return
 
-        if "pump command error:" in low_sentence or "pump argument error:" in low_sentence:
+        if self._is_error_text(sentence):
             self._log_error(f"{self.cmd_load_qs}: {sentence}")
+
+    def _run_phase(
+        self,
+        *,
+        action_verb: str,
+        phase_name: str,
+        volume_ml: float,
+        rate_ml_min: float,
+        rate_cmd: str,
+        run_cmd: str,
+        expected_prompt: str,
+        wait_for_completion: bool,
+    ) -> bool:
+        if wait_for_completion:
+            self._log_info(
+                f"SyringePump {action_verb} at {rate_ml_min:g} mL/min to {volume_ml:g} mL target"
+            )
+        else:
+            self._log_info(
+                f"SyringePump {action_verb} at {rate_ml_min:g} mL/min")
+
+        phase_setup_cmds = [
+            f"{rate_cmd} {self._format_rate(rate_ml_min)}",
+            f"{self.cmd_set_tvolume} {self._format_volume(volume_ml)}",
+        ]
+        if not self._start_phase_with_recovery(phase_setup_cmds, run_cmd, expected_prompt, phase_name):
+            return False
+        if wait_for_completion:
+            return self._wait_until_phase_complete(phase_name)
+        return True
 
     def clear_previous_command_state(self) -> None:
         # Clear stop state, target volume and accumulated run volumes.
@@ -366,38 +418,28 @@ class SyringePump2:
         return False
 
     def infuse(self, volume_ml: float, rate_ml_min: float, wait_for_completion: bool = True) -> bool:
-        if wait_for_completion:
-            self._log_info(
-                f"SyringePump infusing at {rate_ml_min:g} mL/min to {volume_ml:g} mL target")
-        else:
-            self._log_info(
-                f"SyringePump infusing at {rate_ml_min:g} mL/min")
-        phase_setup_cmds = [
-            f"{self.cmd_set_irate} {self._format_rate(rate_ml_min)}",
-            f"{self.cmd_set_tvolume} {self._format_volume(volume_ml)}",
-        ]
-        if not self._start_phase_with_recovery(phase_setup_cmds, self.cmd_irun, ">", "infusion"):
-            return False
-        if wait_for_completion:
-            return self._wait_until_phase_complete("infusion")
-        return True
+        return self._run_phase(
+            action_verb="infusing",
+            phase_name="infusion",
+            volume_ml=volume_ml,
+            rate_ml_min=rate_ml_min,
+            rate_cmd=self.cmd_set_irate,
+            run_cmd=self.cmd_irun,
+            expected_prompt=">",
+            wait_for_completion=wait_for_completion,
+        )
 
     def withdraw(self, volume_ml: float, rate_ml_min: float, wait_for_completion: bool = True) -> bool:
-        if wait_for_completion:
-            self._log_info(
-                f"SyringePump withdrawing at {rate_ml_min:g} mL/min to {volume_ml:g} mL target")
-        else:
-            self._log_info(
-                f"SyringePump withdrawing at {rate_ml_min:g} mL/min")
-        phase_setup_cmds = [
-            f"{self.cmd_set_wrate} {self._format_rate(rate_ml_min)}",
-            f"{self.cmd_set_tvolume} {self._format_volume(volume_ml)}",
-        ]
-        if not self._start_phase_with_recovery(phase_setup_cmds, self.cmd_wrun, "<", "withdraw"):
-            return False
-        if wait_for_completion:
-            return self._wait_until_phase_complete("withdraw")
-        return True
+        return self._run_phase(
+            action_verb="withdrawing",
+            phase_name="withdraw",
+            volume_ml=volume_ml,
+            rate_ml_min=rate_ml_min,
+            rate_cmd=self.cmd_set_wrate,
+            run_cmd=self.cmd_wrun,
+            expected_prompt="<",
+            wait_for_completion=wait_for_completion,
+        )
 
     def run_protocol(self, steps: list[dict]) -> None:
         if not steps:
@@ -428,29 +470,52 @@ class SyringePump2:
                 time.sleep(settle_s)
 
 
-def load_specs(specs_path: Path) -> dict:
-    with specs_path.open("rb") as f:
-        return tomllib.load(f)
-
-
 def get_active_profile(specs: dict) -> dict:
-    active_profile_key = specs.get("serial", []).get('active_profile')
-    profiles = specs["profiles"]
+    pump_inputs = specs.get("devices", {}).get("pump", {}).get("inputs", {})
+    active_profile_key = specs.get("serial", {}).get(
+        "active_profile",
+        pump_inputs.get("active_profile",
+                        SyringePump2.DEFAULT_SERIAL_CFG["active_profile"]),
+    )
+
+    profiles: dict = {}
+    if DEFAULT_SYRINGES_PATH.exists():
+        with DEFAULT_SYRINGES_PATH.open("rb") as f:
+            profiles = tomllib.load(f).get("profiles", {})
+
+    # Backward compatibility for older configs that still define inline profiles.
+    if not profiles:
+        profiles = specs.get("profiles", {})
+
     if active_profile_key not in profiles:
         raise KeyError(
-            f"active_profile '{active_profile_key}' was not found in profiles")
+            f"active_profile '{active_profile_key}' was not found in profiles loaded from {DEFAULT_SYRINGES_PATH}")
     return profiles[active_profile_key]
 
 
 def get_first_action_step(specs: dict, action_name: str) -> dict | None:
+    # Legacy format: top-level `infuse` / `withdraw` arrays.
     steps = specs.get(action_name, [])
-    if not steps:
-        return None
-    return steps[0]
+    if isinstance(steps, list) and steps:
+        return steps[0]
+    if isinstance(steps, dict):
+        return steps
+
+    # Current format: [devices.pump.infuse] / [devices.pump.withdraw]
+    action_cfg = specs.get("devices", {}).get("pump", {}).get(action_name)
+    if isinstance(action_cfg, dict):
+        return action_cfg
+    if isinstance(action_cfg, list) and action_cfg:
+        # Supports [[devices.pump.infuse]] style arrays of tables.
+        return action_cfg[0]
+    return None
 
 
 def main(specs_path: Path = DEFAULT_SPECS_PATH) -> None:
-    specs = load_specs(specs_path)
+    specs: dict = {}
+    if specs_path.exists():
+        specs = tomllib.load(specs_path.open("rb"))
+
     profile = get_active_profile(specs)
     infuse_step = get_first_action_step(specs, "infuse")
     withdraw_step = get_first_action_step(specs, "withdraw")
