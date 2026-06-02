@@ -10,8 +10,8 @@ except ModuleNotFoundError:  # Python < 3.11
 
 import serial
 
-DEFAULT_SPECS_PATH = Path(__file__).resolve().parent / \
-    "syringepump2_specs.toml"
+DEFAULT_SPECS_PATH = Path(__file__).resolve().parent.parent / \
+    "config" / "config_syringepump2.toml"
 
 STATUS_PATTERN = re.compile(
     r"^\s*(?:(?P<addr>\d{1,2}):)?\s*"
