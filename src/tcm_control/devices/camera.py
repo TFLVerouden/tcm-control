@@ -6,7 +6,7 @@ import time
 
 import cv2
 from ximea import xiapi
-from light import LightSwitchController
+from tcm_control.devices.light import LightSwitchController
 
 
 class Camera:
