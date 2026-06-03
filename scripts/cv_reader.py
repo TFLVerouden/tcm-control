@@ -141,15 +141,26 @@ def main() -> int:
     
     cv_average_by_height = {}
     std_by_height = {}
+    peak_time_by_height = {}
+    time_std ={}
     for key in list(cv_by_height.keys()):
         cv_max = []
+        peak_time=[]
         for run in np.arange(10):
-         if np.max(cv_by_height[key][run]) < 200:
+         if np.max(cv_by_height[key][run]) < 1000:
             cv_max.append(np.max(cv_by_height[key][run]))
+         if t_ms[np.argmax(cv_by_height[key][run])] < 80:
+            peak_time.append(t_ms[np.argmax(cv_by_height[key][run])])
+            
         cv_average_by_height.update({key: np.mean(cv_max)})
         std_by_height.update({key: np.std(cv_max)})
-    print(cv_average_by_height)  
-    print(std_by_height)      
+        peak_time_by_height.update({key: np.mean(peak_time)})
+        time_std.update({key: np.std(peak_time)})
+    #print(cv_average_by_height)  
+    #print(std_by_height)     
+    print(peak_time_by_height) 
+    print(time_std)
+
 
     return 0
 

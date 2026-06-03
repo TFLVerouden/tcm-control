@@ -1,7 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.tri as tri
-
+from scipy.stats import gaussian_kde
+from mpl_toolkits.mplot3d import Axes3D
 
 y_283 ={'30mm': np.float64(38.969190788266005), '20mm': np.float64(44.26251773831), '10mm': np.float64(18.277746582018004), 
         '0mm': np.float64(14.820453548429999), '-10mm': np.float64(11.789343261725), '-20mm': np.float64(7.316791534420998), 
@@ -84,6 +85,20 @@ data = {
     33: y_33
 }
 
+std_data = {
+    283: std_283,   
+       258: std_258,
+       233: std_233,
+       208: std_208,
+       183: std_183,
+       158: std_158,
+       133: std_133_thresholded,
+       108: std_108,
+       83: std_83,
+       58: std_58,
+       33: std_33
+}
+
 y_coor, z_coor, cv_vals = [],[],[]
 for y, z in data.items():
     for z_key, cv in z.items():
@@ -96,15 +111,80 @@ y =np.array(y_coor)
 z = np.array(z_coor)
 cv = np.array(cv_vals)
 
-# Plot
+# Plotting cone
 triang = tri.Triangulation(y,z)
-
 fig, ax = plt.subplots()
-#tpc = ax.scatter(y, z, c=cv, cmap='viridis', s=100)
-tpc = ax.tripcolor(triang, cv, shading='gouraud', cmap='viridis')
+tpc = ax.scatter(y, z, c=cv, cmap='Spectral', s=100)
+#tpc = ax.tripcolor(triang, cv, shading='gouraud', cmap='viridis')
 plt.colorbar(tpc, ax=ax, label='Concentration (ppm)')
 ax.set_xlabel('y (mm)')
 ax.set_ylabel('z(mm)')
 ax.set_aspect('equal')
 #plt.tight_layout()
 plt.show()
+
+
+#plotting PDF of cv values:
+all_cv_values = []
+for z_val in data.values():
+    all_cv_values.extend(z_val.values())
+all_cv_values = np.array(all_cv_values)
+
+# KDE on log-transformed data, then back-transform
+log_conc = np.log1p(all_cv_values)  # log1p handles zeros safely
+pdf = gaussian_kde(log_conc)
+
+cv_axis_log = np.linspace(log_conc.min(), log_conc.max(), 300)
+cv_axis = np.expm1(cv_axis_log)  # back to original scale
+
+# Jacobian correction to keep density valid
+density = pdf(cv_axis_log) / (cv_axis + 1)
+
+
+fig1, ax1 = plt.subplots()
+ax1.plot(cv_axis, density, color='blue', label = 'KDE')
+ax1.set_xlabel('Concentration (ppm)')
+ax1.set_ylabel('PDF')
+ax1.hist(all_cv_values, bins=40, density=True, alpha=0.5, color='lightblue', label = 'histogram')
+ax1.set_title('PDF of Concentration Values')
+ax1.legend()
+plt.show()
+
+
+#z-cv plot
+
+items = list(data.items())
+half = len(items) // 2
+splits = [items[:half], items[half:]]
+
+for i, split in enumerate(splits):
+    fig, axes = plt.subplots(len(split), 1, figsize=(6, 3*len(split)), sharex=True)
+    if len(split) == 1:
+        axes = [axes]  # ensure iterable if only one subplot
+
+
+    for ax, (y_coord, z_dict) in zip(axes, split):
+              z_coords = [int(k.replace("mm", "")) for k in z_dict.keys()]
+              cv_values = list(z_dict.values())
+              std_values = list(std_data.get(y_coord, {}).values())
+              
+              ax.plot(z_coords, cv_values , marker='o')
+              ax.errorbar(z_coords, cv_values, yerr=std_values/np.sqrt(10), fmt='o', ecolor='red', capsize=5)
+              ax.set_title(f'y = {y_coord} mm')
+              ax.set_ylabel('Concentration (ppm)')
+    axes[-1].set_xlabel('z (mm)')
+    plt.tight_layout()
+    plt.savefig(f'plot_part_{i+1}.png')  # optional: save each
+    plt.show()
+    plt.close(fig)
+
+##3d plot of cv values:
+#fig = plt.figure()
+#ax = fig.add_subplot(111, projection='3d')
+#sc = ax.scatter(y, z, cv, c=cv, cmap='viridis', s=100)
+#plt.colorbar(sc, ax=ax, label='Concentration (ppm)')
+#ax.set_xlabel('y (mm)')
+#ax.set_ylabel('z (mm)')
+#ax.set_zlabel('Concentration (ppm)')
+#plt.tight_layout()
+#plt.show()

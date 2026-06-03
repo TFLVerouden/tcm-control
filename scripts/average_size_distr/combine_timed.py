@@ -24,7 +24,7 @@ CSV_SUFFIX = "_time_dependent_columns.csv"
 
 # Height labels associated with stacked subplots.
 # Bottom subplot should be -80 mm; top subplot should be 50 mm.
-HEIGHTS_MM = list(range(-40, 31, 10))
+HEIGHTS_MM = list(range(0, 30, 10))
 
 LINE_ALPHA = 0.35
 MARKER_SIZE = 10
