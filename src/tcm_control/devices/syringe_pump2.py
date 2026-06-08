@@ -309,6 +309,10 @@ class SyringePump2:
             self._log_info(
                 f"SyringePump {action_verb} at {rate_ml_min:g} mL/min")
 
+        # Pump does not like zero volume targets, so use a tiny volume instead.
+        if volume_ml == 0.0:
+            volume_ml = 0.001
+
         phase_setup_cmds = [
             f"{rate_cmd} {self._format_rate(rate_ml_min)}",
             f"{self.cmd_set_tvolume} {self._format_volume(volume_ml)}",
