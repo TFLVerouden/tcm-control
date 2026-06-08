@@ -1,7 +1,37 @@
 # cough-machine-control
 
-Install tcm-utilities:
-pip install -e ../tcm-utils
+How to install tcm-utils to a virtual environment[^1]?
+- Make sure to activate your virtual environment[^2], this is succesfull if, at the start of each line in the terminal, it says `(.venv)`;
+- Clone [`tcm-utils`](https://github.com/TFLVerouden/tcm-utils) to the same folder that `tcm-control` is located in;
+- Into the terminal, enter `pip install -e ../tcm-utils`.
+
+[^1] The reason it is not included in [pyproject.toml](/pyproject.toml), is that editable installs on a relative path are [not allowed by `setuptools`](https://github.com/pypa/setuptools/discussions/2951).
+[^2] On Windows, one might have issues activating this virtual environment because the terminal in VS Code is not allowed to run scripts. We tried to mitigate this using the default profile specified in [settings.json](/.vscode/settings.json), but the error and how to fix it are described [here on StackOverflow](https://stackoverflow.com/questions/56199111/visual-studio-code-cmd-error-cannot-be-loaded-because-running-scripts-is-disabl).
+
+## Versioning policy
+
+This project uses two separate version numbers:
+
+1. Python package version in pyproject.toml (project/app release tracking).
+2. Host-MCU protocol version (serial communication compatibility).
+
+The protocol should be a single integer: host and MCU protocol versions must match exactly. The version number is increased when communication changes in a breaking way.
+
+## Config and metadata extension guide
+
+Use this checklist when adding a new configuration value and writing it to run metadata.
+
+1. Add or update the value in the experiment TOML.
+2. Ensure it is normalized in `load_experiment_config(...)` in `src/tcm_control/initialise_config.py`.
+3. Read the value in `src/tcm_control/cough.py` from the appropriate config block (`cough_inputs`, `cough_machine_inputs` including `tank_inputs`, `pump_inputs`, `spraytec_inputs`).
+4. Add the value to either `run_context` (run-level fields) or `device_context` (device/config fields) in `cough.py` where metadata is assembled.
+5. Map it into the output schema in `build_run_metadata(...)` in `src/tcm_control/logger.py`.
+6. Run one experiment and inspect `metadata.json` in the output directory.
+
+Rule of thumb:
+- Put values in `run_context` when they describe the run as a whole (timing, mode, ambient readings, comments).
+- Put values in `device_context` when they belong to one hardware subsystem or its resolved settings.
+
 
 ## VS Code workspace settings
 This repository tracks only `.vscode/settings.json` for shared Python run/interpreter behavior.

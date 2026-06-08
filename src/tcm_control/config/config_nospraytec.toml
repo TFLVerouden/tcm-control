@@ -1,0 +1,29 @@
+[experiment]
+name = "" # keep empty to prompt
+mode = "droplet" # droplet | film | piv
+series_directory = "" # keep empty to prompt; set to "None" to disable saving data
+
+[inputs.cough]
+debug_mode = false
+nr_runs = 1
+multi_run_interval_s = 40
+confirm_before_starting_next_run = false
+record_droplet_size = false
+
+[devices.cough_machine.inputs]
+flow_curve_csv_path = "step300ms"
+wait_before_run_ms = 59.5
+
+[devices.cough_machine.inputs.tank]
+pressure_bar = 1.5
+settling_time_s = 60.0
+avg_window_s = 5.0
+tolerance_bar = 0.05
+poll_interval_s = 0.2
+intermediate_diff_bar = -0.1 # set together with intermediate_time_s (empty disables)
+intermediate_time_s = 2 # set together with intermediate_diff_bar (empty disables)
+
+[devices.pump.inputs]
+syringe_volume_ml = 2.5
+pump_rate_ml_per_min = 0.1
+nr_droplets_to_skip_before_recording = 5
