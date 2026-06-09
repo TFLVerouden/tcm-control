@@ -25,6 +25,7 @@ if __name__ == "__main__":
     # BACKGROUND IMAGE
     # Turn on the light
     light.toggle_light()
+    time.sleep(0.1)  # Wait for the light to turn on
 
     # Capture a snapshot
     image_path = camera.snapshot()
@@ -50,7 +51,6 @@ if __name__ == "__main__":
 
     # Toggle the light off
     light.toggle_light()
-    light.close()
 
     # PUMP CONTROL
     specs: dict = {}
@@ -87,8 +87,9 @@ if __name__ == "__main__":
 
     # FILM LAYER PICTURE
     # Turn on the light
-    light = LightSwitchController()
     light.toggle_light()
+    time.sleep(0.1)  # Wait for the light to turn on
+
     try:
         # Capture a snapshot
         image_path = camera.snapshot()
