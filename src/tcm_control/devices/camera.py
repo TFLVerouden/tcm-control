@@ -102,11 +102,10 @@ class Camera:
 
 
 if __name__ == "__main__":
-    camera = Camera(exposure_us=1000)
+    camera = Camera(exposure_us=4000)
     light = LightSwitchController()
 
     try:
-        light.connect()
         light.toggle_light()
         saved = camera.snapshot()
         print(f"Snapshot saved: {saved}")

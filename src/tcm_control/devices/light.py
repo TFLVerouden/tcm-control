@@ -9,6 +9,7 @@ class LightSwitchController:
         self.timeout = timeout
         self.ser = None
         self.light_on = False
+        self.connect()
 
     def connect(self):
         if self.ser and self.ser.is_open:
