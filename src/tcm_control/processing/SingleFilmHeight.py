@@ -89,9 +89,8 @@ def determine_film_height(image, plate_height) -> Tuple[np.ndarray, np.ndarray, 
     """
     Determine mean film height in millimeters for one frame.
     """
-    edge_map = cv2.Canny(image, 50, 80)
+    edge_map = cv2.Canny(image, 50, 100)
     edge_y, edge_x = np.where(edge_map != 0)
-
     if edge_x.size == 0:
         raise ValueError("No film-height edge pixels detected")
 
@@ -101,7 +100,8 @@ def determine_film_height(image, plate_height) -> Tuple[np.ndarray, np.ndarray, 
     rim_x, rim_y = filter_film_rim_by_x_range(
         rim_x, rim_y, IMAGE_CROP_LEFT, max_x)
 
-    thicknesses = calculate_film_thickness_from_rim(rim_x, rim_y, plate_height)
+    thicknesses = calculate_film_thickness_from_rim(
+        rim_x, rim_y, plate_height)
     if not thicknesses:
         raise ValueError("No valid film-height thickness values found")
     thickness = float(np.mean(thicknesses))
@@ -134,7 +134,7 @@ def determine_plate_height(image) -> Tuple[np.ndarray, np.ndarray, float]:
 if __name__ == "__main__":
 
     background_path = Path(__file__).parent.parent / "devices" / \
-        "Film_Images" / "capture_20260609_092928.png"
+        "Film_Images" / "capture_20260609_103512.png"
 
     background = cv2.imread(str(background_path), cv2.IMREAD_GRAYSCALE)
     if background is None:
@@ -153,7 +153,7 @@ if __name__ == "__main__":
     plt.show()
 
     image_path = Path(__file__).parent.parent / "devices" / \
-        "Film_Images" / "capture_20260608_165008.png"
+        "Film_Images" / "capture_20260609_103644.png"
 
     image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
 

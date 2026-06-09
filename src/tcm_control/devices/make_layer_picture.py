@@ -49,44 +49,46 @@ if __name__ == "__main__":
         # plt.show()
 
     # Toggle the light off
-    # light.toggle_light()
+    light.toggle_light()
+    light.close()
 
-    # # PUMP CONTROL
-    # specs: dict = {}
-    # if specs_path.exists():
-    #     specs = tomllib.load(specs_path.open("rb"))
-    # profile = get_active_profile(specs)
-    # infuse_step = get_first_action_step(specs, "infuse")
-    # withdraw_step = get_first_action_step(specs, "withdraw")
+    # PUMP CONTROL
+    specs: dict = {}
+    if specs_path.exists():
+        specs = tomllib.load(specs_path.open("rb"))
+    profile = get_active_profile(specs)
+    infuse_step = get_first_action_step(specs, "infuse")
+    withdraw_step = get_first_action_step(specs, "withdraw")
 
-    # pump = SyringePump2(specs)
-    # try:
-    #     pump.prepare(profile)
+    pump = SyringePump2(specs)
+    try:
+        pump.prepare(profile)
 
-    #     if infuse_step is not None:
-    #         pump.infuse(
-    #             volume_ml=infuse_step["volume_ml"],
-    #             rate_ml_min=infuse_step["rate_ml_min"]
-    #         )
+        if infuse_step is not None:
+            pump.infuse(
+                volume_ml=infuse_step["volume_ml"],
+                rate_ml_min=infuse_step["rate_ml_min"]
+            )
 
-    #     if withdraw_step is not None:
-    #         pump.withdraw(
-    #             volume_ml=withdraw_step["volume_ml"],
-    #             rate_ml_min=withdraw_step["rate_ml_min"]
-    #         )
+        if withdraw_step is not None:
+            pump.withdraw(
+                volume_ml=withdraw_step["volume_ml"],
+                rate_ml_min=withdraw_step["rate_ml_min"]
+            )
 
-    #     if infuse_step is None and withdraw_step is None:
-    #         pump._log_info(
-    #             "SyringePump config has no infuse/withdraw steps")
-    # except Exception as exc:
-    #     pump._log_error(str(exc))
-    #     raise
-    # finally:
-    #     pump.stop()
+        if infuse_step is None and withdraw_step is None:
+            pump._log_info(
+                "SyringePump config has no infuse/withdraw steps")
+    except Exception as exc:
+        pump._log_error(str(exc))
+        raise
+    finally:
+        pump.stop()
 
+    # FILM LAYER PICTURE
     # Turn on the light
-    # light.toggle_light()
-    # LAYER PICTURE
+    light = LightSwitchController()
+    light.toggle_light()
     try:
         # Capture a snapshot
         image_path = camera.snapshot()
