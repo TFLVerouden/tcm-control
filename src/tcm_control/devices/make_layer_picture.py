@@ -16,6 +16,8 @@ tomllib = importlib.import_module("tomllib")
 specs_path = Path(__file__).resolve().parent.parent / \
     "config" / "config.toml"
 
+pxm = 0.020562e-3  # m/px
+
 if __name__ == "__main__":
 
     output_dir = Path(__file__).parent / "Film_Images"
@@ -85,6 +87,7 @@ if __name__ == "__main__":
     finally:
         pump.stop()
 
+    time.sleep(10)  # Wait for the pump system to relax
     # FILM LAYER PICTURE
     # Turn on the light
     light.toggle_light()
@@ -108,9 +111,14 @@ if __name__ == "__main__":
             plt.figure()
             plt.imshow(image, cmap='gray', origin='lower')
             plt.scatter(rim_x, rim_y, s=1, color='red')
-            plt.title(f"Film Height: {film_height:.2f} px")
-            plt.savefig(output_dir / "film_height_result.png")
+            plt.scatter(top_x, top_y, s=1, color='blue')
+            plt.title(f"Film Height: {film_height * pxm * 1e3:.4f} mm")
+
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            plt.savefig(output_dir / f"film_height_{timestamp}.png")
             plt.close()
+
+            print(f"Film height in mm: {film_height * pxm * 1e3:.4f} mm")
             # plt.show()
 
         # Toggle the light off

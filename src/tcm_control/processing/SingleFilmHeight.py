@@ -101,7 +101,7 @@ def determine_film_height(image, plate_height) -> Tuple[np.ndarray, np.ndarray, 
         rim_x, rim_y, IMAGE_CROP_LEFT, max_x)
 
     thicknesses = calculate_film_thickness_from_rim(
-        rim_x, rim_y, plate_height - 100)
+        rim_x, rim_y, plate_height)
     if not thicknesses:
         raise ValueError("No valid film-height thickness values found")
     thickness = float(np.mean(thicknesses))
