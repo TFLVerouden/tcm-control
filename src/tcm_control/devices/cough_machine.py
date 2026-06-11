@@ -492,6 +492,28 @@ class CoughMachine(PoFSerialDevice):
         self.load_flowcurve(csv_path=test_csv, echo=echo)
         self.run(echo=echo)
 
+    def set_light(self, enabled: bool, *, echo: Optional[bool] = None) -> str:
+        """Turn the light on or off using `I <0|1>`.
+
+        Expects `LIGHT_ON` when enabled and `LIGHT_OFF` when disabled.
+        """
+        cmd = "I 1" if enabled else "I 0"
+        expected = "LIGHT_ON" if enabled else "LIGHT_OFF"
+        reply, _lines = self._query_and_drain(cmd, expected=expected, echo=echo)
+        return reply or ""
+
+    def set_fan_speed(self, speed, *, echo: Optional[bool] = None) -> str:
+        """Set fan speed using `F <val>`.
+
+        Hardware implementation is not yet finalised (likely PWM on pin 3).
+        The firmware currently accepts the command and replies `FAN_SPEED_SET`
+        without driving any output.
+        """
+        reply, _lines = self._query_and_drain(
+            f"F {speed}", expected="FAN_SPEED_SET", echo=echo
+        )
+        return reply or ""
+
     # READ OUT SENSORS
     def read_pressure(self, *, echo: Optional[bool] = None) -> Optional[float]:
         """Read instantaneous pressure using `P?` and parse `P<bar>` reply."""
