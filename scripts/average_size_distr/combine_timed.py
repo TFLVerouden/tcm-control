@@ -24,7 +24,7 @@ CSV_SUFFIX = "_time_dependent_columns.csv"
 
 # Height labels associated with stacked subplots.
 # Bottom subplot should be -80 mm; top subplot should be 50 mm.
-HEIGHTS_MM = list(range(0, 30, 10))
+HEIGHTS_MM = list(range(0, 11, 10))
 
 LINE_ALPHA = 0.35
 MARKER_SIZE = 10
@@ -34,7 +34,7 @@ X_LIMITS: tuple[float, float] | None = None
 Y_LIMITS: tuple[float, float] | None = None
 
 # Interval in milliseconds (like combine_averages).
-INTERVAL_MS = (0, 700)
+INTERVAL_MS = (0, 350)
 
 # Optional per-column y-limits using source column names.
 # Example:
@@ -45,8 +45,7 @@ INTERVAL_MS = (0, 700)
 # }
 Y_LIMITS_BY_COLUMN: dict[str, tuple[float, float] | None] = {
     "transmission_percent": (99, 100.5),
-    "residual": (0, 100),
-    "cv_ppm": (0, 20),
+    "residual": (0, 100)
 }
 
 DISPLAY_LABELS_BY_COLUMN: dict[str, str] = {

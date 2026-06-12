@@ -21,7 +21,7 @@ from tcm_utils.plot_style import (
 # ------------------------------
 # Set to a parent folder containing experiment subfolders,
 # or leave as None to select via folder dialog.
-PARENT_DIR: str | None = r"C:\CoughMachineData\260401_varying_x_water"
+PARENT_DIR: str | None = None
 
 # The interval to combine; used to match files named ...t_xxx_to_yyyms.csv
 INTERVAL_MS = (20, 220)

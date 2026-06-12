@@ -137,7 +137,40 @@ def main() -> int:
     
     #further processing
     print("\nAvailable heights:", list(cv_by_height.keys()))
-    
+    # --- Outlier detection based on mean cv over the whole run ---
+    OUTLIER_THRESHOLD = 3.0  # runs more than this many std above the median mean are flagged
+
+    cv_clean: dict[str, list[np.ndarray]] = {}
+    cv_outliers: dict[str, list[tuple[int, float]]] = {}
+
+    for key, runs in cv_by_height.items():
+        if not runs:
+            cv_clean[key] = []
+            cv_outliers[key] = []
+            continue
+
+        mean_values = np.array([np.mean(run) for run in runs])  # mean cv per run
+        median = np.median(mean_values)
+        std = np.std(mean_values)
+
+        clean = []
+        outliers = []
+        for i, (run, mean_cv) in enumerate(zip(runs, mean_values)):
+            if std > 0 and (mean_cv - median) > OUTLIER_THRESHOLD * std:
+                outliers.append((i, float(mean_cv)))
+                print(f"  OUTLIER flagged: {key} run {i} — mean cv = {mean_cv:.2f}")
+            else:
+                clean.append(run)
+
+        cv_clean[key] = clean
+        cv_outliers[key] = outliers
+
+    print("\nOutlier summary:")
+    for key, outliers in cv_outliers.items():
+        if outliers:
+            print(f"  {key}: {len(outliers)} outlier(s) at run indices {[i for i, _ in outliers]}")
+        else:
+            print(f"  {key}: no outliers")
     
     cv_average_by_height = {}
     std_by_height = {}
@@ -166,3 +199,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
