@@ -156,7 +156,7 @@ if __name__ == "__main__":
                 source_dir=spraytec_dir,
                 output_dir=os.path.join(spraytec_dir, "small_files"),
                 threshold_kb=1000,
-                dry_run=True,    # ← set to False when ready
+                dry_run=False,    # ← set to False when ready
                 recursive=False,
                 fix_headers=True,  # ← enables header fixing
             )
