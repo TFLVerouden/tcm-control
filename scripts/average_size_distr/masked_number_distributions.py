@@ -39,7 +39,7 @@ SPRAYTEC_TIME_COLUMN = "Date-Time"
 SPRAYTEC_TRIGGER_COLUMN = "Trigger"
 
 
-MASK_MODE = "cv"  # "cv" or "time"
+MASK_MODE = "time"  # "cv" or "time"
 
 #threshold for masking cv values. Only number density values corresponding to cv values above this threshold will be averaged.
 CV_THRESHOLD = 5
@@ -172,7 +172,7 @@ def mask_data(
 
     cv_at_stec = cv_ppm[best_idx]
 
-    # Keep SprayTec frames where cv_ppm is below the threshold
+    # Keep SprayTec frames where cv_ppm is above the threshold
     frame_mask = cv_at_stec < CV_THRESHOLD  # shape: (len(df),) — one per SprayTec row
 
     n_total = len(df)

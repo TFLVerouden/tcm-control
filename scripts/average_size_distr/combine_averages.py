@@ -24,11 +24,25 @@ from tcm_utils.plot_style import (
 PARENT_DIR: str | None = None
 
 # The interval to combine; used to match files named ...t_xxx_to_yyyms.csv
-INTERVAL_MS = (20, 220)
+INTERVAL_MS = (0, 700)
+
+# Mask mode used when generating the averages to combine.
+# "cv"   -> looks for files ending in ..._cv<THRESHOLD>_t_...ms.csv
+# "time" -> looks for files ending in ..._time_t_...ms.csv  
+# None   -> looks for files ending in ...t_...ms.csv (no mask, original script)
+COMBINE_MASK_MODE: str | None = "cv"
+
+# cv threshold used when generating the averages (only used if COMBINE_MASK_MODE == "cv").
+COMBINE_CV_THRESHOLD = 5
+
+# Set to True to also save a single pooled distribution across all heights.
+PLOT_COMBINED = True
+
+# Set to None to weight all heights equally.
+HEIGHT_WEIGHTS: dict[int, float] | None = None
 
 # Height labels associated with stacked subplots.
-# Bottom subplot should be -80 mm; top subplot should be 50 mm.
-HEIGHTS_MM = list(range(-20, 21, 10))
+HEIGHTS_MM = list(range(-0, 21, 10))
 
 PLOT_COLOR = "C0"
 PLOT_ALPHA = 0.18
@@ -37,6 +51,69 @@ PLOT_ALPHA = 0.18
 X_LIMITS: tuple[float, float] | None = None
 Y_LIMITS: tuple[float, float] | None = (0, 50)
 Y_LIMITS_LOG: tuple[float, float] | None = (0.001, 100)
+
+
+def plot_combined_distribution(
+    loaded_series: list[list[tuple[np.ndarray, np.ndarray]]],
+    experiment_info: list[tuple[Path, int | None]],
+    parent_dir: Path,
+    interval_ms: tuple[int, int],
+    interval_suffix: str,
+) -> None:
+    """Pool all per-run distributions across all heights into one histogram."""
+
+    # Collect all runs — bin edges must match so we just stack y values
+    x_ref: np.ndarray | None = None
+    y_stack: list[np.ndarray] = []
+
+    for (_, height_mm), row_series in zip(experiment_info, loaded_series):
+        weight = 1.0
+        if HEIGHT_WEIGHTS is not None and height_mm is not None:
+            weight = HEIGHT_WEIGHTS.get(height_mm, 1.0)
+
+        for x_values, y_values in row_series:
+            if x_ref is None:
+                x_ref = x_values
+            elif not np.allclose(x_values, x_ref, rtol=1e-3):
+                print("  [warn] Bin edges differ between runs — skipping mismatched run.")
+                continue
+            y_stack.append(y_values * weight)
+    if x_ref is None or not y_stack:
+        print("No data available for combined distribution plot.")
+        return
+
+    # Sum across all runs and renormalise to 100%
+    y_pooled = np.sum(y_stack, axis=0)
+    total = y_pooled.sum()
+    if total > 0:
+        y_pooled = y_pooled / total * 100.0
+
+    use_tcm_poster_style()
+    fig, ax = plt.subplots(figsize=(10, 4.5))
+
+    plot_binned_area(ax, x_ref, y_pooled, x_mode="centers",
+                     color=PLOT_COLOR, alpha=PLOT_ALPHA, outline=True)
+
+    ax.set_xscale("log")
+    if X_LIMITS is not None:
+        ax.set_xlim(*X_LIMITS)
+    if Y_LIMITS is not None:
+        ax.set_ylim(*Y_LIMITS)
+    ax.set_xlabel("Particle size")
+    append_unit_to_last_ticklabel(ax, axis="x", unit="μm")
+    ax.set_ylabel("Number distribution (%)")
+    ax.set_title(
+        f"Pooled distribution — all heights ({interval_ms[0]} to {interval_ms[1]} ms)"
+    )
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+
+    processed_dir = parent_dir / "processed"
+    processed_dir.mkdir(parents=True, exist_ok=True)
+    output_pdf = processed_dir / f"pooled_all_heights_{interval_suffix.replace('.csv', '.pdf')}"
+    fig.savefig(output_pdf, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved pooled distribution figure: {output_pdf}")
 
 
 def main() -> int:
@@ -89,7 +166,12 @@ def main() -> int:
             "Either add more HEIGHTS_MM values or include '<height>mm' in each folder name."
         )
 
-    interval_suffix = f"t_{INTERVAL_MS[0]}_to_{INTERVAL_MS[1]}ms.csv"
+    if COMBINE_MASK_MODE == "cv":
+            interval_suffix = f"t_{INTERVAL_MS[0]}_to_{INTERVAL_MS[1]}ms_cv{int(COMBINE_CV_THRESHOLD)}.csv"
+    elif COMBINE_MASK_MODE == "time":
+        interval_suffix = f"t_{INTERVAL_MS[0]}_to_{INTERVAL_MS[1]}ms_time{INTERVAL_MS[0]}-{INTERVAL_MS[1]}ms.csv"
+    else:
+        interval_suffix = f"t_{INTERVAL_MS[0]}_to_{INTERVAL_MS[1]}ms.csv"
 
     subfolder_csvs: list[tuple[Path, list[Path]]] = []
     with make_minimal_progress_bar(
@@ -312,6 +394,8 @@ def main() -> int:
 
     print(f"Saved combined figure: {output_pdf}")
     print(f"Saved log-log figure: {output_pdf_loglog}")
+    if PLOT_COMBINED:
+        plot_combined_distribution(loaded_series, experiment_info, parent_dir, INTERVAL_MS, interval_suffix)
     return 0
 
 
