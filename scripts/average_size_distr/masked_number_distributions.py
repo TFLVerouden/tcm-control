@@ -173,14 +173,14 @@ def mask_data(
     cv_at_stec = cv_ppm[best_idx]
 
     # Keep SprayTec frames where cv_ppm is above the threshold
-    frame_mask = cv_at_stec < CV_THRESHOLD  # shape: (len(df),) — one per SprayTec row
+    frame_mask = cv_at_stec > CV_THRESHOLD  # shape: (len(df),) — one per SprayTec row
 
     n_total = len(df)
     n_kept = int(frame_mask.sum())
     n_dropped = n_total - n_kept
     print(
         f"    cv mask: {n_kept}/{n_total} frames kept "
-        f"({n_dropped} dropped, cv_ppm >= {CV_THRESHOLD})"
+        f"({n_dropped} dropped, cv_ppm <= {CV_THRESHOLD})"
     )
 
     filtered_data = dict(spraytec_data)
