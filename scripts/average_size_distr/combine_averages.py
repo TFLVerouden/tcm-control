@@ -30,13 +30,16 @@ INTERVAL_MS = (0, 700)
 # "cv"   -> looks for files ending in ..._cv<THRESHOLD>_t_...ms.csv
 # "time" -> looks for files ending in ..._time_t_...ms.csv  
 # None   -> looks for files ending in ...t_...ms.csv (no mask, original script)
-COMBINE_MASK_MODE: str | None = "cv"
+COMBINE_MASK_MODE: str | None = "time"
 
 # cv threshold used when generating the averages (only used if COMBINE_MASK_MODE == "cv").
 COMBINE_CV_THRESHOLD = 5
 
+#time mask interval used when generating the averages (only used if COMBINE_MASK_MODE == "time").
+TIME_MASK_MS = (0, 80)
+
 # Set to True to also save a single pooled distribution across all heights.
-PLOT_COMBINED = True
+PLOT_COMBINED = False
 
 # Set to None to weight all heights equally.
 HEIGHT_WEIGHTS: dict[int, float] | None = None
@@ -167,26 +170,51 @@ def main() -> int:
         )
 
     if COMBINE_MASK_MODE == "cv":
-            interval_suffix = f"t_{INTERVAL_MS[0]}_to_{INTERVAL_MS[1]}ms_cv{int(COMBINE_CV_THRESHOLD)}.csv"
+        interval_suffix = f"_time_average_{INTERVAL_MS[0]}-{INTERVAL_MS[1]}ms_cv{COMBINE_CV_THRESHOLD}.csv"
+        interval_match = lambda name: name.endswith(interval_suffix)
+
     elif COMBINE_MASK_MODE == "time":
-        interval_suffix = f"t_{INTERVAL_MS[0]}_to_{INTERVAL_MS[1]}ms_time{INTERVAL_MS[0]}-{INTERVAL_MS[1]}ms.csv"
+        interval_suffix = f"_time_average_{INTERVAL_MS[0]}-{INTERVAL_MS[1]}ms_time{TIME_MASK_MS[0]}-{TIME_MASK_MS[1]}ms.csv"
+        interval_match = lambda name: (
+            name.endswith(interval_suffix)
+            or f"_time_average_{INTERVAL_MS[0]}-{INTERVAL_MS[1]}ms" in name
+        )
+
     else:
         interval_suffix = f"t_{INTERVAL_MS[0]}_to_{INTERVAL_MS[1]}ms.csv"
+        interval_match = lambda name: name.endswith(interval_suffix)
+        
+    csv_paths = sorted(
+    path
+        for path in experiment_dir.rglob("*.csv")
+        if path.is_file() and interval_match(path.name)
+)
 
     subfolder_csvs: list[tuple[Path, list[Path]]] = []
+
     with make_minimal_progress_bar(
-        total=len(experiment_info),
-        label="Collecting averages",
-        unit_label="folders",
-    ) as pbar:
-        for experiment_dir, _ in experiment_info:
-            csv_paths = sorted(
-                path
-                for path in experiment_dir.rglob("*.csv")
-                if path.is_file() and path.name.endswith(interval_suffix)
-            )
-            subfolder_csvs.append((experiment_dir, csv_paths))
-            pbar.update(1)
+    total=len(experiment_info),
+    label="Collecting averages",
+    unit_label="folders",
+)   as pbar:
+
+     for experiment_dir, _ in experiment_info:
+
+        csv_paths = sorted(
+            path
+            for path in experiment_dir.rglob("*.csv")
+            if path.is_file() and interval_match(path.name)
+        )
+
+        print(
+            f"{experiment_dir.name}: found {len(csv_paths)} matching files"
+        )
+
+        for p in csv_paths:
+            print("   ", p.name)
+
+        subfolder_csvs.append((experiment_dir, csv_paths))
+        pbar.update(1)
 
     for experiment_dir, csv_paths in subfolder_csvs:
         if not csv_paths:
@@ -297,10 +325,27 @@ def main() -> int:
     )
     fig.tight_layout()
 
+    if COMBINE_MASK_MODE == "cv":
+        output_suffix = (
+            f"t_{INTERVAL_MS[0]}_to_{INTERVAL_MS[1]}ms"
+            f"_cv{COMBINE_CV_THRESHOLD}"
+        )
+
+    elif COMBINE_MASK_MODE == "time":
+        output_suffix = (
+            f"t_{INTERVAL_MS[0]}_to_{INTERVAL_MS[1]}ms"
+            f"_time{TIME_MASK_MS[0]}-{TIME_MASK_MS[1]}ms"
+        )
+
+    else:
+        output_suffix = (
+            f"t_{INTERVAL_MS[0]}_to_{INTERVAL_MS[1]}ms"
+        )
+
     processed_dir = parent_dir / "processed"
     processed_dir.mkdir(parents=True, exist_ok=True)
     output_pdf = processed_dir / (
-        f"combined_averages_t_{INTERVAL_MS[0]}_to_{INTERVAL_MS[1]}ms.pdf"
+        f"combined_averages_{output_suffix}.pdf"
     )
     fig.savefig(output_pdf, bbox_inches="tight")
     plt.close(fig)
@@ -387,7 +432,7 @@ def main() -> int:
     fig_loglog.tight_layout()
 
     output_pdf_loglog = processed_dir / (
-        f"combined_averages_loglog_t_{INTERVAL_MS[0]}_to_{INTERVAL_MS[1]}ms.pdf"
+        f"combined_averages_loglog_{output_suffix}.pdf"
     )
     fig_loglog.savefig(output_pdf_loglog, bbox_inches="tight")
     plt.close(fig_loglog)
