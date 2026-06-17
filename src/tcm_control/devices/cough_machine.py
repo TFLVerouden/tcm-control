@@ -19,7 +19,7 @@ DEFAULT_RUN_LOG_DIR = Path(".logs")
 EXPERIMENT_RUN_LOG_SUBDIR = "run_logs"
 MAX_PRESSURE_BAR = 7.2
 # Keep protocol version as a single integer. Bump only for breaking serial changes.
-DEFAULT_SUPPORTED_PROTOCOL_VERSION = 4
+DEFAULT_SUPPORTED_PROTOCOL_VERSION = 5
 
 
 class CoughMachine(PoFSerialDevice):
@@ -492,14 +492,18 @@ class CoughMachine(PoFSerialDevice):
         self.load_flowcurve(csv_path=test_csv, echo=echo)
         self.run(echo=echo)
 
-    def set_light(self, enabled: bool, *, echo: Optional[bool] = None) -> str:
-        """Turn the light on or off using `I <0|1>`.
+    def set_light(self, level: float, *, echo: Optional[bool] = None) -> str:
+        """Set light brightness using normalized PWM `I <level>`.
 
-        Expects `LIGHT_ON` when enabled and `LIGHT_OFF` when disabled.
+        `level` must be in [0.0, 1.0]. The MCU replies with
+        `SET_LIGHT <level> DUTY <0-255>`.
         """
-        cmd = "I 1" if enabled else "I 0"
-        expected = "LIGHT_ON" if enabled else "LIGHT_OFF"
-        reply, _lines = self._query_and_drain(cmd, expected=expected, echo=echo)
+        if level < 0.0 or level > 1.0:
+            raise ValueError("level must be between 0.0 and 1.0")
+
+        reply, _lines = self._query_and_drain(
+            f"I {level:.6g}", expected_prefix="SET_LIGHT", echo=echo
+        )
         return reply or ""
 
     def set_fan_speed(self, speed, *, echo: Optional[bool] = None) -> str:
