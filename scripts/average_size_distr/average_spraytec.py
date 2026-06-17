@@ -20,7 +20,7 @@ EXPERIMENT_DIR: str | None = None
 CSV_PATTERN = "spraytec*.csv"
 
 # One required averaging interval in milliseconds, relative to trigger (t = 0).
-INTERVAL_MS = (30, 130)
+INTERVAL_MS = (0, 700)
 
 
 def main() -> int:

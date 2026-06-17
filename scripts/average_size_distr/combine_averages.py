@@ -36,16 +36,16 @@ COMBINE_MASK_MODE: str | None = "time"
 COMBINE_CV_THRESHOLD = 5
 
 #time mask interval used when generating the averages (only used if COMBINE_MASK_MODE == "time").
-TIME_MASK_MS = (0, 80)
+TIME_MASK_MS = (0, 50)
 
 # Set to True to also save a single pooled distribution across all heights.
-PLOT_COMBINED = False
+PLOT_COMBINED = True
 
 # Set to None to weight all heights equally.
 HEIGHT_WEIGHTS: dict[int, float] | None = None
 
 # Height labels associated with stacked subplots.
-HEIGHTS_MM = list(range(-0, 21, 10))
+HEIGHTS_MM = list(range(0, 11, 10))
 
 PLOT_COLOR = "C0"
 PLOT_ALPHA = 0.18

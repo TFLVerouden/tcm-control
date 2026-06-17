@@ -39,13 +39,13 @@ SPRAYTEC_TIME_COLUMN = "Date-Time"
 SPRAYTEC_TRIGGER_COLUMN = "Trigger"
 
 
-MASK_MODE = "cv"  # "cv" or "time"
+MASK_MODE = "time"  # "cv" or "time"
 
 #threshold for masking cv values. Only number density values corresponding to cv values above this threshold will be averaged.
 CV_THRESHOLD = 5
 
 #threshold for masking time values. Only number density values corresponding to time values within this threshold (in ms) will be averaged.
-TIME_THRESHOLD_MS = (0, 80)  # e.g. (0, 700) to keep only the first 700 ms after trigger.
+TIME_THRESHOLD_MS = (0, 60)  #get range from preliminary cv-time plots
 # ------------------------------
 
 def _first_existing(candidates: list[str], available_columns: list[str]) -> str | None:
@@ -156,7 +156,7 @@ def mask_data(
     spraytec_data: dict[str, Any],
     cv_series: tuple[np.ndarray, np.ndarray],
 ) -> dict[str, Any]:
-    cv_time_ms, cv_ppm = cv_series  # cv_time is already in ms from load_cv_data
+    cv_time_ms, cv_ppm = cv_series
 
     df: pd.DataFrame = spraytec_data["measurement_df"].copy()
     stec_time_ms = _trigger_relative_ms(df)
@@ -171,9 +171,7 @@ def mask_data(
     best_idx = np.where(left_dist <= right_dist, left_idx, right_idx)
 
     cv_at_stec = cv_ppm[best_idx]
-
-    # Keep SprayTec frames where cv_ppm is above the threshold
-    frame_mask = cv_at_stec > CV_THRESHOLD  # shape: (len(df),) — one per SprayTec row
+    frame_mask = cv_at_stec > CV_THRESHOLD  # frames to KEEP
 
     n_total = len(df)
     n_kept = int(frame_mask.sum())
@@ -183,8 +181,18 @@ def mask_data(
         f"({n_dropped} dropped, cv_ppm <= {CV_THRESHOLD})"
     )
 
+    # Instead of dropping rows (which removes the Trigger row needed by
+    # time_average_distribution), set bin values to NaN for masked-out frames.
+    # The trigger/time columns are left intact so t=0 can still be found.
+    bin_columns = [
+        col for col in df.columns
+        if pd.to_numeric(pd.Series([col]), errors="coerce").notna().all()
+        and float(col) > 0
+    ]
+    df.loc[~frame_mask, bin_columns] = np.nan
+
     filtered_data = dict(spraytec_data)
-    filtered_data["measurement_df"] = df.loc[frame_mask].reset_index(drop=True)
+    filtered_data["measurement_df"] = df
     return filtered_data
  
 def mask_data_by_time(
@@ -270,16 +278,14 @@ def process_experiment(experiment_dir: Path) -> dict[str, str | int]:
         else:
             raise ValueError(f"Unknown MASK_MODE: '{MASK_MODE}'. Use 'cv' or 'time'.")
 
-        if filtered_data["measurement_df"].empty:
-            print("    No frames survived the mask — run skipped.")
-            continue
+        
 
         mask_label = f"cv{int(CV_THRESHOLD)}" if MASK_MODE == "cv" else f"time{TIME_THRESHOLD_MS[0]}-{TIME_THRESHOLD_MS[1]}ms"
         stem = stec_path.stem
 
         time_average_distribution(
             spraytec_data=filtered_data,
-            start_time_ms=INTERVAL_MS[0],
+            start_time_ms=INTERVAL_MS[0],   
             end_time_ms=INTERVAL_MS[1],
             trigger_column="Trigger",
             export_csv=True,
