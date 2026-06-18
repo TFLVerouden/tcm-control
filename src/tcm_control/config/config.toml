@@ -30,13 +30,20 @@ pump_rate_ml_per_min = 0.1
 nr_droplets_to_skip_before_recording = 5
 
 [devices.pump.infuse]
-volume_ml = 6
+volume_ml = 5
 rate_ml_min = 6
 
 [devices.pump.withdraw]
-volume_ml = 4.0
-rate_ml_min = 5
+volume_ml = 3.7
+rate_ml_min = 6
 
+[devices.pump.clean_tube]
+volume_ml_layer = 5
+rate_ml_min_layer = 10
+
+volume_ml_repetition = 1
+rate_ml_min_repetition = 5
+repetitions = 5
 
 [devices.vertical_stage.inputs]
 tolerance_mm = 0.3

@@ -18,83 +18,6 @@ specs_path = Path(__file__).resolve().parent.parent / \
 
 pxm = 0.020562e-3  # m/px
 
-
-def tube_cleaning(specs_path: Path = specs_path):
-
-    specs: dict = {}
-    if specs_path.exists():
-        specs = tomllib.load(specs_path.open("rb"))
-
-    pump = SyringePump2(specs)
-    try:
-        profile = get_active_profile(specs)
-        step = get_first_action_step(specs, "clean_tube")
-        pump.prepare(profile)
-
-        if step is not None:
-            # Make a layer
-            pump.infuse(
-                volume_ml=step["volume_ml_layer"],
-                rate_ml_min=step["rate_ml_min_layer"]
-            )
-
-            # Seasaw the fluid through the tubes
-            for _ in range(step["repetitions"]):
-                pump.withdraw(
-                    volume_ml=step["volume_ml_repetition"],
-                    rate_ml_min=step["rate_ml_min_repetition"]
-                )
-                pump.infuse(
-                    volume_ml=step["volume_ml_repetition"],
-                    rate_ml_min=step["rate_ml_min_repetition"]
-                )
-
-        if step is None:
-            pump._log_info(
-                "SyringePump config has no clean_tube steps")
-    except Exception as exc:
-        pump._log_error(str(exc))
-        raise
-    finally:
-        pump.stop()
-
-
-def make_layer(specs_path: Path = specs_path):
-
-    # PUMP CONTROL
-    specs: dict = {}
-    if specs_path.exists():
-        specs = tomllib.load(specs_path.open("rb"))
-
-    pump = SyringePump2(specs)
-    try:
-        profile = get_active_profile(specs)
-        infuse_step = get_first_action_step(specs, "infuse")
-        withdraw_step = get_first_action_step(specs, "withdraw")
-        pump.prepare(profile)
-
-        if infuse_step is not None:
-            pump.infuse(
-                volume_ml=infuse_step["volume_ml"],
-                rate_ml_min=infuse_step["rate_ml_min"]
-            )
-
-        if withdraw_step is not None:
-            pump.withdraw(
-                volume_ml=withdraw_step["volume_ml"],
-                rate_ml_min=withdraw_step["rate_ml_min"]
-            )
-
-        if infuse_step is None and withdraw_step is None:
-            pump._log_info(
-                "SyringePump config has no infuse/withdraw steps")
-    except Exception as exc:
-        pump._log_error(str(exc))
-        raise
-    finally:
-        pump.stop()
-
-
 if __name__ == "__main__":
 
     output_dir = Path(__file__).parent / "Film_Images"
@@ -131,11 +54,38 @@ if __name__ == "__main__":
     # Toggle the light off
     # light.toggle_light()
 
-    # clean the tubes before making the layer
-    # tube_cleaning(specs_path)
+    # PUMP CONTROL
+    specs: dict = {}
+    if specs_path.exists():
+        specs = tomllib.load(specs_path.open("rb"))
+    profile = get_active_profile(specs)
+    infuse_step = get_first_action_step(specs, "infuse")
+    withdraw_step = get_first_action_step(specs, "withdraw")
 
-    # Make the layer
-    make_layer(specs_path)
+    pump = SyringePump2(specs)
+    try:
+        pump.prepare(profile)
+
+        if infuse_step is not None:
+            pump.infuse(
+                volume_ml=infuse_step["volume_ml"],
+                rate_ml_min=infuse_step["rate_ml_min"]
+            )
+
+        if withdraw_step is not None:
+            pump.withdraw(
+                volume_ml=withdraw_step["volume_ml"],
+                rate_ml_min=withdraw_step["rate_ml_min"]
+            )
+
+        if infuse_step is None and withdraw_step is None:
+            pump._log_info(
+                "SyringePump config has no infuse/withdraw steps")
+    except Exception as exc:
+        pump._log_error(str(exc))
+        raise
+    finally:
+        pump.stop()
 
     # time.sleep(10)  # Wait for the pump system to relax
     # # FILM LAYER PICTURE
