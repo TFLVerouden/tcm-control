@@ -1,0 +1,20 @@
+[profiles.has_20ml_1913mm]
+vendor_code = "has"
+volume_ml = 20.0
+diameter_mm = 19.13
+gang = 1
+force_percent = 100
+
+[profiles.bdp_60ml_26594mm_gang2]
+vendor_code = "bdp"
+volume_ml = 60.0
+diameter_mm = 26.594
+gang = 2
+force_percent = 100
+
+[profiles.custom]
+vendor_code = "has"
+volume_ml = 20.0
+diameter_mm = 19.13
+gang = 1
+force_percent = 100
