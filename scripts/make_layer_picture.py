@@ -79,6 +79,8 @@ def make_layer(specs_path: Path = specs_path):
                 rate_ml_min=infuse_step["rate_ml_min"]
             )
 
+        time.sleep(5)  # Wait for the pump system to relax
+
         if withdraw_step is not None:
             pump.withdraw(
                 volume_ml=withdraw_step["volume_ml"],

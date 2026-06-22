@@ -8,6 +8,7 @@ from typing import Optional
 
 from tcm_control.devices import CoughMachine, VerticalStage, SyringePump, SprayTec
 from tcm_control import logger
+from tcm_control.devices.camera import Camera
 from tcm_control.initialise_config import load_experiment_config
 from tcm_control.interrupt_handling import (
     reset_interrupt_cleanup_state,
@@ -29,6 +30,9 @@ from tcm_utils.io_utils import (
     prompt_yes_no,
 )
 from tcm_utils.time_utils import timestamp_str
+
+from scripts.make_layer_picture import tube_cleaning, make_layer
+from scripts.test_layer_and_cleaning import imager
 
 
 def cough(config_path: Path | str | None = None) -> Optional[Path]:
@@ -59,6 +63,10 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     cough_machine_inputs = config["devices"]["cough_machine"]["inputs"]
     tank_inputs = cough_machine_inputs["tank"]
     pump_inputs = config["devices"]["pump"]["inputs"]
+
+    print(config["devices"])
+    camera_inputs = config["devices"]["camera"]["inputs"]
+
     vertical_stage_inputs = config["devices"]["vertical_stage"]["inputs"]
     spraytec_inputs = config["devices"]["spraytec"]["inputs"]
     # Cache the selected mode for the central match/case branch below
@@ -181,6 +189,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
             # Register pump so interrupt cleanup can call stop() on it
             set_active_pump(pump)
+
+        # In film mode, set up the camera
+        if experiment_mode == "film":
+            camera = Camera(exposure_us=camera_inputs["exposure_us"],
+                            output_dir=output_dir)
 
         # Optional SprayTec setup and geometry resolution
         if record_droplet_size:
@@ -306,6 +319,15 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
                 # Execute repeated runs
                 for run_idx in range(cough_inputs["nr_runs"]):
+                    # Initial picture
+                    imager()
+
+                    # Make a layer
+                    make_layer()
+
+                    # Take a picture of the layer
+                    imager()
+
                     # Wait between coughs if needed
                     if run_idx > 0:
                         wait_or_confirm_next_run(
@@ -318,11 +340,16 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             ],
                         )
 
+                    # Produce a cough
                     run_log_path = tcm.run(
                         output_dir=output_dir,
                         run_nr_start=(run_idx + 1),
                         save_logs=save_data,
                     )
+
+                    # Image the channel after cleaning
+                    imager()
+
                     # Cache first run log for the summary plot in finalization
                     if run_idx == 0:
                         first_run_log_path = run_log_path
