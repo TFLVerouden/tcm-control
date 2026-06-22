@@ -63,8 +63,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     cough_machine_inputs = config["devices"]["cough_machine"]["inputs"]
     tank_inputs = cough_machine_inputs["tank"]
     pump_inputs = config["devices"]["pump"]["inputs"]
-
-    print(config["devices"])
     camera_inputs = config["devices"]["camera"]["inputs"]
 
     vertical_stage_inputs = config["devices"]["vertical_stage"]["inputs"]
@@ -192,7 +190,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
         # In film mode, set up the camera
         if experiment_mode == "film":
-            camera = Camera(exposure_us=camera_inputs["exposure_us"],
+            camera = Camera(exposure_us=camera_inputs["camera_exposure_us"],
                             output_dir=output_dir)
 
         # Optional SprayTec setup and geometry resolution

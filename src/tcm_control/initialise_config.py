@@ -412,6 +412,27 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             "piv_nebuliser_pressure_bar": None,
         }
 
+    # ------------------------------------------------------------------
+    # Camera inputs
+    # ------------------------------------------------------------------
+    camera_exposure_us = int(
+        _nested_get(
+            raw,
+            "devices",
+            "camera",
+            "inputs",
+            "camera_exposure_us",
+            default=4000,
+        )
+    )
+    if camera_exposure_us <= 0:
+        raise ValueError(
+            "Config [devices.camera.inputs].camera_exposure_us must be > 0."
+        )
+    camera_inputs = {
+        "camera_exposure_us": camera_exposure_us,
+    }
+
     record_droplet_size = bool(cough_inputs["record_droplet_size"])
 
     # ------------------------------------------------------------------
@@ -632,6 +653,9 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             "pump": {
                 "required": pump_required,
                 "inputs": pump_inputs,
+            },
+            "camera": {
+                "inputs": camera_inputs,
             },
             "vertical_stage": {
                 "inputs": vertical_stage_inputs,
