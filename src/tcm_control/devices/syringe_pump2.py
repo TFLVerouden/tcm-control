@@ -42,7 +42,7 @@ class SyringePump2:
         "timeout_s": 0.2,
         "pump_address": 2,
         "command_delay_s": 0.2,
-        "active_profile": "has_20ml_1913mm",
+        "active_profile": "hm2_100ml_32.573mm",
     }
 
     DEFAULT_PUMP_CFG = {
