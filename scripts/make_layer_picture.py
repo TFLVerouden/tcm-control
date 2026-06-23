@@ -1,9 +1,11 @@
+# TEST SCRIPT TO BE DELETED
+
 import cv2
 
 from tcm_control.devices.camera import Camera
 from tcm_control.devices.syringe_pump2 import SyringePump2
 from tcm_control.devices.light import LightSwitchController
-from tcm_control.SingleFilmHeight import determine_film_height, determine_plate_height
+from tcm_control.film_height import determine_film_height, determine_plate_height
 from tcm_control.devices import CoughMachine
 
 import re
@@ -103,22 +105,8 @@ if __name__ == "__main__":
         r"C:\CoughMachineData\260622_test_film_cough\260622_134021_VierdeLaagje\camera")
     image_path = Path(
         r"C:\CoughMachineData\260622_test_film_cough\260622_134021_VierdeLaagje\camera\capture_20260622_134450.png")
-    image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
-    if image is None:
-        raise RuntimeError(
-            f"Failed to read captured image from: {image_path}")
-    image = image[::-1, :]
 
-    top_x, top_y, plate_height = determine_plate_height(image)
-    print(f"Determined plate height: {plate_height:.1f} px")
-
-    plt.figure()
-    plt.imshow(image, cmap='gray', origin='lower')
-    plt.scatter(top_x, top_y, s=1, color='green')
-    plt.title(f"Plate Height: {plate_height:.1f} px")
-    plt.savefig(output_dir / "background.png")
-    plt.close()
-    plt.show()
+    plate_height = determine_plate_height(image_path, output_dir)
 
     # Toggle the light off
     # light.toggle_light()

@@ -30,7 +30,7 @@ from tcm_utils.io_utils import (
 )
 from tcm_utils.time_utils import timestamp_str
 from tcm_control.thin_film import take_snapshot, tube_cleaning, make_layer
-from tcm_control.SingleFilmHeight import determine_film_height, determine_plate_height
+from tcm_control.film_height import determine_film_height, determine_plate_height
 
 
 def cough(config_path: Path | str | None = None) -> Optional[Path]:
@@ -324,12 +324,18 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 for run_idx in range(cough_inputs["nr_runs"]):
                     # Initial picture
                     background_path = take_snapshot(camera, tcm)
+                    if camera_output_dir is not None:
+                        plate_height_px = determine_plate_height(
+                            background_path, camera_output_dir)
 
                     # Make a layer
-                    make_layer(pump, pump_inputs)  # type: ignore
+                    make_layer(pump)  # type: ignore
 
                     # Take a picture of the layer
                     thin_film_path = take_snapshot(camera, tcm)
+                    if camera_output_dir is not None:
+                        film_height_px = determine_film_height(
+                            thin_film_path, plate_height_px, camera_output_dir)
 
                     # Wait between coughs if needed
                     if run_idx > 0:
