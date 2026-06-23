@@ -56,12 +56,12 @@ def filter_film_rim_by_x_range(rim_x: np.ndarray, rim_y: np.ndarray,
     """
     Keep only rim points inside the x-range used for thickness extraction.
     """
-    mask_left = x_min < rim_x
-    rim_x_filtered = rim_x[mask_left]
-    rim_y_filtered = rim_y[mask_left]
+    mask_right = x_min < rim_x
+    rim_x_filtered = rim_x[mask_right]
+    rim_y_filtered = rim_y[mask_right]
 
-    mask_right = rim_x_filtered < x_max
-    return rim_x_filtered[mask_right], rim_y_filtered[mask_right]
+    mask_left = rim_x_filtered < x_max
+    return rim_x_filtered[mask_left], rim_y_filtered[mask_left]
 
 
 def calculate_film_thickness_from_rim(rim_x: np.ndarray, rim_y: np.ndarray, plate_height: float) -> list:
@@ -85,87 +85,93 @@ def calculate_film_thickness_from_rim(rim_x: np.ndarray, rim_y: np.ndarray, plat
     return thicknesses
 
 
-def determine_film_height(image, plate_height) -> Tuple[np.ndarray, np.ndarray, float]:
+def determine_film_height(image_path, plate_height, output_dir) -> float:
     """
     Determine mean film height in millimeters for one frame.
     """
-    edge_map = cv2.Canny(image, 50, 100)
+    image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+    if image is None:
+        raise FileNotFoundError(f"Image not found at path: {image_path}")
+    image = image[::-1, :]
+
+    edge_map = cv2.Canny(image, 50, 150)
     edge_y, edge_x = np.where(edge_map != 0)
     if edge_x.size == 0:
         raise ValueError("No film-height edge pixels detected")
 
     rim_x, rim_y = detect_film_rim(edge_x, edge_y, keep_top_only=True)
     _, image_width = image.shape
-    max_x = (image_width // 2)
+    min_x = (image_width // 2)
+    IMAGE_CROP_RIGHT = image_width - 2
     rim_x, rim_y = filter_film_rim_by_x_range(
-        rim_x, rim_y, IMAGE_CROP_LEFT, max_x)
+        rim_x, rim_y, min_x, IMAGE_CROP_RIGHT)
 
     thicknesses = calculate_film_thickness_from_rim(
         rim_x, rim_y, plate_height)
     if not thicknesses:
         raise ValueError("No valid film-height thickness values found")
     thickness = float(np.mean(thicknesses))
-    return rim_x, rim_y, thickness
+
+    plt.figure()
+    plt.imshow(image, cmap='gray', origin='lower')
+    plt.scatter(rim_x, rim_y, s=1, color='red')
+    plt.title(f"Film Height: {thickness:.2f} px")
+    plt.savefig(output_dir / "film_height.png")
+    # plt.show()
+
+    return thickness
 
 
-def determine_plate_height(image) -> Tuple[np.ndarray, np.ndarray, float]:
+def determine_plate_height(background_path, output_dir) -> float:
     """
-    Determine the plate height in milimeters. 
+    Determine the plate height in pixels.
     """
-    edge_map = cv2.Canny(image, 100, 80)
-    edge_y, edge_x = np.where(edge_map != 0)
-
-    if edge_x.size == 0:
-        raise ValueError("No film-height edge pixels detected")
-
-    top_x, top_y = detect_film_rim(edge_x, edge_y, keep_top_only=True)
-    _, image_width = image.shape
-    max_x = (image_width // 2)
-    top_x, top_y = filter_film_rim_by_x_range(
-        top_x, top_y, IMAGE_CROP_LEFT, max_x)
-
-    plate_height = float(np.mean(top_y))
-    if not plate_height:
-        raise ValueError("No valid plate height values found")
-
-    return top_x, top_y, plate_height
-
-
-if __name__ == "__main__":
-
-    background_path = Path(__file__).parent.parent / "devices" / \
-        "Film_Images" / "capture_20260609_103512.png"
-
     background = cv2.imread(str(background_path), cv2.IMREAD_GRAYSCALE)
     if background is None:
         raise RuntimeError(
             f"Failed to read captured image from: {background_path}")
     background = background[::-1, :]
 
-    top_x, top_y, plate_height = determine_plate_height(background)
-    print(f"Determined plate height: {plate_height:.1f} px")
+    edge_map = cv2.Canny(background, 50, 150)
+    edge_y, edge_x = np.where(edge_map != 0)
+
+    if edge_x.size == 0:
+        raise ValueError("No film-height edge pixels detected")
+
+    top_x, top_y = detect_film_rim(edge_x, edge_y, keep_top_only=True)
+    _, image_width = background.shape
+    min_x = (image_width // 2)
+    IMAGE_CROP_RIGHT = image_width - 2
+    top_x, top_y = filter_film_rim_by_x_range(
+        top_x, top_y, min_x, IMAGE_CROP_RIGHT)
+
+    plate_height = float(np.mean(top_y))
+    if not plate_height:
+        raise ValueError("No valid plate height values found")
 
     plt.figure()
     plt.imshow(background, cmap='gray', origin='lower')
     plt.scatter(top_x, top_y, s=1, color='red')
     plt.title(f"Plate Height: {plate_height:.1f} px")
-    plt.savefig(output_dir / "background_test.png")
-    plt.show()
+    plt.savefig(output_dir / "background_plate_height.png")
+    # plt.show()
 
-    image_path = Path(__file__).parent.parent / "devices" / \
-        "Film_Images" / "capture_20260609_103644.png"
+    return plate_height
 
-    image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
 
-    if image is None:
-        raise FileNotFoundError(f"Image not found at path: {image_path}")
+if __name__ == "__main__":
+    output_dir = Path(
+        r"C:\CoughMachineData\260622_test_film_cough\260622_152201_VijfdeLaagje\camera")
 
-    image = image[::-1, :]
-    rim_x, rim_y, film_height = determine_film_height(image, plate_height)
+    background_path = Path(
+        r"C:\CoughMachineData\260622_test_film_cough\260622_152201_VijfdeLaagje\camera\capture_20260622_152241.png")
 
-    plt.figure()
-    plt.imshow(image, cmap='gray', origin='lower')
-    plt.scatter(rim_x, rim_y, s=1, color='red')
-    plt.title(f"Film Height: {film_height:.2f} px")
-    plt.savefig(output_dir / "film_height_result.png")
-    plt.show()
+    plate_height = determine_plate_height(background_path, output_dir)
+    print(f"Determined plate height: {plate_height:.1f} px")
+
+    image_path = Path(
+        r"C:\CoughMachineData\260622_test_film_cough\260622_152201_VijfdeLaagje\camera\capture_20260622_152426.png")
+
+    film_height_px = determine_film_height(
+        image_path, plate_height, output_dir)
+    print(f"Determined film height: {film_height_px:.2f} px")

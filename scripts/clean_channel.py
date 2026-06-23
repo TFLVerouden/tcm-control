@@ -4,9 +4,9 @@
 
 from tcm_control.devices import CoughMachine
 
-PRESSURE_BAR = 1.3
+PRESSURE_BAR = 3
 OPEN_DURATION_S = 1
-REPEATS = 1
+REPEATS = 3
 
 
 def main() -> None:
