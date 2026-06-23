@@ -498,6 +498,9 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
         )
     camera_inputs = {
         "camera_exposure_us": camera_exposure_us,
+        "pixel_per_meter": _optional_float(
+            _nested_get(raw, "devices", "camera", "inputs", "pixel_per_meter")
+        ),
     }
 
     record_droplet_size = bool(cough_inputs["record_droplet_size"])
