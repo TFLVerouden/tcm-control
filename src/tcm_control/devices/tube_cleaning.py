@@ -1,10 +1,11 @@
+# TEST SCRIPT TO BE DELETED
+
 import cv2
 
-from tcm_control.devices.syringe_pump2 import get_active_profile, get_first_action_step
 from tcm_control.devices.camera import Camera
 from tcm_control.devices.syringe_pump2 import SyringePump2
 from tcm_control.devices.light import LightSwitchController
-from tcm_control.processing.SingleFilmHeight import determine_film_height, determine_plate_height
+from tcm_control.film_height import determine_film_height, determine_plate_height
 
 import re
 import time
@@ -58,11 +59,13 @@ if __name__ == "__main__":
     specs: dict = {}
     if specs_path.exists():
         specs = tomllib.load(specs_path.open("rb"))
-    profile = get_active_profile(specs)
-    infuse_step = get_first_action_step(specs, "infuse")
-    withdraw_step = get_first_action_step(specs, "withdraw")
 
     pump = SyringePump2(specs)
+
+    profile = pump.get_active_profile()
+    infuse_step = pump.get_first_action_step("infuse")
+    withdraw_step = pump.get_first_action_step("withdraw")
+
     try:
         pump.prepare(profile)
 

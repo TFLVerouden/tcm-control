@@ -261,6 +261,7 @@ def build_run_metadata(
     humidity_start = run_context["humidity_start"]
     temperature_finish = run_context["temperature_finish"]
     humidity_finish = run_context["humidity_finish"]
+    thin_film_height_mm = run_context["thin_film_height_mm"]
     comments = run_context["comments"]
 
     # Unpack device-level context values.
@@ -295,6 +296,7 @@ def build_run_metadata(
             "humidity_start": humidity_start,
             "temperature_finish": temperature_finish,
             "humidity_finish": humidity_finish,
+            "thin_film_height_mm": thin_film_height_mm,
             "comments": comments,
             "output_dir": output_dir,
         },

@@ -1,11 +1,11 @@
 [experiment]
 name = "" # keep empty to prompt
-mode = "droplet" # droplet | film | piv
+mode = "film" # droplet | film | piv
 series_directory = "" # keep empty to prompt; set to "None" to disable saving data
 
 [inputs.cough]
 debug_mode = false
-nr_runs = 5
+nr_runs = 1
 multi_run_interval_s = 40
 confirm_before_starting_next_run = false
 record_droplet_size = true
@@ -29,13 +29,17 @@ syringe_volume_ml = 2.5
 pump_rate_ml_per_min = 0.1
 nr_droplets_to_skip_before_recording = 5
 
+[devices.camera.inputs]
+camera_exposure_us = 4000
+pixel_per_meter = 0.015678e-3
+
 [devices.pump.infuse]
 volume_ml = 5
-rate_ml_min = 6
+rate_ml_min = 5
 
 [devices.pump.withdraw]
-volume_ml = 3.7
-rate_ml_min = 6
+volume_ml = 2.5
+rate_ml_min = 3
 
 [devices.pump.clean_tube]
 volume_ml_layer = 5

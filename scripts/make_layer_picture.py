@@ -1,10 +1,12 @@
+# TEST SCRIPT TO BE DELETED
+
 import cv2
 
-from tcm_control.devices.syringe_pump2 import get_active_profile, get_first_action_step
 from tcm_control.devices.camera import Camera
 from tcm_control.devices.syringe_pump2 import SyringePump2
 from tcm_control.devices.light import LightSwitchController
-from tcm_control.processing.SingleFilmHeight import determine_film_height, determine_plate_height
+from tcm_control.film_height import determine_film_height, determine_plate_height
+from tcm_control.devices import CoughMachine
 
 import re
 import time
@@ -27,8 +29,8 @@ def tube_cleaning(specs_path: Path = specs_path):
 
     pump = SyringePump2(specs)
     try:
-        profile = get_active_profile(specs)
-        step = get_first_action_step(specs, "clean_tube")
+        profile = pump.get_active_profile()
+        step = pump.get_first_action_step("clean_tube")
         pump.prepare(profile)
 
         if step is not None:
@@ -68,9 +70,9 @@ def make_layer(specs_path: Path = specs_path):
 
     pump = SyringePump2(specs)
     try:
-        profile = get_active_profile(specs)
-        infuse_step = get_first_action_step(specs, "infuse")
-        withdraw_step = get_first_action_step(specs, "withdraw")
+        profile = pump.get_active_profile()
+        infuse_step = pump.get_first_action_step("infuse")
+        withdraw_step = pump.get_first_action_step("withdraw")
         pump.prepare(profile)
 
         if infuse_step is not None:
@@ -78,6 +80,8 @@ def make_layer(specs_path: Path = specs_path):
                 volume_ml=infuse_step["volume_ml"],
                 rate_ml_min=infuse_step["rate_ml_min"]
             )
+
+        time.sleep(5)  # Wait for the pump system to relax
 
         if withdraw_step is not None:
             pump.withdraw(
@@ -97,36 +101,12 @@ def make_layer(specs_path: Path = specs_path):
 
 if __name__ == "__main__":
 
-    output_dir = Path(__file__).parent / "Film_Images"
-    # light = LightSwitchController()
-    # camera = Camera(exposure_us=4000, output_dir=output_dir)
+    output_dir = Path(
+        r"C:\CoughMachineData\260622_test_film_cough\260622_134021_VierdeLaagje\camera")
+    image_path = Path(
+        r"C:\CoughMachineData\260622_test_film_cough\260622_134021_VierdeLaagje\camera\capture_20260622_134450.png")
 
-    # # BACKGROUND IMAGE
-    # # Turn on the light
-    # light.toggle_light()
-    # time.sleep(0.1)  # Wait for the light to turn on
-
-    # Capture a snapshot
-    # image_path = camera.snapshot()
-    # if image_path is not None:
-    #     print(f"Snapshot saved: {image_path}")
-
-    #     image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
-    #     if image is None:
-    #         raise RuntimeError(
-    #             f"Failed to read captured image from: {image_path}")
-    #     image = image[::-1, :]
-
-    #     top_x, top_y, plate_height = determine_plate_height(image)
-    #     print(f"Determined plate height: {plate_height:.1f} px")
-
-    #     plt.figure()
-    #     plt.imshow(image, cmap='gray', origin='lower')
-    #     plt.scatter(top_x, top_y, s=1, color='green')
-    #     plt.title(f"Plate Height: {plate_height:.1f} px")
-    #     plt.savefig(output_dir / "background.png")
-    #     plt.close()
-    #     # plt.show()
+    plate_height = determine_plate_height(image_path, output_dir)
 
     # Toggle the light off
     # light.toggle_light()
@@ -135,7 +115,7 @@ if __name__ == "__main__":
     # tube_cleaning(specs_path)
 
     # Make the layer
-    make_layer(specs_path)
+    # make_layer(specs_path)
 
     # time.sleep(10)  # Wait for the pump system to relax
     # # FILM LAYER PICTURE

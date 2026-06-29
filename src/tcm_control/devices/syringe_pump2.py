@@ -42,7 +42,7 @@ class SyringePump2:
         "timeout_s": 0.2,
         "pump_address": 2,
         "command_delay_s": 0.2,
-        "active_profile": "has_20ml_1913mm",
+        "active_profile": "hm2_100ml_32573mm",
     }
 
     DEFAULT_PUMP_CFG = {
@@ -473,46 +473,46 @@ class SyringePump2:
             if settle_s > 0:
                 time.sleep(settle_s)
 
+    def get_active_profile(self) -> dict:
+        pump_inputs = self.specs.get("devices", {}).get(
+            "pump", {}).get("inputs", {})
 
-def get_active_profile(specs: dict) -> dict:
-    pump_inputs = specs.get("devices", {}).get("pump", {}).get("inputs", {})
-    active_profile_key = specs.get("serial", {}).get(
-        "active_profile",
-        pump_inputs.get("active_profile",
-                        SyringePump2.DEFAULT_SERIAL_CFG["active_profile"]),
-    )
+        active_profile_key = self.specs.get("serial", {}).get(
+            "active_profile",
+            pump_inputs.get("active_profile",
+                            SyringePump2.DEFAULT_SERIAL_CFG["active_profile"]),
+        )
 
-    profiles: dict = {}
-    if DEFAULT_SYRINGES_PATH.exists():
-        with DEFAULT_SYRINGES_PATH.open("rb") as f:
-            profiles = tomllib.load(f).get("profiles", {})
+        profiles: dict = {}
+        if DEFAULT_SYRINGES_PATH.exists():
+            with DEFAULT_SYRINGES_PATH.open("rb") as f:
+                profiles = tomllib.load(f).get("profiles", {})
 
-    # Backward compatibility for older configs that still define inline profiles.
-    if not profiles:
-        profiles = specs.get("profiles", {})
+        # Backward compatibility for older configs that still define inline profiles.
+        if not profiles:
+            profiles = self.specs.get("profiles", {})
+        if active_profile_key not in profiles:
+            raise KeyError(
+                f"active_profile '{active_profile_key}' was not found in profiles loaded from {DEFAULT_SYRINGES_PATH}")
+        return profiles[active_profile_key]
 
-    if active_profile_key not in profiles:
-        raise KeyError(
-            f"active_profile '{active_profile_key}' was not found in profiles loaded from {DEFAULT_SYRINGES_PATH}")
-    return profiles[active_profile_key]
+    def get_first_action_step(self, action_name: str) -> dict | None:
+        # Legacy format: top-level `infuse` / `withdraw` arrays.
+        steps = self.specs.get(action_name, [])
+        if isinstance(steps, list) and steps:
+            return steps[0]
+        if isinstance(steps, dict):
+            return steps
 
-
-def get_first_action_step(specs: dict, action_name: str) -> dict | None:
-    # Legacy format: top-level `infuse` / `withdraw` arrays.
-    steps = specs.get(action_name, [])
-    if isinstance(steps, list) and steps:
-        return steps[0]
-    if isinstance(steps, dict):
-        return steps
-
-    # Current format: [devices.pump.infuse] / [devices.pump.withdraw]
-    action_cfg = specs.get("devices", {}).get("pump", {}).get(action_name)
-    if isinstance(action_cfg, dict):
-        return action_cfg
-    if isinstance(action_cfg, list) and action_cfg:
-        # Supports [[devices.pump.infuse]] style arrays of tables.
-        return action_cfg[0]
-    return None
+        # Current format: [devices.pump.infuse] / [devices.pump.withdraw]
+        action_cfg = self.specs.get("devices", {}).get(
+            "pump", {}).get(action_name)
+        if isinstance(action_cfg, dict):
+            return action_cfg
+        if isinstance(action_cfg, list) and action_cfg:
+            # Supports [[devices.pump.infuse]] style arrays of tables.
+            return action_cfg[0]
+        return None
 
 
 def main(specs_path: Path = DEFAULT_SPECS_PATH) -> None:
@@ -520,12 +520,12 @@ def main(specs_path: Path = DEFAULT_SPECS_PATH) -> None:
     if specs_path.exists():
         specs = tomllib.load(specs_path.open("rb"))
 
-    profile = get_active_profile(specs)
-    infuse_step = get_first_action_step(specs, "infuse")
-    withdraw_step = get_first_action_step(specs, "withdraw")
-
     pump = SyringePump2(specs)
     try:
+        profile = pump.get_active_profile()
+        infuse_step = pump.get_first_action_step("infuse")
+        withdraw_step = pump.get_first_action_step("withdraw")
+
         pump.prepare(profile)
 
         if infuse_step is not None:

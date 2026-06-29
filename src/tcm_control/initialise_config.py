@@ -372,6 +372,47 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             )
         ),
     }
+
+    pump_infuse = {
+        "volume_ml": _optional_float(
+            _nested_get(raw, "devices", "pump", "infuse", "volume_ml")
+        ),
+        "rate_ml_min": _optional_float(
+            _nested_get(raw, "devices", "pump", "infuse", "rate_ml_min")
+        ),
+    }
+
+    pump_withdraw = {
+        "volume_ml": _optional_float(
+            _nested_get(raw, "devices", "pump", "withdraw", "volume_ml")
+        ),
+        "rate_ml_min": _optional_float(
+            _nested_get(raw, "devices", "pump", "withdraw", "rate_ml_min")
+        ),
+    }
+
+    pump_clean_tube = {
+        "volume_ml_layer": _optional_float(
+            _nested_get(raw, "devices", "pump",
+                        "clean_tube", "volume_ml_layer")
+        ),
+        "rate_ml_min_layer": _optional_float(
+            _nested_get(raw, "devices", "pump",
+                        "clean_tube", "rate_ml_min_layer")
+        ),
+        "volume_ml_repetition": _optional_float(
+            _nested_get(raw, "devices", "pump",
+                        "clean_tube", "volume_ml_repetition")
+        ),
+        "rate_ml_min_repetition": _optional_float(
+            _nested_get(raw, "devices", "pump", "clean_tube",
+                        "rate_ml_min_repetition")
+        ),
+        "repetitions": _required_non_negative_int(
+            _nested_get(raw, "devices", "pump", "clean_tube", "repetitions"),
+            default=0,
+        ),
+    }
     if pump_required and pump_inputs["syringe_volume_ml"] is None:
         raise ValueError(
             "Config [devices.pump.inputs].syringe_volume_ml must be set "
@@ -402,15 +443,65 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
                 "must be > 0."
             )
 
-    if not pump_required:
-        pump_inputs = {
-            "syringe_volume_ml": None,
-            "pump_rate_ml_per_min": None,
-            "nr_droplets_to_skip_before_recording": 0,
-            "piv_pump_start_before_run_s": 0.0,
-            "piv_pump_stop_after_run_s": 0.0,
-            "piv_nebuliser_pressure_bar": None,
-        }
+    # Validate optional new syringe-pump action blocks when values are provided.
+    for action_name, action_cfg in (("infuse", pump_infuse), ("withdraw", pump_withdraw)):
+        volume_ml = action_cfg["volume_ml"]
+        rate_ml_min = action_cfg["rate_ml_min"]
+        if volume_ml is not None and volume_ml < 0:
+            raise ValueError(
+                f"Config [devices.pump.{action_name}].volume_ml must be >= 0."
+            )
+        if rate_ml_min is not None and rate_ml_min <= 0:
+            raise ValueError(
+                f"Config [devices.pump.{action_name}].rate_ml_min must be > 0."
+            )
+
+    if pump_clean_tube["volume_ml_layer"] is not None and pump_clean_tube["volume_ml_layer"] < 0:
+        raise ValueError(
+            "Config [devices.pump.clean_tube].volume_ml_layer must be >= 0."
+        )
+    if pump_clean_tube["rate_ml_min_layer"] is not None and pump_clean_tube["rate_ml_min_layer"] <= 0:
+        raise ValueError(
+            "Config [devices.pump.clean_tube].rate_ml_min_layer must be > 0."
+        )
+    if pump_clean_tube["volume_ml_repetition"] is not None and pump_clean_tube["volume_ml_repetition"] < 0:
+        raise ValueError(
+            "Config [devices.pump.clean_tube].volume_ml_repetition must be >= 0."
+        )
+    if pump_clean_tube["rate_ml_min_repetition"] is not None and pump_clean_tube["rate_ml_min_repetition"] <= 0:
+        raise ValueError(
+            "Config [devices.pump.clean_tube].rate_ml_min_repetition must be > 0."
+        )
+
+    # Keep action blocks inside pump_inputs for call sites that pass only this dict
+    # into SyringePump2 as its specs object.
+    pump_inputs["infuse"] = pump_infuse
+    pump_inputs["withdraw"] = pump_withdraw
+    pump_inputs["clean_tube"] = pump_clean_tube
+
+    # ------------------------------------------------------------------
+    # Camera inputs
+    # ------------------------------------------------------------------
+    camera_exposure_us = int(
+        _nested_get(
+            raw,
+            "devices",
+            "camera",
+            "inputs",
+            "camera_exposure_us",
+            default=4000,
+        )
+    )
+    if camera_exposure_us <= 0:
+        raise ValueError(
+            "Config [devices.camera.inputs].camera_exposure_us must be > 0."
+        )
+    camera_inputs = {
+        "camera_exposure_us": camera_exposure_us,
+        "pixel_per_meter": _optional_float(
+            _nested_get(raw, "devices", "camera", "inputs", "pixel_per_meter")
+        ),
+    }
 
     record_droplet_size = bool(cough_inputs["record_droplet_size"])
 
@@ -632,6 +723,12 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             "pump": {
                 "required": pump_required,
                 "inputs": pump_inputs,
+                "infuse": pump_infuse,
+                "withdraw": pump_withdraw,
+                "clean_tube": pump_clean_tube,
+            },
+            "camera": {
+                "inputs": camera_inputs,
             },
             "vertical_stage": {
                 "inputs": vertical_stage_inputs,
