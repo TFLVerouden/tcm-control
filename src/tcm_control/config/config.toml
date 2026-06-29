@@ -35,11 +35,11 @@ pixel_per_meter = 0.015678e-3
 
 [devices.pump.infuse]
 volume_ml = 5
-rate_ml_min = 0.5
+rate_ml_min = 5
 
 [devices.pump.withdraw]
-volume_ml = 3.5
-rate_ml_min = 0.5
+volume_ml = 2.5
+rate_ml_min = 3
 
 [devices.pump.clean_tube]
 volume_ml_layer = 5

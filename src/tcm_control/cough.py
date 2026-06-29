@@ -338,6 +338,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             thin_film_path, plate_height_px, camera_output_dir)
                         film_height_mm = film_height_px / \
                             camera_inputs["pixel_per_meter"] * 1000
+                        print(f"Film height (mm): {film_height_mm:.3f}")
 
                     # Wait between coughs if needed
                     if run_idx > 0:
@@ -358,7 +359,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         save_logs=save_data,
                     )
 
-                    PRESSURE_BAR = 3
+                    PRESSURE_BAR = 4
                     OPEN_DURATION_S = 1
                     REPEATS = 3
 
@@ -500,7 +501,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 "humidity_start": humidity_start,
                 "temperature_finish": temperature_finish,
                 "humidity_finish": humidity_finish,
-                "thin_film_height": film_height_mm if experiment_mode == "film" else None,
+                "thin_film_height_mm": film_height_mm if experiment_mode == "film" else None,
                 "comments": comments,
             }
 

@@ -1,7 +1,10 @@
 """Thin film layer creation and tube cleaning protocol."""
 
+from tcm_control.initialise_config import load_experiment_config
+from logging import config
 from pathlib import Path
 import time
+import tomllib
 
 from tcm_control.devices.camera import Camera
 from tcm_control.devices.cough_machine import CoughMachine
@@ -131,3 +134,20 @@ def make_layer(pump: SyringePump2) -> None:
     finally:
         # Always stop the pump after operation
         pump.stop()
+
+
+if __name__ == "__main__":
+
+    specs_path = Path(__file__).resolve().parent / "config" / "config.toml"
+    specs: dict = {}
+    if specs_path.exists():
+        specs = tomllib.load(specs_path.open("rb"))
+
+    pump = SyringePump2(specs)
+    tcm = CoughMachine()
+
+    # Perform tube cleaning
+    tube_cleaning(pump)
+
+    # Clean channel
+    tcm.clean(pressure_bar=4, open_duration_s=1, repeats=3)

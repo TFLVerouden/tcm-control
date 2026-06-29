@@ -1,3 +1,11 @@
+[profiles.hm2_100ml_32573mm]
+vendor_code = "hm2"
+volume_ml = 100.0
+diameter_mm = 32.573
+gang = 1
+force_percent = 100
+
+
 [profiles.has_20ml_1913mm]
 vendor_code = "has"
 volume_ml = 20.0
@@ -11,12 +19,4 @@ vendor_code = "bdp"
 volume_ml = 60.0
 diameter_mm = 26.594
 gang = 2
-force_percent = 100
-
-
-[profiles.hm2_100ml_32.573mm]
-vendor_code = "hm2"
-volume_ml = 100.0
-diameter_mm = 32.573
-gang = 1
 force_percent = 100

@@ -42,7 +42,7 @@ class SyringePump2:
         "timeout_s": 0.2,
         "pump_address": 2,
         "command_delay_s": 0.2,
-        "active_profile": "hm2_100ml_32.573mm",
+        "active_profile": "hm2_100ml_32573mm",
     }
 
     DEFAULT_PUMP_CFG = {
@@ -476,6 +476,7 @@ class SyringePump2:
     def get_active_profile(self) -> dict:
         pump_inputs = self.specs.get("devices", {}).get(
             "pump", {}).get("inputs", {})
+
         active_profile_key = self.specs.get("serial", {}).get(
             "active_profile",
             pump_inputs.get("active_profile",
@@ -490,7 +491,6 @@ class SyringePump2:
         # Backward compatibility for older configs that still define inline profiles.
         if not profiles:
             profiles = self.specs.get("profiles", {})
-
         if active_profile_key not in profiles:
             raise KeyError(
                 f"active_profile '{active_profile_key}' was not found in profiles loaded from {DEFAULT_SYRINGES_PATH}")
