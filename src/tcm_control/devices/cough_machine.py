@@ -350,9 +350,12 @@ class CoughMachine(PoFSerialDevice):
     def clean(
         self,
         *,
-        pressure_bar: float = 4.0,
-        open_duration_s: float = 2.5,
-        repeats: int = 3,
+        clean_pressure_bar: float = 4.0,
+        valve_open_duration_s: float = 2.5,
+        cycle_count: int = 3,
+        dry_pressure_bar: float | None = None,
+        dry_duration_s: float = 0.0,
+        dry_valve_current_ma: float = 14.0,
         settle_timeout_s: float = 120.0,
         settle_avg_window_s: float = 5.0,
         settle_tolerance_bar: float = 0.05,
@@ -362,24 +365,34 @@ class CoughMachine(PoFSerialDevice):
         """Run a tank/valve cleaning routine and restore prior pressure setpoint.
 
         The routine repeats:
-        1) set tank pressure to `pressure_bar`
-          2) set proportional valve current to `prop_valve_open_current_ma`
-          3) open solenoid for `open_duration_s`
-          4) close solenoid and set proportional valve current to
-              `prop_valve_close_current_ma`
+        1) set tank pressure to `clean_pressure_bar`
+        2) open the valve for `valve_open_duration_s`
+        3) close the valve and return to the idle valve current
+
+        If `dry_duration_s` is greater than zero, a final drying phase is run at
+        `dry_pressure_bar` when provided, otherwise at `clean_pressure_bar`, with
+        the valve held slightly open at `dry_valve_current_ma` for the requested
+        duration.
 
         After all cycles (or on failure), the previous pressure setpoint is
         restored automatically using `set_pressure`. When no host-side
         setpoint is known, the current sensor readback is used as the fallback
         restore target.
         """
-        if pressure_bar < 0 or pressure_bar > MAX_PRESSURE_BAR:
+        if clean_pressure_bar < 0 or clean_pressure_bar > MAX_PRESSURE_BAR:
             raise ValueError(
                 f"pressure_bar must be between 0 and {MAX_PRESSURE_BAR} bar")
-        if open_duration_s <= 0:
-            raise ValueError("open_duration_s must be > 0")
-        if repeats <= 0:
-            raise ValueError("repeats must be >= 1")
+        if valve_open_duration_s <= 0:
+            raise ValueError("valve_open_duration_s must be > 0")
+        if dry_duration_s < 0:
+            raise ValueError("dry_duration_s must be >= 0")
+        if cycle_count <= 0:
+            raise ValueError("cycle_count must be >= 1")
+        if dry_pressure_bar is None:
+            dry_pressure_bar = clean_pressure_bar
+        elif dry_pressure_bar < 0 or dry_pressure_bar > MAX_PRESSURE_BAR:
+            raise ValueError(
+                f"dry_pressure_bar must be between 0 and {MAX_PRESSURE_BAR} bar")
 
         original_setpoint_bar = self._target_pressure_bar
         if original_setpoint_bar is None:
@@ -387,15 +400,15 @@ class CoughMachine(PoFSerialDevice):
         restore_original_setpoint = original_setpoint_bar is not None
 
         try:
-            for cycle_idx in range(1, repeats + 1):
+            for cycle_idx in range(1, cycle_count + 1):
                 self.set_pressure(
-                    pressure_bar,
+                    clean_pressure_bar,
                     timeout_s=settle_timeout_s,
                     avg_window_s=settle_avg_window_s,
                     tolerance_bar=settle_tolerance_bar,
                     poll_interval_s=settle_poll_interval_s,
                     status_prefix=(
-                        f"{self.name} cleaning cycle {cycle_idx}/{repeats} "
+                        f"{self.name} cleaning cycle {cycle_idx}/{cycle_count} "
                         "(pressure"
                     ),
                     status_suffix=")",
@@ -403,10 +416,10 @@ class CoughMachine(PoFSerialDevice):
                     echo=echo,
                 )
 
-                opening_msg = f"{self.name} cleaning cycle {cycle_idx}/{repeats} (opening valves)"
+                opening_msg = f"{self.name} cleaning cycle {cycle_idx}/{cycle_count} (opening valves)"
                 pressure_msg_len = len(
-                    f"{self.name} cleaning cycle {cycle_idx}/{repeats} "
-                    f"(pressure -.--/{pressure_bar:.2f} bar)"
+                    f"{self.name} cleaning cycle {cycle_idx}/{cycle_count} "
+                    f"(pressure -.--/{clean_pressure_bar:.2f} bar)"
                 )
                 clear_tail = max(0, pressure_msg_len - len(opening_msg))
                 print(f"\r{opening_msg}{' ' * clear_tail}", end="", flush=True)
@@ -419,7 +432,54 @@ class CoughMachine(PoFSerialDevice):
                         print("\a", end="", flush=True)
                     time.sleep(2)
                     self.open_solenoid(echo=echo)
-                    time.sleep(open_duration_s)
+                    time.sleep(valve_open_duration_s)
+                    self.close_solenoid(echo=echo)
+                finally:
+                    self.set_valve_current(12, echo=echo)
+
+            if dry_duration_s > 0:
+                self.set_pressure(
+                    dry_pressure_bar,
+                    timeout_s=settle_timeout_s,
+                    avg_window_s=settle_avg_window_s,
+                    tolerance_bar=settle_tolerance_bar,
+                    poll_interval_s=settle_poll_interval_s,
+                    status_prefix=f"{self.name} drying pressure (pressure",
+                    status_suffix=")",
+                    print_newline_on_exit=False,
+                    echo=echo,
+                )
+                dry_msg = (
+                    f"{self.name} drying at {dry_pressure_bar:.2f} bar "
+                    f"(valve {dry_valve_current_ma:.1f} mA)"
+                )
+                print(f"\r{dry_msg}")
+                self.set_valve_current(dry_valve_current_ma, echo=echo)
+                try:
+                    self.open_solenoid(echo=echo)
+                    wait_step_s = min(settle_poll_interval_s, dry_duration_s)
+                    with make_minimal_progress_bar(
+                        total=dry_duration_s,
+                        label=f"{self.name} drying",
+                        unit_label="s",
+                        postfix_width=20,
+                        leave=False,
+                    ) as pbar:
+                        elapsed_s = 0.0
+                        while elapsed_s < dry_duration_s:
+                            sleep_s = min(
+                                wait_step_s, dry_duration_s - elapsed_s)
+                            time.sleep(sleep_s)
+                            elapsed_s += sleep_s
+
+                            pressure = self.read_pressure(echo=False)
+                            if pressure is None:
+                                pressure_text = "-.-- bar"
+                            else:
+                                pressure_text = f"{pressure:.2f} bar"
+
+                            pbar.update(sleep_s)
+                            pbar.set_postfix_str(f"pressure {pressure_text}")
                     self.close_solenoid(echo=echo)
                 finally:
                     self.set_valve_current(12, echo=echo)

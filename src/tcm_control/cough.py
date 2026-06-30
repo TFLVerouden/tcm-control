@@ -364,8 +364,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     REPEATS = 3
 
                     # Clean the channel
-                    tcm.clean(pressure_bar=PRESSURE_BAR,
-                              open_duration_s=OPEN_DURATION_S, repeats=REPEATS)
+                    tcm.clean(clean_pressure_bar=PRESSURE_BAR,
+                              valve_open_duration_s=OPEN_DURATION_S,
+                              cycle_count=REPEATS)
 
                     # Image the channel after cleaning
                     _ = take_snapshot(camera, tcm)

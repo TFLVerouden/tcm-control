@@ -150,4 +150,4 @@ if __name__ == "__main__":
     tube_cleaning(pump)
 
     # Clean channel
-    tcm.clean(pressure_bar=4, open_duration_s=1, repeats=3)
+    tcm.clean(clean_pressure_bar=4, valve_open_duration_s=1, cycle_count=3)
