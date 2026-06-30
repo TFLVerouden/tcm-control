@@ -6,6 +6,14 @@ from pathlib import Path
 from typing import Any
 
 from tcm_utils.file_dialogs import ask_open_file
+from tcm_control.devices.cough_machine import (
+    DEFAULT_CLEAN_CYCLE_COUNT,
+    DEFAULT_CLEAN_DRY_DURATION_S,
+    DEFAULT_CLEAN_DRY_VALVE_CURRENT_MA,
+    DEFAULT_CLEAN_PRESSURE_BAR,
+    DEFAULT_CLEAN_VALVE_OPEN_DURATION_S,
+    MAX_PRESSURE_BAR,
+)
 
 import tomllib
 
@@ -311,7 +319,7 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
                     "inputs",
                     "cleaning",
                     "clean_pressure_bar",
-                    default=4.0,
+                    default=DEFAULT_CLEAN_PRESSURE_BAR,
                 )
             ),
             "valve_open_duration_s": float(
@@ -322,7 +330,7 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
                     "inputs",
                     "cleaning",
                     "valve_open_duration_s",
-                    default=2.5,
+                    default=DEFAULT_CLEAN_VALVE_OPEN_DURATION_S,
                 )
             ),
             "dry_pressure_bar": _optional_float(
@@ -343,7 +351,7 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
                     "inputs",
                     "cleaning",
                     "dry_duration_s",
-                    default=0.0,
+                    default=DEFAULT_CLEAN_DRY_DURATION_S,
                 )
             ),
             "dry_valve_current_ma": float(
@@ -354,7 +362,7 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
                     "inputs",
                     "cleaning",
                     "dry_valve_current_ma",
-                    default=14.0,
+                    default=DEFAULT_CLEAN_DRY_VALVE_CURRENT_MA,
                 )
             ),
             "cycle_count": int(
@@ -365,26 +373,26 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
                     "inputs",
                     "cleaning",
                     "cycle_count",
-                    default=3,
+                    default=DEFAULT_CLEAN_CYCLE_COUNT,
                 )
             ),
         },
     }
 
     cleaning_inputs = cough_machine_inputs["cleaning"]
-    if cleaning_inputs["clean_pressure_bar"] < 0 or cleaning_inputs["clean_pressure_bar"] > 7.2:
+    if cleaning_inputs["clean_pressure_bar"] < 0 or cleaning_inputs["clean_pressure_bar"] > MAX_PRESSURE_BAR:
         raise ValueError(
-            "Config [devices.cough_machine.inputs.cleaning].clean_pressure_bar must be between 0 and 7.2 bar."
+            f"Config [devices.cough_machine.inputs.cleaning].clean_pressure_bar must be between 0 and {MAX_PRESSURE_BAR} bar."
         )
     if cleaning_inputs["valve_open_duration_s"] <= 0:
         raise ValueError(
             "Config [devices.cough_machine.inputs.cleaning].valve_open_duration_s must be > 0."
         )
     if cleaning_inputs["dry_pressure_bar"] is not None and (
-        cleaning_inputs["dry_pressure_bar"] < 0 or cleaning_inputs["dry_pressure_bar"] > 7.2
+        cleaning_inputs["dry_pressure_bar"] < 0 or cleaning_inputs["dry_pressure_bar"] > MAX_PRESSURE_BAR
     ):
         raise ValueError(
-            "Config [devices.cough_machine.inputs.cleaning].dry_pressure_bar must be between 0 and 7.2 bar."
+            f"Config [devices.cough_machine.inputs.cleaning].dry_pressure_bar must be between 0 and {MAX_PRESSURE_BAR} bar."
         )
     if cleaning_inputs["dry_duration_s"] < 0:
         raise ValueError(
