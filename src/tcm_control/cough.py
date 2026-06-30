@@ -60,6 +60,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     cough_inputs = config["inputs"]["cough"]
     cough_machine_inputs = config["devices"]["cough_machine"]["inputs"]
     tank_inputs = cough_machine_inputs["tank"]
+    cleaning_inputs = cough_machine_inputs["cleaning"]
     pump_inputs = config["devices"]["pump"]["inputs"]
     camera_inputs = config["devices"]["camera"]["inputs"]
 
@@ -359,14 +360,15 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         save_logs=save_data,
                     )
 
-                    PRESSURE_BAR = 4
-                    OPEN_DURATION_S = 1
-                    REPEATS = 3
-
                     # Clean the channel
-                    tcm.clean(clean_pressure_bar=PRESSURE_BAR,
-                              valve_open_duration_s=OPEN_DURATION_S,
-                              cycle_count=REPEATS)
+                    tcm.clean(
+                        clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
+                        valve_open_duration_s=cleaning_inputs["valve_open_duration_s"],
+                        dry_pressure_bar=cleaning_inputs["dry_pressure_bar"],
+                        dry_duration_s=cleaning_inputs["dry_duration_s"],
+                        dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"],
+                        cycle_count=cleaning_inputs["cycle_count"],
+                    )
 
                     # Image the channel after cleaning
                     _ = take_snapshot(camera, tcm)

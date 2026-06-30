@@ -302,7 +302,102 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
                 )
             ),
         },
+        "cleaning": {
+            "clean_pressure_bar": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "cleaning",
+                    "clean_pressure_bar",
+                    default=4.0,
+                )
+            ),
+            "valve_open_duration_s": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "cleaning",
+                    "valve_open_duration_s",
+                    default=2.5,
+                )
+            ),
+            "dry_pressure_bar": _optional_float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "cleaning",
+                    "dry_pressure_bar",
+                )
+            ),
+            "dry_duration_s": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "cleaning",
+                    "dry_duration_s",
+                    default=0.0,
+                )
+            ),
+            "dry_valve_current_ma": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "cleaning",
+                    "dry_valve_current_ma",
+                    default=14.0,
+                )
+            ),
+            "cycle_count": int(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "cleaning",
+                    "cycle_count",
+                    default=3,
+                )
+            ),
+        },
     }
+
+    cleaning_inputs = cough_machine_inputs["cleaning"]
+    if cleaning_inputs["clean_pressure_bar"] < 0 or cleaning_inputs["clean_pressure_bar"] > 7.2:
+        raise ValueError(
+            "Config [devices.cough_machine.inputs.cleaning].clean_pressure_bar must be between 0 and 7.2 bar."
+        )
+    if cleaning_inputs["valve_open_duration_s"] <= 0:
+        raise ValueError(
+            "Config [devices.cough_machine.inputs.cleaning].valve_open_duration_s must be > 0."
+        )
+    if cleaning_inputs["dry_pressure_bar"] is not None and (
+        cleaning_inputs["dry_pressure_bar"] < 0 or cleaning_inputs["dry_pressure_bar"] > 7.2
+    ):
+        raise ValueError(
+            "Config [devices.cough_machine.inputs.cleaning].dry_pressure_bar must be between 0 and 7.2 bar."
+        )
+    if cleaning_inputs["dry_duration_s"] < 0:
+        raise ValueError(
+            "Config [devices.cough_machine.inputs.cleaning].dry_duration_s must be >= 0."
+        )
+    if cleaning_inputs["dry_valve_current_ma"] <= 0:
+        raise ValueError(
+            "Config [devices.cough_machine.inputs.cleaning].dry_valve_current_ma must be > 0."
+        )
+    if cleaning_inputs["cycle_count"] < 1:
+        raise ValueError(
+            "Config [devices.cough_machine.inputs.cleaning].cycle_count must be >= 1."
+        )
 
     has_intermediate_diff = (
         cough_machine_inputs["tank"]["intermediate_diff_bar"] is not None
