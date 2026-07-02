@@ -667,6 +667,35 @@ class CoughMachine(PoFSerialDevice):
         """Return the resolved flow-curve CSV path used by `load_flowcurve`."""
         return self._flowcurve_csv_path
 
+    @staticmethod
+    def _resolve_flowcurve_csv_path(csv_path: str | Path) -> Optional[Path]:
+        """Resolve a flow-curve CSV path from direct, relative, or recursive lookup."""
+        csv_path_str = str(csv_path)
+        if not csv_path_str.lower().endswith(".csv"):
+            csv_path_str += ".csv"
+
+        input_candidate = Path(csv_path_str)
+        if input_candidate.exists():
+            return input_candidate
+
+        relative_candidate = DEFAULT_FLOWCURVE_DIR / csv_path_str
+        if relative_candidate.exists():
+            return relative_candidate
+
+        matches = sorted(
+            DEFAULT_FLOWCURVE_DIR.rglob(Path(csv_path_str).name)
+        )
+        if not matches:
+            return None
+        if len(matches) == 1:
+            return matches[0]
+
+        match_list = "\n".join(str(path) for path in matches)
+        raise ValueError(
+            "Multiple flow curve files match the requested name; use a more "
+            f"specific path. Matches:\n{match_list}"
+        )
+
     def load_flowcurve(
         self,
         csv_path: str | Path | None = None,
@@ -685,23 +714,8 @@ class CoughMachine(PoFSerialDevice):
         """
         # If a path is passed here, it overrides any previously stored default
         if csv_path is not None:
-            candidate = Path(csv_path)
-            if candidate.exists():
-                self._flowcurve_csv_path = candidate
-            elif isinstance(csv_path, str):
-
-                # Add ".csv" if the string does not already end with it
-                if not csv_path.lower().endswith(".csv"):
-                    csv_path += ".csv"
-
-                # Check for the file in the default flow_curves directory
-                filename_candidate = DEFAULT_FLOWCURVE_DIR / \
-                    Path(csv_path).name
-                self._flowcurve_csv_path = (
-                    filename_candidate if filename_candidate.exists() else None
-                )
-            else:
-                self._flowcurve_csv_path = None
+            self._flowcurve_csv_path = self._resolve_flowcurve_csv_path(
+                csv_path)
 
         # If no path was provided or stored, fall back to the file picker dialog.
         if self._flowcurve_csv_path is None:
