@@ -33,6 +33,15 @@ def _is_multiple_of(value: float, step: float, tol: float = 1e-9) -> bool:
     return remainder < tol or abs(remainder - step) < tol
 
 
+def _validate_max_curve_rows(row_count: int, max_rows: int = 2000) -> None:
+    """Raise if a generated flow-curve would exceed the allowed row count."""
+    if row_count > max_rows:
+        raise ValueError(
+            f"Generated curve has {row_count} rows, which exceeds the "
+            f"maximum allowed {max_rows} rows."
+        )
+
+
 def _default_step_curve_output_path(
     *,
     step_current_ma: float,
@@ -104,6 +113,8 @@ def generate_step_curve_csv(
     total_steps = int(round(total_duration_ms / polling_interval_ms))
     row_times = [round(step * polling_interval_ms, 9)
                  for step in range(total_steps + 1)]
+    _validate_max_curve_rows(len(row_times))
+
     rows: list[tuple[float, float, int, int]] = []
 
     for idx, time_ms in enumerate(row_times):
@@ -135,7 +146,7 @@ def main() -> None:
     generated = generate_step_curve_csv(
         step_current_ma=20.0,
         closed_current_ma=12.0,
-        step_duration_ms=800,
+        step_duration_ms=500,
         pre_record_ms=100,
         post_record_ms=100,
         solenoid_lead_ms=5,
