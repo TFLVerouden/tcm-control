@@ -22,7 +22,6 @@ dry_duration_s = 0.0
 dry_valve_current_ma = 14.0
 cycle_count = 3
 
-
 [devices.cough_machine.inputs.tank]
 pressure_bar = 1.5
 settling_time_s = 60.0

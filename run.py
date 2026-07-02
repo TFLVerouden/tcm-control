@@ -13,7 +13,7 @@ import signal
 REPO_ROOT = Path(__file__).resolve().parent
 
 # Hardcode the path here to run experiment multiple times with the same config
-# CONFIG_PATH = REPO_ROOT / "src" / "tcm_control" / "config" / "config.toml"
+CONFIG_PATH = REPO_ROOT / "src" / "tcm_control" / "config" / "config_piv.toml"
 
 
 def main() -> int:
@@ -22,8 +22,8 @@ def main() -> int:
     signal.signal(signal.SIGINT, handle_sigint)
     try:
         # Run one experiment from the selected config.
-        # cough(CONFIG_PATH)
-        cough()
+        cough(CONFIG_PATH)
+        # cough()
     except KeyboardInterrupt:
         # User-initiated stop: run safe cleanup and return standard SIGINT code.
         cleanup_on_interrupt(ask_before_delete_output_dir=True)

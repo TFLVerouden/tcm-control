@@ -285,5 +285,5 @@ class SyringePump(PumpPHD2000_Refill):
 
 if __name__ == "__main__":
     # Small testing script
-    pump = SyringePump(syringe_diameter_mm=26.594)
-    pump.infuse(pump_rate_ml_mn=0.5, duration_s=10)
+    pump = SyringePump(syringe_volume_ml=2.5)
+    pump.infuse(pump_rate_ml_mn=1.0, duration_s=5)

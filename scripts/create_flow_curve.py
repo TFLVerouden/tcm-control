@@ -169,7 +169,7 @@ def main() -> None:
         post_record_ms=100,
         solenoid_lead_ms=5,
         solenoid_lag_ms=5,
-        polling_interval_ms=0.5,
+        polling_interval_ms=1,
         trigger_at_start=True,
     )
     print(f"Step curve written to {generated}")
