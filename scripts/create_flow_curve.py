@@ -46,13 +46,26 @@ def _default_step_curve_output_path(
     *,
     step_current_ma: float,
     step_duration_ms: float,
+    default_subfolder: str | Path | None = None,
 ) -> Path:
-    flow_curves_dir = (
+    base_flow_curves_dir = (
         Path(__file__).resolve().parents[1]
         / "src"
         / "tcm_control"
         / "flow_curves"
     )
+    if default_subfolder is None:
+        flow_curves_dir = base_flow_curves_dir
+    else:
+        candidate_dir = (base_flow_curves_dir /
+                         Path(default_subfolder)).resolve()
+        base_resolved = base_flow_curves_dir.resolve()
+        if not candidate_dir.is_relative_to(base_resolved):
+            raise ValueError(
+                "default_subfolder must stay within the default flow_curves directory"
+            )
+        flow_curves_dir = candidate_dir
+
     rounded_current = round(step_current_ma, 1)
     rounded_duration_ms = int(round(step_duration_ms))
     current_label = f"{rounded_current:.1f}".replace(".", "-")
@@ -63,6 +76,7 @@ def _default_step_curve_output_path(
 def generate_step_curve_csv(
     output_csv_path: str | Path | None = None,
     *,
+    default_subfolder: str | Path | None = None,
     step_current_ma: float,
     closed_current_ma: float = 12.0,
     step_duration_ms: float = 300.0,
@@ -84,6 +98,8 @@ def generate_step_curve_csv(
 
     If ``output_csv_path`` is not provided, a filename is generated from
     rounded step current and step duration, e.g. ``step_20-0mA_800ms.csv``.
+    Use ``default_subfolder`` to place this file under a subfolder of the
+    default ``flow_curves`` directory.
     """
     if polling_interval_ms <= 0:
         raise ValueError("polling_interval_ms must be > 0")
@@ -130,6 +146,7 @@ def generate_step_curve_csv(
         output_path = _default_step_curve_output_path(
             step_current_ma=step_current_ma,
             step_duration_ms=step_duration_ms,
+            default_subfolder=default_subfolder,
         )
     else:
         output_path = Path(output_csv_path)
@@ -144,6 +161,7 @@ def generate_step_curve_csv(
 
 def main() -> None:
     generated = generate_step_curve_csv(
+        default_subfolder="piv",
         step_current_ma=20.0,
         closed_current_ma=12.0,
         step_duration_ms=500,
