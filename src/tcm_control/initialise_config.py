@@ -431,6 +431,10 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
         "syringe_volume_ml": _optional_float(
             _nested_get(raw, "devices", "pump", "inputs", "syringe_volume_ml")
         ),
+        "syringe_diameter_mm": _optional_float(
+            _nested_get(raw, "devices", "pump",
+                        "inputs", "syringe_diameter_mm")
+        ),
         "pump_rate_ml_per_min": _optional_float(
             _nested_get(raw, "devices", "pump",
                         "inputs", "pump_rate_ml_per_min")
@@ -516,10 +520,23 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             default=0,
         ),
     }
-    if pump_required and pump_inputs["syringe_volume_ml"] is None:
+    syringe_volume_ml = pump_inputs["syringe_volume_ml"]
+    syringe_diameter_mm = pump_inputs["syringe_diameter_mm"]
+
+    if syringe_volume_ml is not None and syringe_volume_ml <= 0:
         raise ValueError(
-            "Config [devices.pump.inputs].syringe_volume_ml must be set "
-            "for droplet and piv modes."
+            "Config [devices.pump.inputs].syringe_volume_ml must be > 0."
+        )
+
+    if syringe_diameter_mm is not None and syringe_diameter_mm <= 0:
+        raise ValueError(
+            "Config [devices.pump.inputs].syringe_diameter_mm must be > 0."
+        )
+
+    if pump_required and syringe_volume_ml is None and syringe_diameter_mm is None:
+        raise ValueError(
+            "Config [devices.pump.inputs] must set either "
+            "syringe_volume_ml or syringe_diameter_mm for droplet and piv modes."
         )
 
     if experiment_mode in {"droplet", "piv"}:

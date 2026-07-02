@@ -179,13 +179,15 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         cough_machine_inputs["flow_curve_csv_path"] = tcm.get_flowcurve_csv_path(
         )
 
-        # # In droplet and PIV modes, set up the pump
-        # if experiment_mode in ["droplet", "piv"]:
-        #     pump = SyringePump(
-        #         syringe_volume_ml=pump_inputs["syringe_volume_ml"])
+        # In droplet and PIV modes, set up the pump
+        if experiment_mode in ["droplet", "piv"]:
+            pump = SyringePump(
+                syringe_volume_ml=pump_inputs["syringe_volume_ml"],
+                syringe_diameter_mm=pump_inputs["syringe_diameter_mm"],
+            )
 
-        #     # Register pump so interrupt cleanup can call stop() on it
-        #     set_active_pump(pump)
+            # Register pump so interrupt cleanup can call stop() on it
+            set_active_pump(pump)
 
         # In film mode, set up the camera
         if experiment_mode == "film":

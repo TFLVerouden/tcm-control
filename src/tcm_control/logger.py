@@ -282,6 +282,31 @@ def build_run_metadata(
     spraytec_laser_intensity = device_context["spraytec_laser_intensity"]
     lift = device_context["lift"]
 
+    # Prefer configured syringe geometry values because runtime objects may
+    # not expose table-based conversions in all pump implementations.
+    configured_syringe_volume_ml = pump_inputs.get("syringe_volume_ml")
+    configured_syringe_diameter_mm = pump_inputs.get("syringe_diameter_mm")
+
+    runtime_syringe_volume_ml = getattr(pump, "syringe_volume_ml", None)
+    runtime_syringe_diameter_mm = getattr(pump, "syringe_diameter_mm", None)
+
+    if runtime_syringe_diameter_mm is None and pump is not None and hasattr(pump, "get_diameter"):
+        try:
+            runtime_syringe_diameter_mm = float(pump.get_diameter())
+        except Exception:
+            runtime_syringe_diameter_mm = None
+
+    resolved_syringe_volume_ml = (
+        configured_syringe_volume_ml
+        if configured_syringe_volume_ml is not None
+        else runtime_syringe_volume_ml
+    )
+    resolved_syringe_diameter_mm = (
+        configured_syringe_diameter_mm
+        if configured_syringe_diameter_mm is not None
+        else runtime_syringe_diameter_mm
+    )
+
     return {
         "time": {
             "start": time_start,
@@ -328,7 +353,8 @@ def build_run_metadata(
                     "pump_address": getattr(pump, "pump_address", None),
                 },
                 "resolved": {
-                    "syringe_volume_ml": getattr(pump, "syringe_volume_ml", None),
+                    "syringe_volume_ml": resolved_syringe_volume_ml,
+                    "syringe_diameter_mm": resolved_syringe_diameter_mm,
                     "rate_ml_per_min": (
                         pump_inputs.get("pump_rate_ml_per_min")
                         if experiment_mode in ["droplet", "piv"]
