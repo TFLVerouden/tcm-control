@@ -18,6 +18,7 @@ DEFAULT_FLOWCURVE_DIR = Path(__file__).resolve().parent.parent / "flow_curves"
 DEFAULT_RUN_LOG_DIR = Path(".logs")
 EXPERIMENT_RUN_LOG_SUBDIR = "run_logs"
 MAX_PRESSURE_BAR = 7.2
+# TODO: Adjust these defaults.
 DEFAULT_CLEAN_PRESSURE_BAR = 4.0
 DEFAULT_CLEAN_VALVE_OPEN_DURATION_S = 2.5
 DEFAULT_CLEAN_DRY_DURATION_S = 0.0

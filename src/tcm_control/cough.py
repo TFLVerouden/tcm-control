@@ -377,83 +377,83 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     if run_idx == 0:
                         first_run_log_path = run_log_path
 
-            # # PIV mode
-            # case "piv":
-            #     # ------------------------------------------------------
-            #     # Mode: PIV
-            #     # ------------------------------------------------------
+            # PIV mode
+            case "piv":
+                # ------------------------------------------------------
+                # Mode: PIV
+                # ------------------------------------------------------
 
-            #     assert pump is not None
+                assert pump is not None
 
-            #     piv_nebuliser_pressure_bar = pump_inputs["piv_nebuliser_pressure_bar"]
-            #     pump_rate_ml_per_min = pump_inputs["pump_rate_ml_per_min"]
-            #     assert piv_nebuliser_pressure_bar is not None
-            #     assert pump_rate_ml_per_min is not None
+                piv_nebuliser_pressure_bar = pump_inputs["piv_nebuliser_pressure_bar"]
+                pump_rate_ml_per_min = pump_inputs["pump_rate_ml_per_min"]
+                assert piv_nebuliser_pressure_bar is not None
+                assert pump_rate_ml_per_min is not None
 
-            #     # Explicitly require operator confirmation of nebuliser pressure
-            #     confirm_piv_ready = prompt_yes_no(
-            #         "Press ENTER to confirm the nebuliser is pressurised to "
-            #         f"{piv_nebuliser_pressure_bar} bar...",
-            #         default=True,
-            #     )
-            #     if not confirm_piv_ready:
-            #         print("Aborted.")
-            #         exit(1)
+                # Explicitly require operator confirmation of nebuliser pressure
+                confirm_piv_ready = prompt_yes_no(
+                    "Press ENTER to confirm the nebuliser is pressurised to "
+                    f"{piv_nebuliser_pressure_bar} bar...",
+                    default=True,
+                )
+                if not confirm_piv_ready:
+                    print("Aborted.")
+                    exit(1)
 
-            #     # Ask user to start the experiment
-            #     ask_start_confirmation(experiment_name=experiment_name)
+                # Ask user to start the experiment
+                ask_start_confirmation(experiment_name=experiment_name)
 
-            #     # Record temperature and humidity
-            #     temperature_start, humidity_start = tcm.read_temperature_humidity()
+                # Record temperature and humidity
+                temperature_start, humidity_start = tcm.read_temperature_humidity()
 
-            #     # Execute configured number of PIV runs with pump start/stop timing
-            #     for run_idx in range(cough_inputs["nr_runs"]):
-            #         # Start liquid feed before each run
-            #         pump.infuse(pump_rate_ml_mn=pump_rate_ml_per_min)
-            #         try:
-            #             if pump_inputs["piv_pump_start_before_run_s"] > 0:
-            #                 # Optional pre-run pump lead-in time for stable nebulisation
-            #                 print(
-            #                     f"Waiting {pump_inputs['piv_pump_start_before_run_s']} s before run {run_idx + 1}/{cough_inputs['nr_runs']}"
-            #                 )
-            #                 time.sleep(
-            #                     float(pump_inputs["piv_pump_start_before_run_s"]))
+                # Execute configured number of PIV runs with pump start/stop timing
+                for run_idx in range(cough_inputs["nr_runs"]):
+                    # Start liquid feed before each run
+                    pump.infuse(pump_rate_ml_mn=pump_rate_ml_per_min)
+                    try:
+                        if pump_inputs["piv_pump_start_before_run_s"] > 0:
+                            # Optional pre-run pump lead-in time for stable nebulisation
+                            print(
+                                f"Waiting {pump_inputs['piv_pump_start_before_run_s']} s before run {run_idx + 1}/{cough_inputs['nr_runs']}"
+                            )
+                            time.sleep(
+                                float(pump_inputs["piv_pump_start_before_run_s"]))
 
-            #             run_log_path = tcm.run(
-            #                 output_dir=output_dir,
-            #                 run_nr_start=(run_idx + 1),
-            #                 save_logs=save_data,
-            #             )
-            #             # Cache first run log for the summary plot in finalization
-            #             if run_idx == 0:
-            #                 first_run_log_path = run_log_path
+                        run_log_path = tcm.run(
+                            output_dir=output_dir,
+                            run_nr_start=(run_idx + 1),
+                            save_logs=save_data,
+                        )
+                        # Cache first run log for the summary plot in finalization
+                        if run_idx == 0:
+                            first_run_log_path = run_log_path
 
-            #             if pump_inputs["piv_pump_stop_after_run_s"] > 0:
-            #                 # Optional post-run pump tail time
-            #                 print(
-            #                     f"Waiting {pump_inputs['piv_pump_stop_after_run_s']} s after run {run_idx + 1}/{cough_inputs['nr_runs']}"
-            #                 )
-            #                 time.sleep(
-            #                     float(pump_inputs["piv_pump_stop_after_run_s"]))
-            #         finally:
-            #             # Always stop pump, even if the run or waits raise an error
-            #             pump.stop()
+                        if pump_inputs["piv_pump_stop_after_run_s"] > 0:
+                            # Optional post-run pump tail time
+                            print(
+                                f"Waiting {pump_inputs['piv_pump_stop_after_run_s']} s after run {run_idx + 1}/{cough_inputs['nr_runs']}"
+                            )
+                            time.sleep(
+                                float(pump_inputs["piv_pump_stop_after_run_s"]))
+                    finally:
+                        # Always stop pump, even if the run or waits raise an error
+                        pump.stop()
 
-            #             # Run cleaning routine every cycle
-            #             tcm.clean()
+                        # Run cleaning routine every cycle
+                        tcm.clean()
 
-            #         # Skip inter-run wait/confirm prompts after the final run
-            #         is_last_run = run_idx == (cough_inputs["nr_runs"] - 1)
-            #         if not is_last_run:
-            #             wait_or_confirm_next_run(
-            #                 next_run_number=(run_idx + 2),
-            #                 nr_runs=cough_inputs["nr_runs"],
-            #                 multi_run_interval_s=float(
-            #                     cough_inputs["multi_run_interval_s"]),
-            #                 confirm_before_starting_next_run=cough_inputs[
-            #                     "confirm_before_starting_next_run"
-            #                 ],
-            #             )
+                    # Skip inter-run wait/confirm prompts after the final run
+                    is_last_run = run_idx == (cough_inputs["nr_runs"] - 1)
+                    if not is_last_run:
+                        wait_or_confirm_next_run(
+                            next_run_number=(run_idx + 2),
+                            nr_runs=cough_inputs["nr_runs"],
+                            multi_run_interval_s=float(
+                                cough_inputs["multi_run_interval_s"]),
+                            confirm_before_starting_next_run=cough_inputs[
+                                "confirm_before_starting_next_run"
+                            ],
+                        )
 
         # ------------------------------------------------------------------
         # 5) Finalize run and write artifacts
