@@ -52,7 +52,12 @@ def plot_run_log(
     ax1.plot(time_ms, press_bar, color=get_color(
         0), label="Pressure (bar)", linewidth=2)
     ax1.tick_params(axis="y", labelcolor=get_color(0))
-    ax1.set_ylim(bottom=1, top=2)
+    p_min = int(np.floor(np.min(press_bar)))
+    p_max = int(np.ceil(np.max(press_bar)))
+    # Avoid singular limits when all pressure values are exactly one integer.
+    if p_min == p_max:
+        p_max += 1
+    ax1.set_ylim(bottom=p_min, top=p_max)
 
     ax2 = ax1.twinx()
     ax2.set_ylabel("Proportional valve setpoint (mA)", color=get_color(1))
