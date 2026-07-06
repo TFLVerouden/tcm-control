@@ -767,6 +767,47 @@ class CoughMachine(PoFSerialDevice):
         return reply or ""
 
     # COUGH
+    def start_run(self) -> None:
+        """Send `R` to start the loaded dataset without waiting for log export."""
+        print("Starting cough")
+        if not self.write("R"):
+            raise RuntimeError("Failed to send R command")
+
+    def wait_for_run_finished(
+        self,
+        *,
+        timeout_s: float = 10.0,
+        echo: Optional[bool] = None,
+    ) -> None:
+        """Wait for the MCU `FINISHED` event that marks end of dataset execution."""
+        self._wait_for_line("FINISHED", timeout=timeout_s, echo=echo)
+        print("Cough completed")
+
+    def receive_run_log(
+        self,
+        *,
+        timeout_s: float = 10.0,
+        echo: Optional[bool] = None,
+        output_dir: Optional[str | Path] = None,
+        run_nr_start: Optional[int] = None,
+        save_logs: bool = True,
+    ) -> Optional[Path]:
+        """Receive the exported run log after a completed run and optionally save it."""
+        rows = self._receive_run_log(
+            timeout_s=timeout_s,
+            echo=echo,
+        )
+        if not save_logs:
+            return None
+        saved_paths = self._save_run_logs(
+            rows,
+            output_dir=output_dir,
+            run_nr_start=run_nr_start,
+        )
+        if not saved_paths:
+            raise RuntimeError("Failed to save run log for cough run")
+        return saved_paths[0]
+
     def run(
         self,
         *,
@@ -778,28 +819,20 @@ class CoughMachine(PoFSerialDevice):
     ) -> Optional[Path]:
         """Run the loaded dataset immediately using `R` and save streamed log CSV.
 
-        Expects a log stream wrapped by `START_OF_FILE ...` and `END_OF_FILE`.
-        Returns the saved run-log CSV path, or `None` when `save_logs` is False.
+        Waits for `FINISHED`, then receives the `START_OF_FILE ... END_OF_FILE`
+        log stream. Returns the saved run-log CSV path, or `None` when
+        `save_logs` is False.
         """
 
-        print("Starting cough")
-        if not self.write("R"):
-            raise RuntimeError("Failed to send R command")
-        rows = self._receive_run_log(
+        self.start_run()
+        self.wait_for_run_finished(timeout_s=timeout_s, echo=echo)
+        return self.receive_run_log(
             timeout_s=timeout_s,
             echo=echo,
-        )
-        print("Cough completed")
-        if not save_logs:
-            return None
-        saved_paths = self._save_run_logs(
-            rows,
             output_dir=output_dir,
             run_nr_start=run_nr_start,
+            save_logs=save_logs,
         )
-        if not saved_paths:
-            raise RuntimeError("Failed to save run log for cough run")
-        return saved_paths[0]
 
     def _await_droplet_events(
         self,

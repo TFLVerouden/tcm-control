@@ -412,6 +412,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 for run_idx in range(cough_inputs["nr_runs"]):
                     # Start liquid feed before each run
                     pump.infuse(pump_rate_ml_mn=pump_rate_ml_per_min)
+                    pump_stopped = False
                     try:
                         if pump_inputs["piv_pump_start_before_run_s"] > 0:
                             # Optional pre-run pump lead-in time for stable nebulisation
@@ -421,7 +422,21 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             time.sleep(
                                 float(pump_inputs["piv_pump_start_before_run_s"]))
 
-                        run_log_path = tcm.run(
+                        tcm.start_run()
+                        tcm.wait_for_run_finished()
+
+                        if pump_inputs["piv_pump_stop_after_run_s"] > 0:
+                            # Optional post-run pump tail time after actuation finishes
+                            print(
+                                f"Waiting {pump_inputs['piv_pump_stop_after_run_s']} s after run {run_idx + 1}/{cough_inputs['nr_runs']}"
+                            )
+                            time.sleep(
+                                float(pump_inputs["piv_pump_stop_after_run_s"]))
+
+                        pump.stop()
+                        pump_stopped = True
+
+                        run_log_path = tcm.receive_run_log(
                             output_dir=output_dir,
                             run_nr_start=(run_idx + 1),
                             save_logs=save_data,
@@ -429,20 +444,18 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         # Cache first run log for the summary plot in finalization
                         if run_idx == 0:
                             first_run_log_path = run_log_path
-
-                        if pump_inputs["piv_pump_stop_after_run_s"] > 0:
-                            # Optional post-run pump tail time
-                            print(
-                                f"Waiting {pump_inputs['piv_pump_stop_after_run_s']} s after run {run_idx + 1}/{cough_inputs['nr_runs']}"
-                            )
-                            time.sleep(
-                                float(pump_inputs["piv_pump_stop_after_run_s"]))
                     finally:
                         # Always stop pump, even if the run or waits raise an error
-                        pump.stop()
+                        if not pump_stopped:
+                            pump.stop()
 
                         # Run cleaning routine every cycle
-                        tcm.clean()
+                        tcm.clean(clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
+                                  valve_open_duration_s=cleaning_inputs["valve_open_duration_s"],
+                                  dry_pressure_bar=cleaning_inputs["dry_pressure_bar"],
+                                  dry_duration_s=cleaning_inputs["dry_duration_s"],
+                                  dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"],
+                                  cycle_count=cleaning_inputs["cycle_count"])
 
                     # Skip inter-run wait/confirm prompts after the final run
                     is_last_run = run_idx == (cough_inputs["nr_runs"] - 1)

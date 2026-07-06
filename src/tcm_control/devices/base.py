@@ -103,6 +103,36 @@ class PoFSerialDevice(SerialDevice):
     def _resolve_echo(self, echo: Optional[bool]) -> bool:
         return self._echo_default if echo is None else echo
 
+    def _wait_for_line(
+        self,
+        expected: str,
+        *,
+        timeout: float,
+        raise_on_error: bool = True,
+        echo: Optional[bool] = None,
+    ) -> str:
+        # Wait for a specific serial line without draining past the match.
+        echo = self._resolve_echo(echo)
+        start = time.time()
+        while (time.time() - start) < timeout:
+            if self.ser is not None and self.ser.in_waiting > 0:
+                success, line = self.readline()
+                if not success or not isinstance(line, str):
+                    continue
+
+                clean_line = line.strip()
+                if echo:
+                    print(f"[{self.name}] {clean_line}")
+
+                self._check_errors(
+                    [clean_line], raise_on_error=raise_on_error)
+                if clean_line == expected:
+                    return clean_line
+            else:
+                time.sleep(0.02)
+
+        raise RuntimeError(f"Timed out waiting for serial line {expected!r}")
+
     def _query_and_drain(
         self,
         cmd: Optional[str],
