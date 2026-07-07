@@ -64,7 +64,7 @@ class PoFSerialDevice(SerialDevice):
 
         if not connected:
             raise SystemError(
-                f"Serial device {name} not found via auto_connect")
+                f"Serial device {name} not found via auto_connect. It might be turned off or serial port is in use by another programme.")
         else:
             # Drain any boot/session leftovers before issuing new commands.
             pending = self._read_lines(timeout=0.5)
