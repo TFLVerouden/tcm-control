@@ -82,7 +82,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         if series_directory is None:
             raise SystemExit("No series directory selected.")
 
-        latest_experiment_name = logger.latest_experiment_display_name(series_directory)
+        latest_experiment_name = logger.latest_experiment_display_name(
+            series_directory)
         experiment_prompt = "Enter experiment name: "
         if latest_experiment_name is not None:
             experiment_prompt = (
@@ -331,7 +332,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 ask_start_confirmation(experiment_name=experiment_name)
 
                 # Record temperature and humidity
-                temperature_start, humidity_start = tcm.read_temperature_humidity()
+                temperature_start, humidity_start = tcm.read_temperature_humidity(
+                    show_reading=True,
+                )
 
                 # Execute repeated runs
                 for run_idx in range(cough_inputs["nr_runs"]):
@@ -416,7 +419,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 ask_start_confirmation(experiment_name=experiment_name)
 
                 # Record temperature and humidity
-                temperature_start, humidity_start = tcm.read_temperature_humidity()
+                temperature_start, humidity_start = tcm.read_temperature_humidity(
+                    show_reading=True,
+                )
 
                 # Execute configured number of PIV runs with pump start/stop timing
                 for run_idx in range(cough_inputs["nr_runs"]):
@@ -498,7 +503,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             comments = ask_user_for_comments(output_dir=output_dir)
 
             # Record temperature and humidity
-            temperature_finish, humidity_finish = tcm.read_temperature_humidity()
+            temperature_finish, humidity_finish = tcm.read_temperature_humidity(
+                show_reading=True,
+            )
             time_finish = timestamp_str()
 
             # Optional SprayTec post-processing.
