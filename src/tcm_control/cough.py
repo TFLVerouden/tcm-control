@@ -456,6 +456,15 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             run_nr_start=(run_idx + 1),
                             save_logs=save_data,
                         )
+
+                        # Plot run log
+                        if save_data and run_log_path is not None:
+                            plot_run_log(
+                                run_log_path=run_log_path,
+                                experiment_dir=output_dir,
+                                show=False,
+                            )
+
                         # Cache first run log for the summary plot in finalization
                         if run_idx == 0:
                             first_run_log_path = run_log_path
@@ -490,14 +499,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         # ------------------------------------------------------------------
         if save_data:
             assert output_dir is not None
-            if first_run_log_path is not None:
-                # Generate a quick diagnostic plot from the first run log
-                # TODO: Optionally, plot all run logs
-                plot_run_log(
-                    run_log_path=first_run_log_path,
-                    experiment_dir=output_dir,
-                    show=False,
-                )
 
             # Collect comments
             comments = ask_user_for_comments(output_dir=output_dir)
