@@ -152,11 +152,21 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         print("Starting cough machine experiment, "
               "press Ctrl+C at any time to abort and safely exit")
 
-        # Initialise cough machine
+        # Initialise cough machine, and optionally pump
         tcm = CoughMachine(debug=cough_inputs["debug_mode"])
 
         # Register device so interrupt cleanup can call quit() on it
         set_active_tcm(tcm)
+
+        # In droplet and PIV modes, set up the pump
+        if experiment_mode in ["droplet", "piv"]:
+            pump = SyringePump(
+                syringe_volume_ml=pump_inputs["syringe_volume_ml"],
+                syringe_diameter_mm=pump_inputs["syringe_diameter_mm"],
+            )
+
+            # Register pump so interrupt cleanup can call stop() on it
+            set_active_pump(pump)
 
         tcm.set_pressure(
             # Drive tank to target pressure and hold until tolerance is satisfied
@@ -179,17 +189,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         cough_machine_inputs["flow_curve_csv_path"] = tcm.get_flowcurve_csv_path(
         )
 
-        # In droplet and PIV modes, set up the pump
-        if experiment_mode in ["droplet", "piv"]:
-            pump = SyringePump(
-                syringe_volume_ml=pump_inputs["syringe_volume_ml"],
-                syringe_diameter_mm=pump_inputs["syringe_diameter_mm"],
-            )
-
-            # Register pump so interrupt cleanup can call stop() on it
-            set_active_pump(pump)
-
-        # In film mode, set up the camera
+        # In film mode, set up the camera and pump
         if experiment_mode == "film":
             # Make a subfolder in output dir for camera outputs
             camera_output_dir = output_dir / "camera" if output_dir is not None else None
