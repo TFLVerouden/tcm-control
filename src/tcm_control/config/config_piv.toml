@@ -11,7 +11,7 @@ confirm_before_starting_next_run = true
 record_droplet_size = false
 
 [devices.cough_machine.inputs]
-flow_curve_csv_path = "step_20-0mA_500ms"
+flow_curve_csv_path = "droplet_atomisation_campaign"
 wait_before_run_ms = 0
 
 [devices.cough_machine.inputs.cleaning]

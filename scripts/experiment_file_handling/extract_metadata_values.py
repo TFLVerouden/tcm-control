@@ -19,7 +19,8 @@ def get_nested_value(payload: dict[str, Any], key_path: str) -> Any:
     current: Any = payload
     for key in key_path.split("."):
         if not isinstance(current, dict) or key not in current:
-            raise KeyError(f"Missing key path '{key_path}' at segment '{key}'.")
+            raise KeyError(
+                f"Missing key path '{key_path}' at segment '{key}'.")
         current = current[key]
     return current
 
@@ -97,7 +98,8 @@ def write_summary_csv(root_dir: Path, rows: list[dict[str, Any]], csv_name: str)
                 )
 
                 if isinstance(value, (int, float)):
-                    numeric_by_variable.setdefault(key, []).append(float(value))
+                    numeric_by_variable.setdefault(
+                        key, []).append(float(value))
 
         for variable, values in sorted(numeric_by_variable.items()):
             if not values:
@@ -146,7 +148,8 @@ def main() -> int:
         print(f"No files matching '{METADATA_GLOB}' found under: {root_dir}")
         return 1
 
-    csv_path = write_summary_csv(root_dir, rows, csv_name="metadata_variable_report.csv")
+    csv_path = write_summary_csv(
+        root_dir, rows, csv_name="metadata_variable_report.csv")
     print(f"Wrote {len(rows)} metadata records to: {csv_path}")
     return 0
 
