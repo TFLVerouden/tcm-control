@@ -71,12 +71,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     # Default to saving unless config explicitly disables it
     save_data = bool(exp_conf.get("save_data", True))
 
-    # Ensure the experiment name is never empty because it is used in folder naming
-    experiment_name = ensure_non_empty_text(
-        exp_conf["name"],
-        prompt="Enter experiment name: ",
-        empty_error="Experiment name cannot be empty.",
-    )
     if save_data:
         # Resolve and validate the root folder where this experiment run will be stored
         series_directory = ensure_directory_path(
@@ -87,10 +81,26 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         )
         if series_directory is None:
             raise SystemExit("No series directory selected.")
+
+        latest_experiment_name = logger.latest_experiment_display_name(series_directory)
+        experiment_prompt = "Enter experiment name: "
+        if latest_experiment_name is not None:
+            experiment_prompt = (
+                "Enter experiment name "
+                f"(latest in series: {latest_experiment_name}): "
+            )
     else:
         series_directory = None
+        experiment_prompt = "Enter experiment name: "
         # Keep a clear runtime message when the run is intentionally non-persistent
         print("Data saving disabled via config setting series_directory='None'.")
+
+    # Ensure the experiment name is never empty because it is used in folder naming
+    experiment_name = ensure_non_empty_text(
+        exp_conf["name"],
+        prompt=experiment_prompt,
+        empty_error="Experiment name cannot be empty.",
+    )
 
     # Toggle for optional SprayTec setup and post-processing branches
     record_droplet_size = bool(cough_inputs["record_droplet_size"])

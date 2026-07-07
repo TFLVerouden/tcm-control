@@ -46,6 +46,31 @@ def create_experiment_dir(
     return experiment_dir
 
 
+def latest_experiment_display_name(series_directory: Path) -> str | None:
+    """Return a display name for the newest experiment folder, if any."""
+    try:
+        candidates = [path for path in series_directory.iterdir()
+                      if path.is_dir()]
+    except (FileNotFoundError, NotADirectoryError, PermissionError, OSError):
+        return None
+
+    if not candidates:
+        return None
+
+    try:
+        latest = max(candidates, key=lambda path: path.stat().st_mtime)
+    except (FileNotFoundError, PermissionError, OSError):
+        return None
+
+    latest_name = latest.name
+
+    # Strip known folder prefix: YYMMDD_HHMMSS_ -> experiment name.
+    if len(latest_name) > 14 and latest_name[6:7] == "_" and latest_name[13:14] == "_":
+        return latest_name[14:]
+
+    return latest_name
+
+
 def write_run_log(
         experiment_dir: Path,
         rows: list[str]):
