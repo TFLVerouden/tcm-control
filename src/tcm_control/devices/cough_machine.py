@@ -9,7 +9,7 @@ except ImportError:
     winsound = None
 
 from tcm_utils.file_dialogs import ask_open_file, find_repo_root
-from tcm_utils.io_utils import make_minimal_progress_bar
+from tcm_utils.io_utils import countdown_beep, make_minimal_progress_bar, beep
 
 from .base import PoFSerialDevice
 from ..logger import copy_flow_curve, create_labeled_csv_filename
@@ -23,7 +23,7 @@ DEFAULT_CLEAN_PRESSURE_BAR = 4.0
 DEFAULT_CLEAN_VALVE_OPEN_DURATION_S = 2.5
 DEFAULT_CLEAN_DRY_DURATION_S = 0.0
 DEFAULT_CLEAN_DRY_VALVE_CURRENT_MA = 14.0
-DEFAULT_CLEAN_CYCLE_COUNT = 3
+DEFAULT_CLEAN_CYCLE_COUNT = 0
 # Keep protocol version as a single integer. Bump only for breaking serial changes.
 DEFAULT_SUPPORTED_PROTOCOL_VERSION = 5
 
@@ -358,7 +358,7 @@ class CoughMachine(PoFSerialDevice):
         *,
         clean_pressure_bar: float = 4.0,
         valve_open_duration_s: float = 2.5,
-        cycle_count: int = 3,
+        cycle_count: int = DEFAULT_CLEAN_CYCLE_COUNT,
         dry_pressure_bar: float | None = None,
         dry_duration_s: float = 0.0,
         dry_valve_current_ma: float = 14.0,
@@ -374,6 +374,9 @@ class CoughMachine(PoFSerialDevice):
         1) set tank pressure to `clean_pressure_bar`
         2) open the valve for `valve_open_duration_s`
         3) close the valve and return to the idle valve current
+
+        `cycle_count` may be zero. In that case, cleaning cycles are skipped and
+        only the optional drying phase is executed.
 
         If `dry_duration_s` is greater than zero, a final drying phase is run at
         `dry_pressure_bar` when provided, otherwise at `clean_pressure_bar`, with
@@ -392,16 +395,22 @@ class CoughMachine(PoFSerialDevice):
             raise ValueError("valve_open_duration_s must be > 0")
         if dry_duration_s < 0:
             raise ValueError("dry_duration_s must be >= 0")
-        if cycle_count <= 0:
-            raise ValueError("cycle_count must be >= 1")
+        if cycle_count < 0:
+            raise ValueError("cycle_count must be >= 0")
         if dry_pressure_bar is None:
             dry_pressure_bar = clean_pressure_bar
         elif dry_pressure_bar < 0 or dry_pressure_bar > MAX_PRESSURE_BAR:
             raise ValueError(
                 f"dry_pressure_bar must be between 0 and {MAX_PRESSURE_BAR} bar")
 
+        # Nothing to do: no cleaning cycles requested and no drying duration set.
+        if cycle_count == 0 and dry_duration_s == 0:
+            return
+
         original_setpoint_bar = self._target_pressure_bar
         if original_setpoint_bar is None:
+            print(
+                "Warning: No prior pressure setpoint known; will restore to current sensor readback.")
             original_setpoint_bar = self.read_pressure(echo=False)
         restore_original_setpoint = original_setpoint_bar is not None
 
@@ -418,7 +427,6 @@ class CoughMachine(PoFSerialDevice):
                         "(pressure"
                     ),
                     status_suffix=")",
-                    print_newline_on_exit=False,
                     echo=echo,
                 )
 
@@ -432,11 +440,7 @@ class CoughMachine(PoFSerialDevice):
 
                 self.set_valve_current(20, echo=echo)
                 try:
-                    if winsound is not None:
-                        winsound.Beep(1000, 200)
-                    else:
-                        print("\a", end="", flush=True)
-                    time.sleep(2)
+                    countdown_beep()
                     self.open_solenoid(echo=echo)
                     time.sleep(valve_open_duration_s)
                     self.close_solenoid(echo=echo)
@@ -499,7 +503,7 @@ class CoughMachine(PoFSerialDevice):
                     poll_interval_s=settle_poll_interval_s,
                     status_prefix=f"{self.name} restoring pressure (pressure",
                     status_suffix=")",
-                    show_status=False,
+                    show_status=True,
                     print_newline_on_exit=False,
                     echo=echo,
                 )
@@ -597,11 +601,12 @@ class CoughMachine(PoFSerialDevice):
             return None
 
     def read_temperature_humidity(
-        self, *, echo: Optional[bool] = None
+        self, *, echo: Optional[bool] = None, show_reading: bool = False
     ) -> tuple[Optional[float], Optional[float]]:
         """Read temperature and humidity using `T?`.
 
         Parses replies formatted like `T<degC> H<%RH>` and returns `(temp, hum)`.
+        When `show_reading` is True, also prints the parsed values.
         """
         reply, _lines = self._query_and_drain(
             "T?", expected_prefix="T", echo=echo)
@@ -611,6 +616,9 @@ class CoughMachine(PoFSerialDevice):
             parts = reply.split()
             temp = float(parts[0][1:])
             hum = float(parts[1][1:])
+            if show_reading:
+                print(
+                    f"{self.name} temperature: {temp:.1f} °C, rel. humidity: {hum:.1f}%")
             return temp, hum
         except (IndexError, ValueError):
             return None, None
