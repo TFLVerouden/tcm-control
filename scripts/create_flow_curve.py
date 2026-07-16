@@ -164,12 +164,12 @@ def main() -> None:
         default_subfolder="piv",
         step_current_ma=20.0,
         closed_current_ma=12.0,
-        step_duration_ms=500,
-        pre_record_ms=100,
-        post_record_ms=100,
+        step_duration_ms=3000,
+        pre_record_ms=0,
+        post_record_ms=0,
         solenoid_lead_ms=5,
-        solenoid_lag_ms=5,
-        polling_interval_ms=1,
+        solenoid_lag_ms=0,
+        polling_interval_ms=5,
         trigger_at_start=True,
     )
     print(f"Step curve written to {generated}")

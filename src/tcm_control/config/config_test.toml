@@ -1,18 +1,18 @@
 [experiment]
-name = "" # keep empty to prompt
-mode = "film" # droplet | film | piv
-series_directory = "None" # keep empty to prompt; set to "None" to disable saving data
+name = "test" # keep empty to prompt
+mode = "piv" # droplet | film | piv
+series_directory = "C:\CoughMachineData\260630_piv\tests\pressure_readings" # keep empty to prompt; set to "None" to disable saving data
 
 [inputs.cough]
 debug_mode = false
-nr_runs = 1
-multi_run_interval_s = 40
+nr_runs = 3
+multi_run_interval_s = 10
 confirm_before_starting_next_run = false
-record_droplet_size = true
+record_droplet_size = false
 
 [devices.cough_machine.inputs]
-flow_curve_csv_path = "step300ms"
-wait_before_run_ms = 68.5
+flow_curve_csv_path = "step_20-0mA_1500ms"
+wait_before_run_ms = 0
 
 [devices.cough_machine.inputs.cleaning]
 clean_pressure_bar = 4.0
@@ -20,13 +20,13 @@ valve_open_duration_s = 2.5
 dry_pressure_bar = 4.0
 dry_duration_s = 0.0
 dry_valve_current_ma = 14.0
-cycle_count = 3
+cycle_count = 0
 
 [devices.cough_machine.inputs.tank]
 pressure_bar = 1.5
 settling_time_s = 60.0
 avg_window_s = 5.0
-tolerance_bar = 0.05
+tolerance_bar = 0.03
 poll_interval_s = 0.2
 intermediate_diff_bar = "" # set together with intermediate_time_s (empty disables)
 intermediate_time_s = "" # set together with intermediate_diff_bar (empty disables)
