@@ -402,9 +402,9 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
         raise ValueError(
             "Config [devices.cough_machine.inputs.cleaning].dry_valve_current_ma must be > 0."
         )
-    if cleaning_inputs["cycle_count"] < 1:
+    if cleaning_inputs["cycle_count"] < 0:
         raise ValueError(
-            "Config [devices.cough_machine.inputs.cleaning].cycle_count must be >= 1."
+            "Config [devices.cough_machine.inputs.cleaning].cycle_count must be >= 0."
         )
 
     has_intermediate_diff = (
