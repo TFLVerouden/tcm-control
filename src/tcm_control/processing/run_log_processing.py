@@ -76,7 +76,7 @@ def plot_run_log(
     y_min, y_max = map(float, ax1.get_ylim())
     add_label(
         ax1,
-        "Solenoid valve open",
+        "< Solenoid valve open >",
         xy=((sol_open_start_ms + sol_open_end_ms) / 2.0,
             y_min + 0.02 * (y_max - y_min)),
         coord_system="data",
