@@ -27,6 +27,8 @@ from tcm_utils.io_utils import (
     ensure_non_empty_text,
     prompt_input,
     prompt_yes_no,
+    countdown_beep,
+    wait_with_progress,
 )
 from tcm_utils.time_utils import timestamp_str
 from tcm_control.thin_film import take_snapshot, tube_cleaning, make_layer
@@ -127,6 +129,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     # 2) Prepare output folder and host logging
     # ------------------------------------------------------------------
 
+    # TODO: Revert pressure setting back to only once before start
+    # TODO: before loading dataset print statement (because it takes a while)
     # Capture run start timestamp once and reuse it across artifacts and metadata
     time_start = timestamp_str()
     output_dir: Optional[Path] = None
@@ -169,26 +173,16 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         # Register device so interrupt cleanup can call quit() on it
         set_active_tcm(tcm)
 
-        # In droplet and PIV modes, set up the pump
-        if experiment_mode in ["droplet", "piv"]:
-            pump = SyringePump(
-                syringe_volume_ml=pump_inputs["syringe_volume_ml"],
-                syringe_diameter_mm=pump_inputs["syringe_diameter_mm"],
-            )
+        # # In droplet and PIV modes, set up the pump
+        # if experiment_mode in ["droplet", "piv"]:
+        #     pump = SyringePump(
+        #         syringe_volume_ml=pump_inputs["syringe_volume_ml"],
+        #         syringe_diameter_mm=pump_inputs["syringe_diameter_mm"],
+        #     )
 
-            # Register pump so interrupt cleanup can call stop() on it
-            set_active_pump(pump)
+        #     # Register pump so interrupt cleanup can call stop() on it
+        #     set_active_pump(pump)
 
-        tcm.set_pressure(
-            # Drive tank to target pressure and hold until tolerance is satisfied
-            tank_inputs["pressure_bar"],
-            timeout_s=tank_inputs["settling_time_s"],
-            avg_window_s=tank_inputs["avg_window_s"],
-            tolerance_bar=tank_inputs["tolerance_bar"],
-            poll_interval_s=tank_inputs["poll_interval_s"],
-            interm_press_diff_bar=tank_inputs["intermediate_diff_bar"],
-            interm_press_time_s=tank_inputs["intermediate_time_s"],
-        )
         # Program the fixed pre-run wait into the cough machine controller
         tcm.set_wait_us(wait_us=wait_before_run_us)
         tcm.load_flowcurve(
@@ -261,6 +255,17 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             prompt_yes_no(
                 "Press ENTER to confirm that SprayTec SOP is waiting for a trigger...",
                 default=True)
+
+        # Set tank pressure
+        tcm.set_pressure(
+            tank_inputs["pressure_bar"],
+            timeout_s=tank_inputs["settling_time_s"],
+            avg_window_s=tank_inputs["avg_window_s"],
+            tolerance_bar=tank_inputs["tolerance_bar"],
+            poll_interval_s=tank_inputs["poll_interval_s"],
+            interm_press_diff_bar=tank_inputs["intermediate_diff_bar"],
+            interm_press_time_s=tank_inputs["intermediate_time_s"],
+        )
 
         # ------------------------------------------------------------------
         # 4) Run mode-specific experiment behavior
@@ -383,6 +388,10 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         dry_duration_s=cleaning_inputs["dry_duration_s"],
                         dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"],
                         cycle_count=cleaning_inputs["cycle_count"],
+                        settle_timeout_s=tank_inputs["settling_time_s"],
+                        settle_avg_window_s=tank_inputs["settle_avg_window_s"],
+                        settle_tolerance_bar=tank_inputs["settle_tolerance_bar"],
+                        settle_poll_interval_s=tank_inputs["settle_poll_interval_s"],
                     )
 
                     # Image the channel after cleaning
@@ -398,7 +407,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 # Mode: PIV
                 # ------------------------------------------------------
 
-                assert pump is not None
+                # assert pump is not None
 
                 piv_nebuliser_pressure_bar = pump_inputs["piv_nebuliser_pressure_bar"]
                 pump_rate_ml_per_min = pump_inputs["pump_rate_ml_per_min"]
@@ -425,61 +434,85 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
                 # Execute configured number of PIV runs with pump start/stop timing
                 for run_idx in range(cough_inputs["nr_runs"]):
-                    # Start liquid feed before each run
-                    pump.infuse(pump_rate_ml_mn=pump_rate_ml_per_min)
-                    pump_stopped = False
-                    try:
-                        if pump_inputs["piv_pump_start_before_run_s"] > 0:
-                            # Optional pre-run pump lead-in time for stable nebulisation
-                            print(
-                                f"Waiting {pump_inputs['piv_pump_start_before_run_s']} s before run {run_idx + 1}/{cough_inputs['nr_runs']}"
-                            )
-                            time.sleep(
-                                float(pump_inputs["piv_pump_start_before_run_s"]))
 
-                        tcm.start_run()
-                        tcm.wait_for_run_finished()
+                    # # Temporary: delay for Nick to press button on OPS
+                    # countdown_beep()
+                    # wait_with_progress(2.5)
 
-                        if pump_inputs["piv_pump_stop_after_run_s"] > 0:
-                            # Optional post-run pump tail time after actuation finishes
-                            print(
-                                f"Waiting {pump_inputs['piv_pump_stop_after_run_s']} s after run {run_idx + 1}/{cough_inputs['nr_runs']}"
-                            )
-                            time.sleep(
-                                float(pump_inputs["piv_pump_stop_after_run_s"]))
+                    # Don't use pump; manual control of nebuliser
+                    run_log_path = tcm.run(
+                        output_dir=output_dir,
+                        run_nr_start=(run_idx + 1),
+                        save_logs=save_data,
+                    )
 
-                        pump.stop()
-                        pump_stopped = True
-
-                        run_log_path = tcm.receive_run_log(
-                            output_dir=output_dir,
-                            run_nr_start=(run_idx + 1),
-                            save_logs=save_data,
+                    # Plot run log
+                    if save_data and run_log_path is not None:
+                        plot_run_log(
+                            run_log_path=run_log_path,
+                            experiment_dir=output_dir,
+                            show=False,
                         )
 
-                        # Plot run log
-                        if save_data and run_log_path is not None:
-                            plot_run_log(
-                                run_log_path=run_log_path,
-                                experiment_dir=output_dir,
-                                show=False,
-                            )
+                    # Clean the channel
+                    tcm.clean(
+                        clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
+                        valve_open_duration_s=cleaning_inputs["valve_open_duration_s"],
+                        dry_pressure_bar=cleaning_inputs["dry_pressure_bar"],
+                        dry_duration_s=cleaning_inputs["dry_duration_s"],
+                        dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"],
+                        cycle_count=cleaning_inputs["cycle_count"],
+                        settle_timeout_s=tank_inputs["settling_time_s"],
+                        settle_avg_window_s=tank_inputs["avg_window_s"],
+                        settle_tolerance_bar=tank_inputs["tolerance_bar"],
+                        settle_poll_interval_s=tank_inputs["poll_interval_s"],
+                    )
 
-                        # Cache first run log for the summary plot in finalization
-                        if run_idx == 0:
-                            first_run_log_path = run_log_path
-                    finally:
-                        # Always stop pump, even if the run or waits raise an error
-                        if not pump_stopped:
-                            pump.stop()
+                    # # Start liquid feed before each run
+                    # pump.infuse(pump_rate_ml_mn=pump_rate_ml_per_min)
+                    # pump_stopped = False
+                    # try:
+                    #     if pump_inputs["piv_pump_start_before_run_s"] > 0:
+                    #         # Optional pre-run pump lead-in time for stable nebulisation
+                    #         wait_with_progress(
+                    #             float(
+                    #                 pump_inputs["piv_pump_start_before_run_s"]),
+                    #             label=f"Waiting {pump_inputs['piv_pump_start_before_run_s']} s before run {run_idx + 1}/{cough_inputs['nr_runs']}")
 
-                        # Run cleaning routine every cycle
-                        tcm.clean(clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
-                                  valve_open_duration_s=cleaning_inputs["valve_open_duration_s"],
-                                  dry_pressure_bar=cleaning_inputs["dry_pressure_bar"],
-                                  dry_duration_s=cleaning_inputs["dry_duration_s"],
-                                  dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"],
-                                  cycle_count=cleaning_inputs["cycle_count"])
+                    #     tcm.start_run()
+                    #     tcm.wait_for_run_finished()
+
+                    #     if pump_inputs["piv_pump_stop_after_run_s"] > 0:
+                    #         # Optional post-run pump tail time after actuation finishes
+                    #         wait_with_progress(
+                    #             float(
+                    #                 pump_inputs["piv_pump_stop_after_run_s"]),
+                    #             label=f"Waiting {pump_inputs['piv_pump_stop_after_run_s']} s after run {run_idx + 1}/{cough_inputs['nr_runs']}")
+
+                    #     pump.stop()
+                    #     pump_stopped = True
+
+                    #     run_log_path = tcm.receive_run_log(
+                    #         output_dir=output_dir,
+                    #         run_nr_start=(run_idx + 1),
+                    #         save_logs=save_data,
+                    #     )
+
+                    #     # Plot run log
+                    #     if save_data and run_log_path is not None:
+                    #         plot_run_log(
+                    #             run_log_path=run_log_path,
+                    #             experiment_dir=output_dir,
+                    #             show=False,
+                    #         )
+
+                    #     # Cache first run log for the summary plot in finalization
+                    #     if run_idx == 0:
+                    #         first_run_log_path = run_log_path
+                    # finally:
+                    #     # Always stop pump, even if the run or waits raise an error
+                    #     if not pump_stopped:
+                    #         pump.stop()
 
                     # Skip inter-run wait/confirm prompts after the final run
                     is_last_run = run_idx == (cough_inputs["nr_runs"] - 1)
