@@ -583,7 +583,8 @@ class CoughMachine(PoFSerialDevice):
         """
         cmd = "N 1" if enabled else "N 0"
         expected = "NEBULISER_ON" if enabled else "NEBULISER_OFF"
-        reply, _lines = self._query_and_drain(cmd, expected=expected, echo=echo)
+        reply, _lines = self._query_and_drain(
+            cmd, expected=expected, echo=echo)
         return reply or ""
 
     def set_fan_speed(self, speed, *, echo: Optional[bool] = None) -> str:
