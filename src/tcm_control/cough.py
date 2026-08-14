@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from tcm_control.devices import CoughMachine, VerticalStage, SyringePump, SprayTec, Camera, SyringePump2
+from tcm_control.devices.spraytec import warn_if_experiment_dir_name_too_long
 from tcm_control import logger
 from tcm_control.initialise_config import load_experiment_config
 from tcm_control.interrupt_handling import (
@@ -133,6 +134,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     console_log_path: Optional[Path] = None
     if save_data:
         assert series_directory is not None
+        if record_droplet_size:
+            # Warn (but proceed) if SprayTec won't be able to display the full name
+            warn_if_experiment_dir_name_too_long(time_start, experiment_name)
         # Create output directory for this experiment.
         output_dir = logger.create_experiment_dir(
             series_directory, experiment_name, start_time=time_start)
