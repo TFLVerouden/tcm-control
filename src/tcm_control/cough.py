@@ -1,9 +1,8 @@
 """Main experiment runner for the Twente Cough Machine."""
 
 from contextlib import nullcontext
-import time
 from pathlib import Path
-
+import time
 from typing import Optional
 
 from tcm_control.devices import CoughMachine, VerticalStage, SyringePump, SprayTec, Camera, SyringePump2
@@ -17,6 +16,8 @@ from tcm_control.interrupt_handling import (
     set_active_tcm,
 )
 from tcm_control.processing.run_log_processing import plot_run_log
+from tcm_control.thin_film import take_snapshot, make_layer
+from tcm_control.film_height import determine_film_height, determine_plate_height
 from tcm_control.user_input import (
     ask_start_confirmation,
     ask_user_for_comments,
@@ -30,8 +31,6 @@ from tcm_utils.io_utils import (
     prompt_yes_no,
 )
 from tcm_utils.time_utils import timestamp_str
-from tcm_control.thin_film import take_snapshot, tube_cleaning, make_layer
-from tcm_control.film_height import determine_film_height, determine_plate_height
 
 
 def cough(config_path: Path | str | None = None) -> Optional[Path]:
