@@ -1,0 +1,10 @@
+# Connection settings for the OPS 3330.
+# Find the IP on the instrument's touchscreen: Setup tab -> Communications
+# screen -> "USB IP Address" (it's a static address once the NDIS driver
+# is installed). Use the same field's Ethernet section if connecting over
+# Ethernet instead of USB.
+
+[connection]
+ip = "192.168.1.1"   # <-- replace with your OPS's USB (or Ethernet) IP
+port = 3602
+timeout = 5.0

@@ -1,0 +1,55 @@
+# Minimal OPS 3330 profile: factory-standard settings.
+# Bin cut points below are the instrument's standard 16-channel table
+# (0.3 - 10 um), taken from the CSV example in Appendix B of the manual.
+
+[protocol]
+name = "MINIMAL"          # <=12 chars; used if save_as_protocol = true
+save_as_protocol = false  # true = also store this config in a protocol slot on the unit
+
+[channels]
+number_enabled = 16
+cut_points_um = [
+    0.300, 0.374, 0.465, 0.579, 0.721, 0.897, 1.117, 1.391,
+    1.732, 2.156, 2.685, 3.343, 4.162, 5.182, 6.451, 8.031, 10.000,
+]
+
+[logging]
+sample_interval = "0:00:1"   # H:M:S per sample
+number_of_samples = 20        # samples per set
+number_of_sets = 1            # 0 = repeat forever
+repeat_interval = "0:00:00"   # D:H:M, only relevant if number_of_sets != 1
+use_start_time = false
+use_start_date = false
+logging_enabled = true
+log_to_single_file = true
+survey_mode = false
+keep_pump_running = true
+
+# Optional sections below -- omit any of these to leave that part of the
+# instrument's current configuration untouched.
+
+[alarm]
+enabled = true
+visible = true
+audible = false
+relay = false
+measurement = "dN"       # "dN" or "dM"
+threshold = 4000.0
+
+# [analog_output]
+# state = "off"            # "off" | "0-5V" | "4-20mA"
+# measurement = "dN"
+# minimum = 0.0
+# maximum = 10000.0
+
+[user_cal]
+enabled = 0
+dead_time_correction = 1
+density = 1.0
+refractive_index_real = 1.5
+refractive_index_imag = 0.0
+shape_correction_factor = 0.0
+
+[flow_cal]
+user_flow_cal = 1.0
+external_flow_control = false
