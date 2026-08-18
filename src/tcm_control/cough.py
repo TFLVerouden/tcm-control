@@ -30,6 +30,13 @@ from tcm_utils.io_utils import (
 )
 from tcm_utils.time_utils import timestamp_str
 
+from tcm_control.devices.ops3330.ops3330 import OPSClient, OPS
+import logging
+import sys
+import time
+from pathlib import Path
+import datetime
+
 
 def cough(config_path: Path | str | None = None) -> Optional[Path]:
     """Run a full experiment using a TOML configuration.
@@ -318,14 +325,41 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             ],
                         )
 
-                    run_log_path = tcm.run(
-                        output_dir=output_dir,
-                        run_nr_start=(run_idx + 1),
-                        save_logs=save_data,
-                    )
-                    # Cache first run log for the summary plot in finalization
-                    if run_idx == 0:
-                        first_run_log_path = run_log_path
+                    CONNECTION_IP_OPS = "192.168.1.50"
+                    PROFILE_PATH_OPS = Path(__file__).resolve(
+                    ).parent / "profiles" / "default_minimal.toml"
+                    if output_dir is None:
+                        raise ValueError(
+                            "Output directory is None, cannot save OPS data.")
+                    OUT_CSV_OPS = output_dir / \
+                        f"OPS_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
+                    OUT_CSV_OPS.parent.mkdir(parents=True, exist_ok=True)
+
+                    with OPSClient(ip=CONNECTION_IP_OPS) as client:
+                        ops = OPS(client)
+
+                        print("Model:", client.read_model_number())
+                        print("Status:", ops.read_status())
+
+                        ops.start_standard_recording(
+                            profile_toml_path=PROFILE_PATH_OPS,
+                            out_csv_path=OUT_CSV_OPS,
+                        )
+
+                        # Wait for the OPS to start recording before triggering the cough machine
+                        time.sleep(10)
+
+                        run_log_path = tcm.run(
+                            output_dir=output_dir,
+                            run_nr_start=(run_idx + 1),
+                            save_logs=save_data,
+                        )
+                        # Cache first run log for the summary plot in finalization
+                        if run_idx == 0:
+                            first_run_log_path = run_log_path
+
+                        recorded_csv = ops.collect_recording()
+                        print(f"Saved data to {recorded_csv}")
 
             # PIV mode
             case "piv":

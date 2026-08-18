@@ -5,6 +5,6 @@
 # Ethernet instead of USB.
 
 [connection]
-ip = "192.168.1.1"   # <-- replace with your OPS's USB (or Ethernet) IP
+ip = "192.168.1.50"   # <-- replace with your OPS's USB (or Ethernet) IP
 port = 3602
 timeout = 5.0
