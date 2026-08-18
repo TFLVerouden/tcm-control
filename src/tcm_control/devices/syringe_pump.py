@@ -20,6 +20,7 @@ class SyringePump(PumpPHD2000_Refill):
         self,
         port: str | None = None,
         syringe_volume_ml: float | None = None,
+        syringe_diameter_mm: float | None = None,
         baudrate: int = 19200,
         timeout: float = 0.3,
         pump_address: int = 0
@@ -101,15 +102,42 @@ class SyringePump(PumpPHD2000_Refill):
         # Print confirmation of successful connection.
         print(f"Connected to serial device SyringePump at {selected_port}")
 
-        # Get currently set diameter
-        current_volume = self.get_syringe_volume(self.get_diameter())
+        # Get currently set diameter and matching volume when available.
+        current_diameter = float(self.get_diameter())
+        try:
+            current_volume = self.get_syringe_volume(current_diameter)
+        except ValueError:
+            current_volume = None
+
+        if syringe_diameter_mm is not None:
+            syringe_diameter_mm = float(syringe_diameter_mm)
+            if syringe_diameter_mm <= 0:
+                raise ValueError("syringe_diameter_mm must be > 0.")
+            self.syringe_diameter_mm = syringe_diameter_mm
+            self.set_mode("PMP")
+            self.set_diameter(syringe_diameter_mm)
+            try:
+                self.syringe_volume_ml = self.get_syringe_volume(
+                    syringe_diameter_mm)
+            except ValueError:
+                self.syringe_volume_ml = None
+            return
 
         # If not provided, ask user for syringe volume
         if syringe_volume_ml is None:
+            default_volume_text = (
+                f"{current_volume}"
+                if current_volume is not None
+                else "unknown"
+            )
             prompted_volume = prompt_input(
-                f"Enter syringe volume in mL (press ENTER to use current volume of {current_volume} mL): ", value_type="float", min_value=0.0005, max_value=50.0, allow_empty=True)
+                f"Enter syringe volume in mL (press ENTER to use current volume of {default_volume_text} mL): ", value_type="float", min_value=0.0005, max_value=50.0, allow_empty=True)
             syringe_volume_ml = float(
                 prompted_volume) if prompted_volume is not None else current_volume
+            if syringe_volume_ml is None:
+                raise ValueError(
+                    "Current syringe diameter is not in the lookup table; provide syringe_volume_ml or syringe_diameter_mm."
+                )
         syringe_volume_ml = float(syringe_volume_ml)
         self.syringe_volume_ml = syringe_volume_ml
 
@@ -207,6 +235,7 @@ class SyringePump(PumpPHD2000_Refill):
     ):
         """Set the syringe diameter based on volume from the lookup table."""
         diameter_mm = self.get_syringe_diameter(volume_ml, type=type)
+        self.syringe_diameter_mm = diameter_mm
         self.set_diameter(diameter_mm)
 
     def infuse(self,
@@ -257,4 +286,4 @@ class SyringePump(PumpPHD2000_Refill):
 if __name__ == "__main__":
     # Small testing script
     pump = SyringePump(syringe_volume_ml=2.5)
-    pump.infuse(0.2, 2)
+    pump.infuse(pump_rate_ml_mn=1.0, duration_s=5)

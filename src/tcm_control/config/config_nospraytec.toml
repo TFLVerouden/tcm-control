@@ -5,14 +5,22 @@ series_directory = "" # keep empty to prompt; set to "None" to disable saving da
 
 [inputs.cough]
 debug_mode = false
-nr_runs = 3
+nr_runs = 1
 multi_run_interval_s = 40
 confirm_before_starting_next_run = false
 record_droplet_size = false
 
 [devices.cough_machine.inputs]
 flow_curve_csv_path = "step300ms"
-wait_before_run_ms = 68.5
+wait_before_run_ms = 59.5
+
+[devices.cough_machine.inputs.cleaning]
+clean_pressure_bar = 4.0
+valve_open_duration_s = 2.5
+dry_pressure_bar = 4.0
+dry_duration_s = 0.0
+dry_valve_current_ma = 14.0
+cycle_count = 3
 
 [devices.cough_machine.inputs.tank]
 pressure_bar = 1.5

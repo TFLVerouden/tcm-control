@@ -2,7 +2,11 @@ from pathlib import Path
 import csv
 from typing import Optional
 from tcm_utils.file_dialogs import ask_open_file
-from tcm_utils.plot_style import use_tcm_poster_style, append_unit_to_last_ticklabel
+from tcm_utils.plot_style import (
+    use_tcm_poster_style,
+    append_unit_to_last_ticklabel,
+    add_label,
+)
 from tcm_utils.cvd_check import set_cvd_friendly_colors, get_color
 
 import numpy as np
@@ -52,7 +56,12 @@ def plot_run_log(
     ax1.plot(time_ms, press_bar, color=get_color(
         0), label="Pressure (bar)", linewidth=2)
     ax1.tick_params(axis="y", labelcolor=get_color(0))
-    ax1.set_ylim(bottom=1, top=2)
+    p_min = int(np.floor(np.min(press_bar)))
+    p_max = int(np.ceil(np.max(press_bar)))
+    # Avoid singular limits when all pressure values are exactly one integer.
+    if p_min == p_max:
+        p_max += 1
+    ax1.set_ylim(bottom=p_min, top=p_max)
 
     ax2 = ax1.twinx()
     ax2.set_ylabel("Proportional valve setpoint (mA)", color=get_color(1))
@@ -64,6 +73,18 @@ def plot_run_log(
     # Add vertical shading for solenoid open times
     ax1.axvspan(sol_open_start_ms, sol_open_end_ms, linestyle="",
                 color="#000000", alpha=0.2, label="Solenoid open")
+    y_min, y_max = map(float, ax1.get_ylim())
+    add_label(
+        ax1,
+        "< Solenoid valve open >",
+        xy=((sol_open_start_ms + sol_open_end_ms) / 2.0,
+            y_min + 0.02 * (y_max - y_min)),
+        coord_system="data",
+        ha="center",
+        va="bottom",
+        italic=False,
+        color="#444444",
+    )
 
     # Add vertical line for trigger time
     ax1.axvline(0, color="#000000", linestyle="--",

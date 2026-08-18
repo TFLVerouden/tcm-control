@@ -9,7 +9,7 @@ except ImportError:
     winsound = None
 
 from tcm_utils.file_dialogs import ask_open_file, find_repo_root
-from tcm_utils.io_utils import make_minimal_progress_bar
+from tcm_utils.io_utils import countdown_beep, make_minimal_progress_bar, beep
 
 from .base import PoFSerialDevice
 from ..logger import copy_flow_curve, create_labeled_csv_filename
@@ -18,8 +18,14 @@ DEFAULT_FLOWCURVE_DIR = Path(__file__).resolve().parent.parent / "flow_curves"
 DEFAULT_RUN_LOG_DIR = Path(".logs")
 EXPERIMENT_RUN_LOG_SUBDIR = "run_logs"
 MAX_PRESSURE_BAR = 7.2
+# TODO: Adjust these defaults.
+DEFAULT_CLEAN_PRESSURE_BAR = 4.0
+DEFAULT_CLEAN_VALVE_OPEN_DURATION_S = 2.5
+DEFAULT_CLEAN_DRY_DURATION_S = 0.0
+DEFAULT_CLEAN_DRY_VALVE_CURRENT_MA = 14.0
+DEFAULT_CLEAN_CYCLE_COUNT = 0
 # Keep protocol version as a single integer. Bump only for breaking serial changes.
-DEFAULT_SUPPORTED_PROTOCOL_VERSION = 4
+DEFAULT_SUPPORTED_PROTOCOL_VERSION = 5
 
 
 class CoughMachine(PoFSerialDevice):
@@ -350,9 +356,12 @@ class CoughMachine(PoFSerialDevice):
     def clean(
         self,
         *,
-        pressure_bar: float = 4.0,
-        open_duration_s: float = 2.5,
-        repeats: int = 3,
+        clean_pressure_bar: float = 4.0,
+        valve_open_duration_s: float = 2.5,
+        cycle_count: int = DEFAULT_CLEAN_CYCLE_COUNT,
+        dry_pressure_bar: float | None = None,
+        dry_duration_s: float = 0.0,
+        dry_valve_current_ma: float = 14.0,
         settle_timeout_s: float = 120.0,
         settle_avg_window_s: float = 5.0,
         settle_tolerance_bar: float = 0.05,
@@ -362,64 +371,125 @@ class CoughMachine(PoFSerialDevice):
         """Run a tank/valve cleaning routine and restore prior pressure setpoint.
 
         The routine repeats:
-        1) set tank pressure to `pressure_bar`
-          2) set proportional valve current to `prop_valve_open_current_ma`
-          3) open solenoid for `open_duration_s`
-          4) close solenoid and set proportional valve current to
-              `prop_valve_close_current_ma`
+        1) set tank pressure to `clean_pressure_bar`
+        2) open the valve for `valve_open_duration_s`
+        3) close the valve and return to the idle valve current
+
+        `cycle_count` may be zero. In that case, cleaning cycles are skipped and
+        only the optional drying phase is executed.
+
+        If `dry_duration_s` is greater than zero, a final drying phase is run at
+        `dry_pressure_bar` when provided, otherwise at `clean_pressure_bar`, with
+        the valve held slightly open at `dry_valve_current_ma` for the requested
+        duration.
 
         After all cycles (or on failure), the previous pressure setpoint is
         restored automatically using `set_pressure`. When no host-side
         setpoint is known, the current sensor readback is used as the fallback
         restore target.
         """
-        if pressure_bar < 0 or pressure_bar > MAX_PRESSURE_BAR:
+        if clean_pressure_bar < 0 or clean_pressure_bar > MAX_PRESSURE_BAR:
             raise ValueError(
                 f"pressure_bar must be between 0 and {MAX_PRESSURE_BAR} bar")
-        if open_duration_s <= 0:
-            raise ValueError("open_duration_s must be > 0")
-        if repeats <= 0:
-            raise ValueError("repeats must be >= 1")
+        if valve_open_duration_s <= 0:
+            raise ValueError("valve_open_duration_s must be > 0")
+        if dry_duration_s < 0:
+            raise ValueError("dry_duration_s must be >= 0")
+        if cycle_count < 0:
+            raise ValueError("cycle_count must be >= 0")
+        if dry_pressure_bar is None:
+            dry_pressure_bar = clean_pressure_bar
+        elif dry_pressure_bar < 0 or dry_pressure_bar > MAX_PRESSURE_BAR:
+            raise ValueError(
+                f"dry_pressure_bar must be between 0 and {MAX_PRESSURE_BAR} bar")
+
+        # Nothing to do: no cleaning cycles requested and no drying duration set.
+        if cycle_count == 0 and dry_duration_s == 0:
+            return
 
         original_setpoint_bar = self._target_pressure_bar
         if original_setpoint_bar is None:
+            print(
+                "Warning: No prior pressure setpoint known; will restore to current sensor readback.")
             original_setpoint_bar = self.read_pressure(echo=False)
         restore_original_setpoint = original_setpoint_bar is not None
 
         try:
-            for cycle_idx in range(1, repeats + 1):
+            for cycle_idx in range(1, cycle_count + 1):
                 self.set_pressure(
-                    pressure_bar,
+                    clean_pressure_bar,
                     timeout_s=settle_timeout_s,
                     avg_window_s=settle_avg_window_s,
                     tolerance_bar=settle_tolerance_bar,
                     poll_interval_s=settle_poll_interval_s,
                     status_prefix=(
-                        f"{self.name} cleaning cycle {cycle_idx}/{repeats} "
+                        f"{self.name} cleaning cycle {cycle_idx}/{cycle_count} "
                         "(pressure"
                     ),
                     status_suffix=")",
-                    print_newline_on_exit=False,
                     echo=echo,
                 )
 
-                opening_msg = f"{self.name} cleaning cycle {cycle_idx}/{repeats} (opening valves)"
+                opening_msg = f"{self.name} cleaning cycle {cycle_idx}/{cycle_count} (opening valves)"
                 pressure_msg_len = len(
-                    f"{self.name} cleaning cycle {cycle_idx}/{repeats} "
-                    f"(pressure -.--/{pressure_bar:.2f} bar)"
+                    f"{self.name} cleaning cycle {cycle_idx}/{cycle_count} "
+                    f"(pressure -.--/{clean_pressure_bar:.2f} bar)"
                 )
                 clear_tail = max(0, pressure_msg_len - len(opening_msg))
                 print(f"\r{opening_msg}{' ' * clear_tail}", end="", flush=True)
 
                 self.set_valve_current(20, echo=echo)
                 try:
-                    if winsound is not None:
-                        winsound.Beep(1000, 200)
-                    else:
-                        print("\a", end="", flush=True)
-                    time.sleep(2)
+                    countdown_beep()
                     self.open_solenoid(echo=echo)
-                    time.sleep(open_duration_s)
+                    time.sleep(valve_open_duration_s)
+                    self.close_solenoid(echo=echo)
+                finally:
+                    self.set_valve_current(12, echo=echo)
+
+            if dry_duration_s > 0:
+                self.set_pressure(
+                    dry_pressure_bar,
+                    timeout_s=settle_timeout_s,
+                    avg_window_s=settle_avg_window_s,
+                    tolerance_bar=settle_tolerance_bar,
+                    poll_interval_s=settle_poll_interval_s,
+                    status_prefix=f"{self.name} drying pressure (pressure",
+                    status_suffix=")",
+                    print_newline_on_exit=False,
+                    echo=echo,
+                )
+                dry_msg = (
+                    f"{self.name} drying at {dry_pressure_bar:.2f} bar "
+                    f"(valve {dry_valve_current_ma:.1f} mA)"
+                )
+                print(f"\r{dry_msg}")
+                self.set_valve_current(dry_valve_current_ma, echo=echo)
+                try:
+                    self.open_solenoid(echo=echo)
+                    wait_step_s = min(settle_poll_interval_s, dry_duration_s)
+                    with make_minimal_progress_bar(
+                        total=dry_duration_s,
+                        label=f"{self.name} drying",
+                        unit_label="s",
+                        postfix_width=20,
+                        leave=False,
+                    ) as pbar:
+                        elapsed_s = 0.0
+                        while elapsed_s < dry_duration_s:
+                            sleep_s = min(
+                                wait_step_s, dry_duration_s - elapsed_s)
+                            time.sleep(sleep_s)
+                            elapsed_s += sleep_s
+
+                            pressure = self.read_pressure(echo=False)
+                            if pressure is None:
+                                pressure_text = "-.-- bar"
+                            else:
+                                pressure_text = f"{pressure:.2f} bar"
+
+                            pbar.update(sleep_s)
+                            pbar.set_postfix_str(f"pressure {pressure_text}")
                     self.close_solenoid(echo=echo)
                 finally:
                     self.set_valve_current(12, echo=echo)
@@ -433,7 +503,7 @@ class CoughMachine(PoFSerialDevice):
                     poll_interval_s=settle_poll_interval_s,
                     status_prefix=f"{self.name} restoring pressure (pressure",
                     status_suffix=")",
-                    show_status=False,
+                    show_status=True,
                     print_newline_on_exit=False,
                     echo=echo,
                 )
@@ -492,6 +562,32 @@ class CoughMachine(PoFSerialDevice):
         self.load_flowcurve(csv_path=test_csv, echo=echo)
         self.run(echo=echo)
 
+    def set_light(self, level: float, *, echo: Optional[bool] = None) -> str:
+        """Set light brightness using normalized PWM `I <level>`.
+
+        `level` must be in [0.0, 1.0]. The MCU replies with
+        `SET_LIGHT <level> DUTY <0-255>`.
+        """
+        if level < 0.0 or level > 1.0:
+            raise ValueError("level must be between 0.0 and 1.0")
+
+        reply, _lines = self._query_and_drain(
+            f"I {level:.6g}", expected_prefix="SET_LIGHT", echo=echo
+        )
+        return reply or ""
+
+    def set_fan_speed(self, speed, *, echo: Optional[bool] = None) -> str:
+        """Set fan speed using `F <val>`.
+
+        Hardware implementation is not yet finalised (likely PWM on pin 3).
+        The firmware currently accepts the command and replies `FAN_SPEED_SET`
+        without driving any output.
+        """
+        reply, _lines = self._query_and_drain(
+            f"F {speed}", expected="FAN_SPEED_SET", echo=echo
+        )
+        return reply or ""
+
     # READ OUT SENSORS
     def read_pressure(self, *, echo: Optional[bool] = None) -> Optional[float]:
         """Read instantaneous pressure using `P?` and parse `P<bar>` reply."""
@@ -505,11 +601,12 @@ class CoughMachine(PoFSerialDevice):
             return None
 
     def read_temperature_humidity(
-        self, *, echo: Optional[bool] = None
+        self, *, echo: Optional[bool] = None, show_reading: bool = False
     ) -> tuple[Optional[float], Optional[float]]:
         """Read temperature and humidity using `T?`.
 
         Parses replies formatted like `T<degC> H<%RH>` and returns `(temp, hum)`.
+        When `show_reading` is True, also prints the parsed values.
         """
         reply, _lines = self._query_and_drain(
             "T?", expected_prefix="T", echo=echo)
@@ -519,6 +616,9 @@ class CoughMachine(PoFSerialDevice):
             parts = reply.split()
             temp = float(parts[0][1:])
             hum = float(parts[1][1:])
+            if show_reading:
+                print(
+                    f"{self.name} temperature: {temp:.1f} °C, rel. humidity: {hum:.1f}%")
             return temp, hum
         except (IndexError, ValueError):
             return None, None
@@ -575,6 +675,35 @@ class CoughMachine(PoFSerialDevice):
         """Return the resolved flow-curve CSV path used by `load_flowcurve`."""
         return self._flowcurve_csv_path
 
+    @staticmethod
+    def _resolve_flowcurve_csv_path(csv_path: str | Path) -> Optional[Path]:
+        """Resolve a flow-curve CSV path from direct, relative, or recursive lookup."""
+        csv_path_str = str(csv_path)
+        if not csv_path_str.lower().endswith(".csv"):
+            csv_path_str += ".csv"
+
+        input_candidate = Path(csv_path_str)
+        if input_candidate.exists():
+            return input_candidate
+
+        relative_candidate = DEFAULT_FLOWCURVE_DIR / csv_path_str
+        if relative_candidate.exists():
+            return relative_candidate
+
+        matches = sorted(
+            DEFAULT_FLOWCURVE_DIR.rglob(Path(csv_path_str).name)
+        )
+        if not matches:
+            return None
+        if len(matches) == 1:
+            return matches[0]
+
+        match_list = "\n".join(str(path) for path in matches)
+        raise ValueError(
+            "Multiple flow curve files match the requested name; use a more "
+            f"specific path. Matches:\n{match_list}"
+        )
+
     def load_flowcurve(
         self,
         csv_path: str | Path | None = None,
@@ -593,23 +722,8 @@ class CoughMachine(PoFSerialDevice):
         """
         # If a path is passed here, it overrides any previously stored default
         if csv_path is not None:
-            candidate = Path(csv_path)
-            if candidate.exists():
-                self._flowcurve_csv_path = candidate
-            elif isinstance(csv_path, str):
-
-                # Add ".csv" if the string does not already end with it
-                if not csv_path.lower().endswith(".csv"):
-                    csv_path += ".csv"
-
-                # Check for the file in the default flow_curves directory
-                filename_candidate = DEFAULT_FLOWCURVE_DIR / \
-                    Path(csv_path).name
-                self._flowcurve_csv_path = (
-                    filename_candidate if filename_candidate.exists() else None
-                )
-            else:
-                self._flowcurve_csv_path = None
+            self._flowcurve_csv_path = self._resolve_flowcurve_csv_path(
+                csv_path)
 
         # If no path was provided or stored, fall back to the file picker dialog.
         if self._flowcurve_csv_path is None:
@@ -661,6 +775,47 @@ class CoughMachine(PoFSerialDevice):
         return reply or ""
 
     # COUGH
+    def start_run(self) -> None:
+        """Send `R` to start the loaded dataset without waiting for log export."""
+        print("Starting cough")
+        if not self.write("R"):
+            raise RuntimeError("Failed to send R command")
+
+    def wait_for_run_finished(
+        self,
+        *,
+        timeout_s: float = 10.0,
+        echo: Optional[bool] = None,
+    ) -> None:
+        """Wait for the MCU `FINISHED` event that marks end of dataset execution."""
+        self._wait_for_line("FINISHED", timeout=timeout_s, echo=echo)
+        print("Cough completed")
+
+    def receive_run_log(
+        self,
+        *,
+        timeout_s: float = 10.0,
+        echo: Optional[bool] = None,
+        output_dir: Optional[str | Path] = None,
+        run_nr_start: Optional[int] = None,
+        save_logs: bool = True,
+    ) -> Optional[Path]:
+        """Receive the exported run log after a completed run and optionally save it."""
+        rows = self._receive_run_log(
+            timeout_s=timeout_s,
+            echo=echo,
+        )
+        if not save_logs:
+            return None
+        saved_paths = self._save_run_logs(
+            rows,
+            output_dir=output_dir,
+            run_nr_start=run_nr_start,
+        )
+        if not saved_paths:
+            raise RuntimeError("Failed to save run log for cough run")
+        return saved_paths[0]
+
     def run(
         self,
         *,
@@ -672,28 +827,20 @@ class CoughMachine(PoFSerialDevice):
     ) -> Optional[Path]:
         """Run the loaded dataset immediately using `R` and save streamed log CSV.
 
-        Expects a log stream wrapped by `START_OF_FILE ...` and `END_OF_FILE`.
-        Returns the saved run-log CSV path, or `None` when `save_logs` is False.
+        Waits for `FINISHED`, then receives the `START_OF_FILE ... END_OF_FILE`
+        log stream. Returns the saved run-log CSV path, or `None` when
+        `save_logs` is False.
         """
 
-        print("Starting cough")
-        if not self.write("R"):
-            raise RuntimeError("Failed to send R command")
-        rows = self._receive_run_log(
+        self.start_run()
+        self.wait_for_run_finished(timeout_s=timeout_s, echo=echo)
+        return self.receive_run_log(
             timeout_s=timeout_s,
             echo=echo,
-        )
-        print("Cough completed")
-        if not save_logs:
-            return None
-        saved_paths = self._save_run_logs(
-            rows,
             output_dir=output_dir,
             run_nr_start=run_nr_start,
+            save_logs=save_logs,
         )
-        if not saved_paths:
-            raise RuntimeError("Failed to save run log for cough run")
-        return saved_paths[0]
 
     def _await_droplet_events(
         self,

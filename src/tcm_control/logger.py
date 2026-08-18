@@ -46,6 +46,31 @@ def create_experiment_dir(
     return experiment_dir
 
 
+def latest_experiment_display_name(series_directory: Path) -> str | None:
+    """Return a display name for the newest experiment folder, if any."""
+    try:
+        candidates = [path for path in series_directory.iterdir()
+                      if path.is_dir()]
+    except (FileNotFoundError, NotADirectoryError, PermissionError, OSError):
+        return None
+
+    if not candidates:
+        return None
+
+    try:
+        latest = max(candidates, key=lambda path: path.stat().st_mtime)
+    except (FileNotFoundError, PermissionError, OSError):
+        return None
+
+    latest_name = latest.name
+
+    # Strip known folder prefix: YYMMDD_HHMMSS_ -> experiment name.
+    if len(latest_name) > 14 and latest_name[6:7] == "_" and latest_name[13:14] == "_":
+        return latest_name[14:]
+
+    return latest_name
+
+
 def write_run_log(
         experiment_dir: Path,
         rows: list[str]):
@@ -261,6 +286,7 @@ def build_run_metadata(
     humidity_start = run_context["humidity_start"]
     temperature_finish = run_context["temperature_finish"]
     humidity_finish = run_context["humidity_finish"]
+    thin_film_height_mm = run_context["thin_film_height_mm"]
     comments = run_context["comments"]
 
     # Unpack device-level context values.
@@ -281,6 +307,31 @@ def build_run_metadata(
     spraytec_laser_intensity = device_context["spraytec_laser_intensity"]
     lift = device_context["lift"]
 
+    # Prefer configured syringe geometry values because runtime objects may
+    # not expose table-based conversions in all pump implementations.
+    configured_syringe_volume_ml = pump_inputs.get("syringe_volume_ml")
+    configured_syringe_diameter_mm = pump_inputs.get("syringe_diameter_mm")
+
+    runtime_syringe_volume_ml = getattr(pump, "syringe_volume_ml", None)
+    runtime_syringe_diameter_mm = getattr(pump, "syringe_diameter_mm", None)
+
+    if runtime_syringe_diameter_mm is None and pump is not None and hasattr(pump, "get_diameter"):
+        try:
+            runtime_syringe_diameter_mm = float(pump.get_diameter())
+        except Exception:
+            runtime_syringe_diameter_mm = None
+
+    resolved_syringe_volume_ml = (
+        configured_syringe_volume_ml
+        if configured_syringe_volume_ml is not None
+        else runtime_syringe_volume_ml
+    )
+    resolved_syringe_diameter_mm = (
+        configured_syringe_diameter_mm
+        if configured_syringe_diameter_mm is not None
+        else runtime_syringe_diameter_mm
+    )
+
     return {
         "time": {
             "start": time_start,
@@ -295,6 +346,7 @@ def build_run_metadata(
             "humidity_start": humidity_start,
             "temperature_finish": temperature_finish,
             "humidity_finish": humidity_finish,
+            "thin_film_height_mm": thin_film_height_mm,
             "comments": comments,
             "output_dir": output_dir,
         },
@@ -326,7 +378,8 @@ def build_run_metadata(
                     "pump_address": getattr(pump, "pump_address", None),
                 },
                 "resolved": {
-                    "syringe_volume_ml": getattr(pump, "syringe_volume_ml", None),
+                    "syringe_volume_ml": resolved_syringe_volume_ml,
+                    "syringe_diameter_mm": resolved_syringe_diameter_mm,
                     "rate_ml_per_min": (
                         pump_inputs.get("pump_rate_ml_per_min")
                         if experiment_mode in ["droplet", "piv"]

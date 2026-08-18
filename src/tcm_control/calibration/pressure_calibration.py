@@ -35,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     repo_root = find_repo_root(Path(__file__))
-    docs_calibration_dir = repo_root / "docs" / "calibration"
+    docs_calibration_dir = repo_root / "calibration"
     docs_calibration_dir.mkdir(parents=True, exist_ok=True)
 
     data_file: Path | None
