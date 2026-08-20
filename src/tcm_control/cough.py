@@ -27,6 +27,7 @@ from tcm_utils.io_utils import (
     ensure_non_empty_text,
     prompt_input,
     prompt_yes_no,
+    wait_with_progress,
 )
 from tcm_utils.time_utils import timestamp_str
 from tcm_control.thin_film import take_snapshot, tube_cleaning, make_layer
@@ -164,20 +165,23 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
               "press Ctrl+C at any time to abort and safely exit")
 
         # Initialise cough machine, and optionally pump
-        tcm = CoughMachine(debug=cough_inputs["debug_mode"])
+        tcm = CoughMachine(
+            debug=cough_inputs["debug_mode"], expected_id="TCM_control")
+        neb = CoughMachine(
+            debug=cough_inputs["debug_mode"], expected_id="NEB_control")
 
         # Register device so interrupt cleanup can call quit() on it
         set_active_tcm(tcm)
 
         # In droplet and PIV modes, set up the pump
-        if experiment_mode in ["droplet", "piv"]:
-            pump = SyringePump(
-                syringe_volume_ml=pump_inputs["syringe_volume_ml"],
-                syringe_diameter_mm=pump_inputs["syringe_diameter_mm"],
-            )
+        # if experiment_mode in ["droplet", "piv"]:
+        #     pump = SyringePump(
+        #         syringe_volume_ml=pump_inputs["syringe_volume_ml"],
+        #         syringe_diameter_mm=pump_inputs["syringe_diameter_mm"],
+        #     )
 
-            # Register pump so interrupt cleanup can call stop() on it
-            set_active_pump(pump)
+        #     # Register pump so interrupt cleanup can call stop() on it
+        #     set_active_pump(pump)
 
         tcm.set_pressure(
             # Drive tank to target pressure and hold until tolerance is satisfied
@@ -398,22 +402,22 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 # Mode: PIV
                 # ------------------------------------------------------
 
-                assert pump is not None
+                # assert pump is not None
 
                 piv_nebuliser_pressure_bar = pump_inputs["piv_nebuliser_pressure_bar"]
-                pump_rate_ml_per_min = pump_inputs["pump_rate_ml_per_min"]
+                # pump_rate_ml_per_min = pump_inputs["pump_rate_ml_per_min"]
                 assert piv_nebuliser_pressure_bar is not None
-                assert pump_rate_ml_per_min is not None
+                # assert pump_rate_ml_per_min is not None
 
                 # Explicitly require operator confirmation of nebuliser pressure
-                confirm_piv_ready = prompt_yes_no(
-                    "Press ENTER to confirm the nebuliser is pressurised to "
-                    f"{piv_nebuliser_pressure_bar} bar...",
-                    default=True,
-                )
-                if not confirm_piv_ready:
-                    print("Aborted.")
-                    exit(1)
+                # confirm_piv_ready = prompt_yes_no(
+                # "Press ENTER to confirm the nebuliser is pressurised to "
+                # f"{piv_nebuliser_pressure_bar} bar...",
+                # default=True,
+                # )
+                # if not confirm_piv_ready:
+                # print("Aborted.")
+                # exit(1)
 
                 # Ask user to start the experiment
                 ask_start_confirmation(experiment_name=experiment_name)
@@ -425,8 +429,14 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
                 # Execute configured number of PIV runs with pump start/stop timing
                 for run_idx in range(cough_inputs["nr_runs"]):
+                    # Fill the tank for a minute
+                    neb.set_nebuliser(True)
+                    wait_with_progress(
+                        wait_s=120, label="Filling nebuliser tank...")
+
                     # Start liquid feed before each run
-                    pump.infuse(pump_rate_ml_mn=pump_rate_ml_per_min)
+                    # pump.infuse(pump_rate_ml_mn=pump_rate_ml_per_min)
+                    neb.set_nebuliser_pressure(piv_nebuliser_pressure_bar)
                     pump_stopped = False
                     try:
                         if pump_inputs["piv_pump_start_before_run_s"] > 0:
@@ -448,7 +458,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             time.sleep(
                                 float(pump_inputs["piv_pump_stop_after_run_s"]))
 
-                        pump.stop()
+                        neb.set_nebuliser(False)
+                        neb.set_nebuliser_pressure(0.0)
                         pump_stopped = True
 
                         run_log_path = tcm.receive_run_log(
@@ -471,7 +482,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     finally:
                         # Always stop pump, even if the run or waits raise an error
                         if not pump_stopped:
-                            pump.stop()
+                            neb.set_nebuliser_pressure(0.0)
 
                         # Run cleaning routine every cycle
                         tcm.clean(clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
