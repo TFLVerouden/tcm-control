@@ -31,8 +31,10 @@ from tcm_utils.io_utils import (
     prompt_yes_no,
 )
 from tcm_utils.time_utils import timestamp_str
+from tcm_utils.io_utils import countdown_beep
 
 from tcm_control.devices.ops3330.ops3330 import OPSClient, OPS
+from tcm_control.devices.ops3330.ops3330.VisualiseData import OPS_visualize_data
 import logging
 import sys
 import time
@@ -362,7 +364,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     if camera_output_dir is not None:
                         film_height_px = determine_film_height(
                             thin_film_path, plate_height_px, camera_output_dir)
-                        film_height_mm = film_height_px / \
+                        film_height_mm = film_height_px * \
                             camera_inputs["pixel_per_meter"] * 1000
                         print(f"Film height (mm): {film_height_mm:.3f}")
 
@@ -380,13 +382,16 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
                     CONNECTION_IP_OPS = "192.168.1.50"
                     PROFILE_PATH_OPS = Path(__file__).resolve(
-                    ).parent / "profiles" / "default_minimal.toml"
+                    ).parent / "devices" / "ops3330" / "profiles" / "default_minimal.toml"
                     if output_dir is None:
                         raise ValueError(
                             "Output directory is None, cannot save OPS data.")
-                    OUT_CSV_OPS = output_dir / \
-                        f"OPS_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
-                    OUT_CSV_OPS.parent.mkdir(parents=True, exist_ok=True)
+                    # Create a folder for OPS data in the output directory
+                    OUT_OPS_DIR = output_dir / "OPS_data"
+                    OUT_OPS_DIR.mkdir(exist_ok=True)
+
+                    OUT_CSV_OPS = OUT_OPS_DIR / \
+                        f"{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_OPS.csv"
 
                     with OPSClient(ip=CONNECTION_IP_OPS) as client:
                         ops = OPS(client)
@@ -400,7 +405,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         )
 
                         # Wait for the OPS to start recording before triggering the cough machine
-                        time.sleep(10)
+                        time.sleep(15)
+                        countdown_beep()
 
                         run_log_path = tcm.run(
                             output_dir=output_dir,
@@ -412,14 +418,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             first_run_log_path = run_log_path
 
                         recorded_csv = ops.collect_recording()
-                        print(f"Saved data to {recorded_csv}")
+                        OPS_visualize_data(output_dir=OUT_OPS_DIR)
 
-                    # # Produce a cough
-                    # run_log_path = tcm.run(
-                    #     output_dir=output_dir,
-                    #     run_nr_start=(run_idx + 1),
-                    #     save_logs=save_data,
-                    # )
+                        print(f"Saved data to {recorded_csv}")
 
                         # Clean the channel
                         tcm.clean(

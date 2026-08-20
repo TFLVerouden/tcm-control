@@ -8,7 +8,7 @@ debug_mode = false
 nr_runs = 1
 multi_run_interval_s = 40
 confirm_before_starting_next_run = false
-record_droplet_size = true
+record_droplet_size = false
 
 [devices.cough_machine.inputs]
 flow_curve_csv_path = "step300ms"
@@ -41,12 +41,12 @@ camera_exposure_us = 4000
 pixel_per_meter = 0.015678e-3
 
 [devices.pump.infuse]
-volume_ml = 5
-rate_ml_min = 5
+volume_ml = 5.5
+rate_ml_min = 15
 
 [devices.pump.withdraw]
-volume_ml = 2.5
-rate_ml_min = 3
+volume_ml = 4.5
+rate_ml_min = 2
 
 [devices.pump.clean_tube]
 volume_ml_layer = 5

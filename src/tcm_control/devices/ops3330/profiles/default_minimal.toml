@@ -15,7 +15,7 @@ cut_points_um = [
 
 [logging]
 sample_interval = "0:00:1"   # H:M:S per sample
-number_of_samples = 20        # samples per set
+number_of_samples = 20      # samples per set
 number_of_sets = 1            # 0 = repeat forever
 repeat_interval = "0:00:00"   # D:H:M, only relevant if number_of_sets != 1
 use_start_time = false

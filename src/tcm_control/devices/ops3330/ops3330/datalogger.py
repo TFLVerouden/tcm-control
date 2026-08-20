@@ -84,8 +84,8 @@ class OPS:
         self._record_result: Optional[Path] = None
         self._record_error: Optional[BaseException] = None
 
-    def start_measurement(self) -> str:
-        return self.client.start_measurement()
+    def start_measurement(self):
+        self.client.start_measurement()
 
     def stop_measurement(self) -> str:
         return self.client.stop_measurement()
@@ -118,7 +118,8 @@ class OPS:
         sample_interval_s = _hms_to_seconds(logging_cfg["sample_interval"])
         number_of_samples = int(logging_cfg["number_of_samples"])
         number_of_sets = int(logging_cfg.get("number_of_sets", 1))
-        repeat_interval_s = _hms_to_seconds(logging_cfg.get("repeat_interval", "0:00:01"))
+        repeat_interval_s = _hms_to_seconds(
+            logging_cfg.get("repeat_interval", "0:00:01"))
 
         max_duration_s = (
             sample_interval_s * number_of_samples * number_of_sets
@@ -146,7 +147,8 @@ class OPS:
     ) -> None:
         """Start background measurement logging without blocking the caller."""
         if self._record_thread is not None and self._record_thread.is_alive():
-            raise RuntimeError("A background OPS recording is already running.")
+            raise RuntimeError(
+                "A background OPS recording is already running.")
 
         self._record_result = None
         self._record_error = None
@@ -182,13 +184,15 @@ class OPS:
 
         self._record_thread.join(timeout=timeout)
         if self._record_thread.is_alive():
-            raise TimeoutError("Background OPS recording did not finish in time.")
+            raise TimeoutError(
+                "Background OPS recording did not finish in time.")
 
         if self._record_error is not None:
             raise self._record_error
 
         if self._record_result is None:
-            raise RuntimeError("Background OPS recording finished without a result.")
+            raise RuntimeError(
+                "Background OPS recording finished without a result.")
 
         return self._record_result
 
@@ -237,29 +241,42 @@ class OPS:
             writer.writerow(["Calibration Date", cal_date[0]])
 
             writer.writerow(["ProtocolName_Number", "TEST_124"])
-            writer.writerow(["TestStartTime", datetime.datetime.now().strftime("%H:%M:%S")])
-            writer.writerow(["TestStartDate", datetime.datetime.now().strftime("%Y/%m/%d")])
-            writer.writerow(["TestLength [D:H:M:S]", _time_test_length(max_duration_s)])
-            writer.writerow(["Sample Interval [H:M:S]", _time_sample_interval(poll_interval_s)])
+            writer.writerow(
+                ["TestStartTime", datetime.datetime.now().strftime("%H:%M:%S")])
+            writer.writerow(
+                ["TestStartDate", datetime.datetime.now().strftime("%Y/%m/%d")])
+            writer.writerow(
+                ["TestLength [D:H:M:S]", _time_test_length(max_duration_s)])
+            writer.writerow(["Sample Interval [H:M:S]",
+                            _time_sample_interval(poll_interval_s)])
             writer.writerow(["Number Channels Enabled", n_channels])
             for i in range(0, n_channels + 1):
-                writer.writerow([f"Bin {i + 1} Cut Point (um)", _parse_csv_ints_floats(ch_setup)[i + 1]])
-            writer.writerow(["Alarm threshold [#/cm3]", _parse_csv_ints_floats(alarm_setup)[4]])
-            writer.writerow(["Density [g/cm3]", _parse_csv_ints_floats(user_cal_setup)[2]])
-            writer.writerow(["Refractive Index", _parse_csv_ints_floats(user_cal_setup)[3] + "-" + _parse_csv_ints_floats(user_cal_setup)[4] + "j"])
-            writer.writerow(["Shape Correction Factor", _parse_csv_ints_floats(user_cal_setup)[5]])
-            writer.writerow(["FlowCal", _parse_csv_ints_floats(flow_cal_setup)[0]])
-            writer.writerow(["Deadtime Correction Factor", _parse_csv_ints_floats(user_cal_setup)[1]])
+                writer.writerow(
+                    [f"Bin {i + 1} Cut Point (um)", _parse_csv_ints_floats(ch_setup)[i + 1]])
+            writer.writerow(["Alarm threshold [#/cm3]",
+                            _parse_csv_ints_floats(alarm_setup)[4]])
+            writer.writerow(
+                ["Density [g/cm3]", _parse_csv_ints_floats(user_cal_setup)[2]])
+            writer.writerow(["Refractive Index", _parse_csv_ints_floats(user_cal_setup)[
+                            3] + "-" + _parse_csv_ints_floats(user_cal_setup)[4] + "j"])
+            writer.writerow(["Shape Correction Factor",
+                            _parse_csv_ints_floats(user_cal_setup)[5]])
+            writer.writerow(
+                ["FlowCal", _parse_csv_ints_floats(flow_cal_setup)[0]])
+            writer.writerow(["Deadtime Correction Factor",
+                            _parse_csv_ints_floats(user_cal_setup)[1]])
 
             # Placeholder error row; it will be updated after the measurement finishes.
             writer.writerow(["Errors", ""])
-            writer.writerow(["Number of Samples", _parse_csv_ints_floats(log_setup)[3]])
+            writer.writerow(
+                ["Number of Samples", _parse_csv_ints_floats(log_setup)[3]])
             writer.writerow(["", ""])
 
             header = (
                 ["Elapsed Time [s]"]
                 + [f"Bin {i + 1}" for i in range(n_channels + 1)]
-                + ["Deadtime (s)", "Temperature (C)", "Humidity (%)", "Ambient Pressure (kPa)"]
+                + ["Deadtime (s)", "Temperature (C)",
+                   "Humidity (%)", "Ambient Pressure (kPa)"]
                 + ["Alarms", "Errors"]
             )
             writer.writerow(header)
@@ -294,11 +311,14 @@ class OPS:
 
                     if valid_flag is not None and valid_flag != last_valid_flag:
                         last_valid_flag = valid_flag
-                        elapsed = meta[0] if len(meta) > 1 else str(round(time.monotonic() - t0, 1))
-                        bins = _parse_csv_ints_floats(lines[1]) if len(lines) > 1 else []
+                        elapsed = meta[0] if len(meta) > 1 else str(
+                            round(time.monotonic() - t0, 1))
+                        bins = _parse_csv_ints_floats(
+                            lines[1]) if len(lines) > 1 else []
 
                         try:
-                            unit_meas = _parse_csv_ints_floats(self.client.read_unit_measurements())
+                            unit_meas = _parse_csv_ints_floats(
+                                self.client.read_unit_measurements())
                         except OPSError:
                             unit_meas = []
                         deadtime = unit_meas[3] if len(unit_meas) > 3 else ""
@@ -310,7 +330,8 @@ class OPS:
                             errors = ""
 
                         try:
-                            messages = _parse_csv_ints_floats(self.client.read_messages())
+                            messages = _parse_csv_ints_floats(
+                                self.client.read_messages())
                         except OPSError:
                             messages = []
                         alarm_flag = messages[2] if len(messages) > 2 else ""
@@ -318,7 +339,8 @@ class OPS:
                         row = (
                             [elapsed]
                             + bins
-                            + [deadtime, temp, humidity, pressure, alarm_flag, errors]
+                            + [deadtime, temp, humidity,
+                                pressure, alarm_flag, errors]
                         )
 
                         if errors:
@@ -327,7 +349,8 @@ class OPS:
                         writer.writerow(row)
                         f.flush()
                         n_saved += 1
-                        logger.info("Saved sample %d (elapsed=%ss)", n_saved, elapsed)
+                        logger.info("Saved sample %d (elapsed=%ss)",
+                                    n_saved, elapsed)
 
                     time.sleep(poll_interval_s)
             except KeyboardInterrupt:
@@ -340,7 +363,8 @@ class OPS:
                         logger.warning("stop_measurement failed: %s", e)
 
         if collected_errors:
-            _update_errors_row(out_path, "; ".join(dict.fromkeys(collected_errors)))
+            _update_errors_row(out_path, "; ".join(
+                dict.fromkeys(collected_errors)))
 
         return out_path
 

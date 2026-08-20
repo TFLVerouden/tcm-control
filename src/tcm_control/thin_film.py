@@ -120,9 +120,13 @@ def make_layer(pump: SyringePump2) -> None:
         # Partially withdraw to stabilize the layer
         if withdraw_action is not None:
             pump.withdraw(
-                volume_ml=withdraw_action["volume_ml"],
+                volume_ml=withdraw_action["volume_ml"],  # - 1,
                 rate_ml_min=withdraw_action["rate_ml_min"]
             )
+            # pump.withdraw(
+            #     volume_ml=1,
+            #     rate_ml_min=1
+            # )
         else:
             pump._log_info(
                 "SyringePump config has no infuse/withdraw steps"

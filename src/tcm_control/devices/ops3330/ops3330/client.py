@@ -182,7 +182,7 @@ class OPSClient:
     # ------------------------------------------------------------------ #
     # Measurement control ("turn on/off" a measurement)
     # ------------------------------------------------------------------ #
-    def start_measurement(self) -> str:
+    def start_measurement(self):
         """MSTART -- begin sampling/logging per the currently loaded setup."""
         # return self.command("MSTART")
 
@@ -191,7 +191,8 @@ class OPSClient:
         def wait_until_idle(client, timeout=10, poll_interval=0.3):
             start = time.time()
             while time.time() - start < timeout:
-                status = client.command("MSTATUS")  # or however your client exposes this
+                # or however your client exposes this
+                status = client.command("MSTATUS")
                 if "Idle" in status:
                     return True
                 time.sleep(poll_interval)
@@ -199,17 +200,19 @@ class OPSClient:
 
         # after MUPDATE:
         if wait_until_idle(self):
-            # Let the user start the measurement by pressing Enter
-            print("Enter y/n to start/exit the measurement...\n")
-            user_input = input()  # Wait for user input
-            if user_input.strip().lower() == "y":
-                print("Starting the measurement...")
-            elif user_input.strip().lower() == "n":
-                print("Exiting without starting the measurement.")
-                return "Measurement not started."
-            else:
-                print("Invalid input. Exiting without starting the measurement.")
-                return "Measurement not started."            
+
+            # # Let the user start the measurement by pressing Enter
+            # print("Enter y/n to start/exit the measurement...\n")
+            # user_input = input()  # Wait for user input
+            # if user_input.strip().lower() == "y":
+            #     print("Starting the measurement...")
+            # elif user_input.strip().lower() == "n":
+            #     print("Exiting without starting the measurement.")
+            #     return "Measurement not started."
+            # else:
+            #     print("Invalid input. Exiting without starting the measurement.")
+            #     return "Measurement not started."
+
             return self.command("MSTART")
         else:
             print("Instrument never returned to Idle before timeout")
@@ -298,7 +301,8 @@ class OPSClient:
         """
         n_channels = len(cut_points_um) - 1
         if not (1 <= n_channels <= 16):
-            raise ValueError("cut_points_um must define between 1 and 16 channels")
+            raise ValueError(
+                "cut_points_um must define between 1 and 16 channels")
         return self.command("WMODECHSETUP", n_channels, *cut_points_um)
 
     # ------------------------------------------------------------------ #
@@ -409,7 +413,8 @@ class OPSClient:
 
     def delete_protocol(self, index: int) -> str:
         if not (7 <= index <= 16):
-            raise ValueError("Only protocol slots 7-16 are user-deletable per the manual")
+            raise ValueError(
+                "Only protocol slots 7-16 are user-deletable per the manual")
         return self.command("WMODEDELETEPROTOCOL", index)
 
 

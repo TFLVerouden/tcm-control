@@ -13,7 +13,7 @@ import signal
 REPO_ROOT = Path(__file__).resolve().parent
 
 # Hardcode the path here to run experiment multiple times with the same config
-CONFIG_PATH = REPO_ROOT / "src" / "tcm_control" / "config" / "config_piv.toml"
+CONFIG_PATH = REPO_ROOT / "src" / "tcm_control" / "config" / "config.toml"
 
 
 def main() -> int:
