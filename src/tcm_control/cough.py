@@ -413,29 +413,30 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
                         recorded_csv = ops.collect_recording()
                         print(f"Saved data to {recorded_csv}")
-                    # Produce a cough
-                    run_log_path = tcm.run(
-                        output_dir=output_dir,
-                        run_nr_start=(run_idx + 1),
-                        save_logs=save_data,
-                    )
 
-                    # Clean the channel
-                    tcm.clean(
-                        clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
-                        valve_open_duration_s=cleaning_inputs["valve_open_duration_s"],
-                        dry_pressure_bar=cleaning_inputs["dry_pressure_bar"],
-                        dry_duration_s=cleaning_inputs["dry_duration_s"],
-                        dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"],
-                        cycle_count=cleaning_inputs["cycle_count"],
-                    )
+                    # # Produce a cough
+                    # run_log_path = tcm.run(
+                    #     output_dir=output_dir,
+                    #     run_nr_start=(run_idx + 1),
+                    #     save_logs=save_data,
+                    # )
 
-                    # Image the channel after cleaning
-                    _ = take_snapshot(camera, tcm)
+                        # Clean the channel
+                        tcm.clean(
+                            clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
+                            valve_open_duration_s=cleaning_inputs["valve_open_duration_s"],
+                            dry_pressure_bar=cleaning_inputs["dry_pressure_bar"],
+                            dry_duration_s=cleaning_inputs["dry_duration_s"],
+                            dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"],
+                            cycle_count=cleaning_inputs["cycle_count"],
+                        )
 
-                    # Cache first run log for the summary plot in finalization
-                    if run_idx == 0:
-                        first_run_log_path = run_log_path
+                        # Image the channel after cleaning
+                        _ = take_snapshot(camera, tcm)
+
+                        # Cache first run log for the summary plot in finalization
+                        if run_idx == 0:
+                            first_run_log_path = run_log_path
 
             # PIV mode
             case "piv":
