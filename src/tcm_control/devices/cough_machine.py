@@ -333,6 +333,20 @@ class CoughMachine(PoFSerialDevice):
         raise RuntimeError(
             "Could not reach setpoint value or pressure too unstable.")
 
+    def set_nebuliser_pressure(self, pressure_bar: float, *, echo: Optional[bool] = None) -> str:
+        """Set nebuliser pressure with `M <bar>`.
+
+        Expects a reply beginning with `SET_NEB_PRESSURE`.
+        """
+        if pressure_bar < 0 or pressure_bar > MAX_PRESSURE_BAR:
+            raise ValueError(
+                f"Pressure must be between 0 and {MAX_PRESSURE_BAR} bar")
+
+        reply, _lines = self._query_and_drain(
+            f"N {pressure_bar}", expected_prefix="SET_NEB_PRESSURE", echo=echo
+        )
+        return reply or ""
+
     def open_solenoid(self, *, echo: Optional[bool] = None) -> str:
         """Open the solenoid valve using `O`.
 
