@@ -166,10 +166,10 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
               "press Ctrl+C at any time to abort and safely exit")
 
         # Initialise cough machine, and optionally pump
-        tcm = CoughMachine(
-            debug=cough_inputs["debug_mode"], expected_id="TCM_control")
+        tcm = CoughMachine(debug=cough_inputs["debug_mode"])
         neb = CoughMachine(
-            debug=cough_inputs["debug_mode"], expected_id="NEB_control")
+            debug=cough_inputs["debug_mode"], expected_id="NEB_control",
+            name="Nebuliser_MCU", supported_protocol_version=6)
 
         # Register device so interrupt cleanup can call quit() on it
         set_active_tcm(tcm)
@@ -405,9 +405,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
                 # assert pump is not None
 
-                piv_nebuliser_pressure_bar = pump_inputs["piv_nebuliser_pressure_bar"]
-                # pump_rate_ml_per_min = pump_inputs["pump_rate_ml_per_min"]
-                assert piv_nebuliser_pressure_bar is not None
+                nebuliser_pressure_bar = nebuliser_inputs["pressure_bar"]
+                nebuliser_fill_time_s = nebuliser_inputs["fill_time_s"]
                 # assert pump_rate_ml_per_min is not None
 
                 # Explicitly require operator confirmation of nebuliser pressure
@@ -420,9 +419,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 # print("Aborted.")
                 # exit(1)
 
-                # Ask user to start the experiment
-                ask_start_confirmation(experiment_name=experiment_name)
-
                 # Record temperature and humidity
                 temperature_start, humidity_start = tcm.read_temperature_humidity(
                     show_reading=True,
@@ -430,14 +426,20 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
                 # Execute configured number of PIV runs with pump start/stop timing
                 for run_idx in range(cough_inputs["nr_runs"]):
-                    # Fill the tank for a minute
+                    # Fill the nebuliser tank before each run.
                     neb.set_nebuliser(True)
                     wait_with_progress(
-                        wait_s=120, label="Filling nebuliser tank...")
+                        wait_s=nebuliser_fill_time_s,
+                        label="Filling nebuliser tank...",
+                    )
+
+                    # Ask user to start the experiment
+                    ask_start_confirmation(experiment_name=experiment_name)
 
                     # Start liquid feed before each run
                     # pump.infuse(pump_rate_ml_mn=pump_rate_ml_per_min)
-                    neb.set_nebuliser_pressure(piv_nebuliser_pressure_bar)
+                    print("Turning on nebuliser air flow")
+                    neb.set_nebuliser_pressure(nebuliser_pressure_bar)
                     pump_stopped = False
                     try:
                         if pump_inputs["piv_pump_start_before_run_s"] > 0:
@@ -460,6 +462,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                                 float(pump_inputs["piv_pump_stop_after_run_s"]))
 
                         neb.set_nebuliser(False)
+                        print("Turning off nebuliser air flow")
                         neb.set_nebuliser_pressure(0.0)
                         pump_stopped = True
 
@@ -484,6 +487,12 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         # Always stop pump, even if the run or waits raise an error
                         if not pump_stopped:
                             neb.set_nebuliser_pressure(0.0)
+
+                        # Flush nebuliser chamber before cleaning channel
+                        neb.set_nebuliser_pressure(0.3)
+                        wait_with_progress(
+                            wait_s=10, label="Flushing nebuliser chamber...")
+                        neb.set_nebuliser_pressure(0.0)
 
                         # Run cleaning routine every cycle
                         tcm.clean(clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
