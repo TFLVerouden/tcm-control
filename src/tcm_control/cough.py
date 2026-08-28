@@ -27,6 +27,7 @@ from tcm_utils.io_utils import (
     prompt_input,
     prompt_yes_no,
     wait_with_progress,
+    countdown_beep,
 )
 from tcm_utils.time_utils import timestamp_str
 from tcm_control.thin_film import take_snapshot, tube_cleaning, make_layer
@@ -42,6 +43,15 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     Returns:
         The experiment output directory path, or None when saving is disabled.
     """
+    # --------------------------------------------------------------------------
+    # 0) Set up logging and interrupt handling
+    # --------------------------------------------------------------------------
+
+    # Set up logger to write all terminal prints to a file when saving is
+    # enabled, start in temporary location until experiment folder is created
+    console_log = logger.ConsoleLogCapture(
+        logger.create_pending_console_log_path())
+
     # Reset interrupt state for a fresh run and clear stale references.
     reset_interrupt_cleanup_state()
     set_active_tcm(None)
@@ -119,13 +129,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     # 3) Set up experiment directory and logging
     # --------------------------------------------------------------------------
 
-    # Set up logger to write all terminal prints to a file when saving is
-    # enabled, start in temporary location until experiment folder is created
-    console_log: Optional[logger.ConsoleLogCapture] = None
     if save_data:
-        console_log = logger.ConsoleLogCapture(
-            logger.create_pending_console_log_path())
-
         # Resolve and validate the root folder where this experiment run will be stored
         series_directory = ensure_directory_path(
             exp_conf["series_directory"],
@@ -151,7 +155,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         # Keep a clear runtime message when the run is intentionally non-persistent
         print("Data saving disabled via config setting series_directory='None'.")
 
-    # Ensure the experiment name is never empty because it is used in folder naming
+    # Ensure the experiment name is never empty because it is used in
+    # folder naming and prints
     experiment_name = ensure_non_empty_text(
         exp_conf["name"],
         prompt=experiment_prompt,
@@ -174,6 +179,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         )
         # Register folder globally so Ctrl+C cleanup can optionally remove it
         set_active_output_dir(output_dir)
+
         # Move the temp console log into the experiment folder now that it exists
         console_log_path = console_log.relocate(
             logger.create_console_log_path(output_dir))
@@ -319,9 +325,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 #             run_nr_start=(run_idx + 1),
                 #             save_logs=save_data,
                 #         )
-                #         # Cache first run log for the summary plot in finalization
-                #         if run_idx == 0 and saved_run_log_paths:
-                #             first_run_log_path = saved_run_log_paths[0]
 
                 #         # Turn off pump
                 #         pump.stop()
@@ -391,6 +394,14 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         save_logs=save_data,
                     )
 
+                    # Plot run log
+                    if save_data and run_log_path is not None:
+                        plot_run_log(
+                            run_log_path=run_log_path,
+                            experiment_dir=output_dir,
+                            show=False,
+                        )
+
                     # Clean the channel
                     tcm.clean(
                         clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
@@ -404,31 +415,26 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     # Image the channel after cleaning
                     _ = take_snapshot(camera, tcm)
 
-                    # Cache first run log for the summary plot in finalization
-                    if run_idx == 0:
-                        first_run_log_path = run_log_path
-
             case "piv":
                 # ------------------------------------------------------------------
                 # 5C) PIV mode
                 # ------------------------------------------------------------------
-                # TODO: Remove pump references
 
-                # assert pump is not None
-
+                # Initialise nebuliser parameters
                 nebuliser_pressure_bar = nebuliser_inputs["pressure_bar"]
                 nebuliser_fill_time_s = nebuliser_inputs["fill_time_s"]
-                # assert pump_rate_ml_per_min is not None
 
-                # Explicitly require operator confirmation of nebuliser pressure
-                # confirm_piv_ready = prompt_yes_no(
-                # "Press ENTER to confirm the nebuliser is pressurised to "
-                # f"{piv_nebuliser_pressure_bar} bar...",
-                # default=True,
-                # )
-                # if not confirm_piv_ready:
-                # print("Aborted.")
-                # exit(1)
+                # Before first run, fill the nebuliser tank
+                # Fill the nebuliser tank before each run.
+                neb.set_nebuliser(True)
+                wait_with_progress(
+                    wait_s=nebuliser_fill_time_s,
+                    label="Filling nebuliser tank...",
+                )
+
+                # Ask user to start the experiment
+                ask_start_confirmation(experiment_name=experiment_name)
+                countdown_beep()
 
                 # Record temperature and humidity
                 temperature_start, humidity_start = tcm.read_temperature_humidity(
@@ -437,41 +443,37 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
                 # Execute configured number of PIV runs with pump start/stop timing
                 for run_idx in range(cough_inputs["nr_runs"]):
-                    # Fill the nebuliser tank before each run.
-                    neb.set_nebuliser(True)
-                    wait_with_progress(
-                        wait_s=nebuliser_fill_time_s,
-                        label="Filling nebuliser tank...",
-                    )
 
-                    # Ask user to start the experiment
-                    ask_start_confirmation(experiment_name=experiment_name)
-
-                    # Start liquid feed before each run
-                    # pump.infuse(pump_rate_ml_mn=pump_rate_ml_per_min)
+                    # Start nebuliser before each run
                     print("Turning on nebuliser air flow")
                     neb.set_nebuliser_pressure(nebuliser_pressure_bar)
                     pump_stopped = False
+
+                    # If an error occurs, the nebuliser will always be turned off
+                    # TODO: This should be part of the cough machine cleanup routine
                     try:
+
+                        # Optional pre-run pump lead-in time for stable nebulisation
                         if pump_inputs["piv_pump_start_before_run_s"] > 0:
-                            # Optional pre-run pump lead-in time for stable nebulisation
                             print(
                                 f"Waiting {pump_inputs['piv_pump_start_before_run_s']} s before run {run_idx + 1}/{cough_inputs['nr_runs']}"
                             )
                             time.sleep(
                                 float(pump_inputs["piv_pump_start_before_run_s"]))
 
+                        # Start the run
                         tcm.start_run()
                         tcm.wait_for_run_finished()
 
+                        # Optional post-run pump tail time after actuation finishes
                         if pump_inputs["piv_pump_stop_after_run_s"] > 0:
-                            # Optional post-run pump tail time after actuation finishes
                             print(
                                 f"Waiting {pump_inputs['piv_pump_stop_after_run_s']} s after run {run_idx + 1}/{cough_inputs['nr_runs']}"
                             )
                             time.sleep(
                                 float(pump_inputs["piv_pump_stop_after_run_s"]))
 
+                        # Turn off nebuliser
                         neb.set_nebuliser(False)
                         print("Turning off nebuliser air flow")
                         neb.set_nebuliser_pressure(0.0)
@@ -491,13 +493,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                                 show=False,
                             )
 
-                        # Cache first run log for the summary plot in finalization
-                        if run_idx == 0:
-                            first_run_log_path = run_log_path
                     finally:
                         # Always stop pump, even if the run or waits raise an error
                         if not pump_stopped:
                             neb.set_nebuliser_pressure(0.0)
+                            neb.set_nebuliser(False)
 
                         # Flush nebuliser chamber before cleaning channel
                         neb.set_nebuliser_pressure(0.3)
@@ -513,9 +513,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                                   dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"],
                                   cycle_count=cleaning_inputs["cycle_count"])
 
-                    # Skip inter-run wait/confirm prompts after the final run
-                    is_last_run = run_idx == (cough_inputs["nr_runs"] - 1)
-                    if not is_last_run:
+                    # Wait between coughs if needed
+                    if run_idx > 0:
                         wait_or_confirm_next_run(
                             next_run_number=(run_idx + 2),
                             nr_runs=cough_inputs["nr_runs"],
@@ -618,6 +617,10 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     # ------------------------------------------------------------------
     # 7) Clear interrupt-handling references and return
     # ------------------------------------------------------------------
+
+    # When not saving data, remove the temporary console log file to avoid cluttering the working directory
+    if not save_data and console_log is not None:
+        console_log.remove()
 
     # Clear registered devices after a normal, successful run.
     set_active_tcm(None)

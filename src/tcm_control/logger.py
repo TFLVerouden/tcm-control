@@ -273,6 +273,14 @@ class ConsoleLogCapture:
         except Exception:
             pass
 
+    def remove(self) -> None:
+        """Delete the log file and stop mirroring output."""
+        self.close()
+        try:
+            self.log_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
 
 @contextmanager
 def capture_terminal_output(log_path: Path):
