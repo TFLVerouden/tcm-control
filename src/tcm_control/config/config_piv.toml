@@ -1,7 +1,7 @@
 [experiment]
 name = "" # keep empty to prompt
 mode = "piv" # droplet | film | piv
-series_directory = "C:\CoughMachineData\260630_piv\tests" # keep empty to prompt; set to "None" to disable saving data
+series_directory = "C:\CoughMachineData\260820_piv\tests" # keep empty to prompt; set to "None" to disable saving data
 save_data = true
 
 [inputs.cough]
@@ -15,23 +15,20 @@ record_droplet_size = false
 flow_curve_csv_path = "droplet_atomisation_campaign"
 wait_before_run_ms = 0
 
+[devices.cough_machine.inputs.nebuliser]
+fill_time_s = 60
+pressure_bar = 0.1
+
 [devices.cough_machine.inputs.cleaning]
 clean_pressure_bar = 4.0
-valve_open_duration_s = 2.5
-cycle_count = 0
+valve_open_duration_s = 10
+cycle_count = 1
 
 [devices.cough_machine.inputs.tank]
-pressure_bar = 1.5
+pressure_bar = 2
 settling_time_s = 120.0
 avg_window_s = 10.0
 tolerance_bar = 0.02
 poll_interval_s = 0.2
 intermediate_diff_bar = 0.1 # set together with intermediate_time_s (empty disables)
 intermediate_time_s = 5 # set together with intermediate_diff_bar (empty disables)
-
-[devices.pump.inputs]
-syringe_volume_ml = 2.5
-pump_rate_ml_per_min = 7.9
-piv_pump_start_before_run_s = 0.5
-piv_pump_stop_after_run_s = 0.5
-piv_nebuliser_pressure_bar = 0.15

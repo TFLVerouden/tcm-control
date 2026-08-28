@@ -19,7 +19,7 @@ import tomllib
 
 
 VALID_EXPERIMENT_MODES = {"droplet", "film", "piv"}
-PUMP_REQUIRED_MODES = {"droplet", "piv"}
+PUMP_REQUIRED_MODES = {"droplet"}
 
 
 # -----------------------------------------------------------------------------
@@ -233,6 +233,30 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
                 default=0.0,
             )
         ),
+        "nebuliser": {
+            "fill_time_s": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "nebuliser",
+                    "fill_time_s",
+                    default=60.0,
+                )
+            ),
+            "pressure_bar": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "nebuliser",
+                    "pressure_bar",
+                    default=0.1,
+                )
+            ),
+        },
         "tank": {
             "pressure_bar": float(
                 _nested_get(
@@ -419,6 +443,19 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             "intermediate_diff_bar and intermediate_time_s together."
         )
 
+    nebuliser_inputs = cough_machine_inputs["nebuliser"]
+    if experiment_mode == "piv":
+        if nebuliser_inputs["fill_time_s"] < 0:
+            raise ValueError(
+                "Config [devices.cough_machine.inputs.nebuliser].fill_time_s "
+                "must be >= 0."
+            )
+        if nebuliser_inputs["pressure_bar"] <= 0:
+            raise ValueError(
+                "Config [devices.cough_machine.inputs.nebuliser].pressure_bar "
+                "must be > 0."
+            )
+
     cough_machine_inputs["wait_before_run_us"] = int(
         cough_machine_inputs["wait_before_run_ms"] * 1000
     )
@@ -539,11 +576,11 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             "syringe_volume_ml or syringe_diameter_mm for droplet and piv modes."
         )
 
-    if experiment_mode in {"droplet", "piv"}:
+    if experiment_mode == "droplet":
         if pump_inputs["pump_rate_ml_per_min"] is None:
             raise ValueError(
-                "Config [devices.pump.inputs].pump_rate_ml_per_min "
-                "must be set for droplet and piv modes."
+                "Config [devices.pump.inputs].pump_rate_ml_per_min must be set "
+                "for droplet mode."
             )
 
     if experiment_mode == "piv":

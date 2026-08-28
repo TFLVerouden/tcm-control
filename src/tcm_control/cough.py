@@ -62,6 +62,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     cough_machine_inputs = config["devices"]["cough_machine"]["inputs"]
     tank_inputs = cough_machine_inputs["tank"]
     cleaning_inputs = cough_machine_inputs["cleaning"]
+    nebuliser_inputs = cough_machine_inputs["nebuliser"]
     pump_inputs = config["devices"]["pump"]["inputs"]
     camera_inputs = config["devices"]["camera"]["inputs"]
 
