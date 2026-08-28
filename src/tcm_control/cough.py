@@ -48,11 +48,12 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     set_active_pump(None)
     set_active_output_dir(None)
 
-    # ------------------------------------------------------------------
-    # 1) Load and validate configuration
-    # ------------------------------------------------------------------
+    print("Starting cough machine experiment, "
+          "press Ctrl+C at any time to abort and safely exit")
 
-    # LOAD AND UNPACK VARIABLES
+    # --------------------------------------------------------------------------
+    # 1) Load and validate config file & variables
+    # --------------------------------------------------------------------------
 
     # Load the experiment config from the TOML file and validate it
     config = load_experiment_config(config_path)
@@ -68,6 +69,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     camera_inputs = config["devices"]["camera"]["inputs"]
     vertical_stage_inputs = config["devices"]["vertical_stage"]["inputs"]
     spraytec_inputs = config["devices"]["spraytec"]["inputs"]
+
+    # Default to saving unless config explicitly disables it
+    save_data = bool(exp_conf.get("save_data", True))
 
     # Cache the selected mode for the central match/case branch below
     experiment_mode = exp_conf["mode"]
@@ -92,19 +96,36 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     spraytec_audit_path = None
     spraytec_laser_intensity = None
 
-    # SET UP EXPERIMENT DIRECTORY
+    # --------------------------------------------------------------------------
+    # 2) Make connections to external devices
+    # --------------------------------------------------------------------------
 
-    # Default to saving unless config explicitly disables it
-    save_data = bool(exp_conf.get("save_data", True))
+    # Initialise cough machine
+    tcm = CoughMachine(debug=cough_inputs["debug_mode"])
 
-    # Start mirroring stdout/stderr to a temp log right away so prompts below
-    # are captured even before the experiment folder exists.
+    # TODO: temporarily added nebuliser on separate MCU
+    neb = CoughMachine(
+        debug=cough_inputs["debug_mode"], expected_id="NEB_control",
+        name="Nebuliser_MCU", supported_protocol_version=6)
+
+    # Register device so interrupt cleanup can call quit() on it
+    set_active_tcm(tcm)
+
+    # Vertical stage is only needed when SprayTec measurements are enabled.
+    if record_droplet_size:
+        lift = VerticalStage()
+
+    # --------------------------------------------------------------------------
+    # 3) Set up experiment directory and logging
+    # --------------------------------------------------------------------------
+
+    # Set up logger to write all terminal prints to a file when saving is
+    # enabled, start in temporary location until experiment folder is created
     console_log: Optional[logger.ConsoleLogCapture] = None
     if save_data:
         console_log = logger.ConsoleLogCapture(
             logger.create_pending_console_log_path())
 
-    if save_data:
         # Resolve and validate the root folder where this experiment run will be stored
         series_directory = ensure_directory_path(
             exp_conf["series_directory"],
@@ -124,6 +145,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 f"(latest in series: {latest_experiment_name}): "
             )
     else:
+        # If data is not being saved, we don't need a series directory
         series_directory = None
         experiment_prompt = "Enter experiment name: "
         # Keep a clear runtime message when the run is intentionally non-persistent
@@ -135,10 +157,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         prompt=experiment_prompt,
         empty_error="Experiment name cannot be empty.",
     )
-
-    # ------------------------------------------------------------------
-    # 2) Prepare output folder and host logging
-    # ------------------------------------------------------------------
 
     # Capture run start timestamp once and reuse it across artifacts and metadata
     time_start = timestamp_str()
@@ -159,29 +177,17 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         # Move the temp console log into the experiment folder now that it exists
         console_log_path = console_log.relocate(
             logger.create_console_log_path(output_dir))
+        print(f"Session console log file: {console_log_path}")
     else:
         # No output directory exists in non-saving mode
         set_active_output_dir(None)
 
-    # Set up logger to write all prints to a file when saving is enabled.
+    # TODO: Check whether this try-finally clause is still needed
     try:
+
         # --------------------------------------------------------------
-        # 3) Initialize devices and resolve run geometry
+        # 4) Set up devices and resolve run geometry
         # --------------------------------------------------------------
-
-        if console_log_path is not None:
-            print(f"Session console log file: {console_log_path}")
-        print("Starting cough machine experiment, "
-              "press Ctrl+C at any time to abort and safely exit")
-
-        # Initialise cough machine, and optionally pump
-        tcm = CoughMachine(debug=cough_inputs["debug_mode"])
-        neb = CoughMachine(
-            debug=cough_inputs["debug_mode"], expected_id="NEB_control",
-            name="Nebuliser_MCU", supported_protocol_version=6)
-
-        # Register device so interrupt cleanup can call quit() on it
-        set_active_tcm(tcm)
 
         # In droplet and PIV modes, set up the pump
         # if experiment_mode in ["droplet", "piv"]:
@@ -276,71 +282,67 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 "Press ENTER to confirm that SprayTec SOP is waiting for a trigger...",
                 default=True)
 
-        # ------------------------------------------------------------------
-        # 4) Run mode-specific experiment behavior
-        # ------------------------------------------------------------------
         match experiment_mode:
-            # # Droplet mode
-            # case "droplet":
-            #     # ------------------------------------------------------
-            #     # Mode: Droplet
-            #     # ------------------------------------------------------
+            case "droplet":
+                # ------------------------------------------------------------------
+                # 5A) Droplet atomisation mode
+                # ------------------------------------------------------------------
+                raise NotImplementedError("W.I.P.")
 
-            #     assert pump is not None
+                #     assert pump is not None
 
-            #     # Wait for user to start the experiment
-            #     ask_start_confirmation(experiment_name=experiment_name)
+                #     # Wait for user to start the experiment
+                #     ask_start_confirmation(experiment_name=experiment_name)
 
-            #     # Record temperature and humidity
-            #     temperature_start, humidity_start = tcm.read_temperature_humidity()
+                #     # Record temperature and humidity
+                #     temperature_start, humidity_start = tcm.read_temperature_humidity()
 
-            #     # Execute configured number of single-cough runs
-            #     for run_idx in range(cough_inputs["nr_runs"]):
-            #         # Turn on syringe pump
-            #         pump.infuse(
-            #             pump_rate_ml_mn=pump_inputs["pump_rate_ml_per_min"])
+                #     # Execute configured number of single-cough runs
+                #     for run_idx in range(cough_inputs["nr_runs"]):
+                #         # Turn on syringe pump
+                #         pump.infuse(
+                #             pump_rate_ml_mn=pump_inputs["pump_rate_ml_per_min"])
 
-            #         # Optionally let pump run before recording
-            #         nr_droplets_to_skip = pump_inputs[
-            #             "nr_droplets_to_skip_before_recording"
-            #         ]
-            #         if nr_droplets_to_skip > 0:
-            #             print("Flushing before starting cough")
-            #             tcm.count_droplets(
-            #                 nr_droplets=nr_droplets_to_skip, let_drip=True)
+                #         # Optionally let pump run before recording
+                #         nr_droplets_to_skip = pump_inputs[
+                #             "nr_droplets_to_skip_before_recording"
+                #         ]
+                #         if nr_droplets_to_skip > 0:
+                #             print("Flushing before starting cough")
+                #             tcm.count_droplets(
+                #                 nr_droplets=nr_droplets_to_skip, let_drip=True)
 
-            #         # Then go into droplet detection mode
-            #         saved_run_log_paths = tcm.detect_droplets_and_run(
-            #             nr_runs=1,
-            #             output_dir=output_dir,
-            #             run_nr_start=(run_idx + 1),
-            #             save_logs=save_data,
-            #         )
-            #         # Cache first run log for the summary plot in finalization
-            #         if run_idx == 0 and saved_run_log_paths:
-            #             first_run_log_path = saved_run_log_paths[0]
+                #         # Then go into droplet detection mode
+                #         saved_run_log_paths = tcm.detect_droplets_and_run(
+                #             nr_runs=1,
+                #             output_dir=output_dir,
+                #             run_nr_start=(run_idx + 1),
+                #             save_logs=save_data,
+                #         )
+                #         # Cache first run log for the summary plot in finalization
+                #         if run_idx == 0 and saved_run_log_paths:
+                #             first_run_log_path = saved_run_log_paths[0]
 
-            #         # Turn off pump
-            #         pump.stop()
+                #         # Turn off pump
+                #         pump.stop()
 
-            #         # Skip inter-run wait/confirm prompts after the final run
-            #         is_last_run = run_idx == (cough_inputs["nr_runs"] - 1)
-            #         if not is_last_run:
-            #             wait_or_confirm_next_run(
-            #                 next_run_number=(run_idx + 2),
-            #                 nr_runs=cough_inputs["nr_runs"],
-            #                 multi_run_interval_s=float(
-            #                     cough_inputs["multi_run_interval_s"]),
-            #                 confirm_before_starting_next_run=cough_inputs[
-            #                     "confirm_before_starting_next_run"
-            #                 ],
-            #             )
+                #         # Skip inter-run wait/confirm prompts after the final run
+                #         is_last_run = run_idx == (cough_inputs["nr_runs"] - 1)
+                #         if not is_last_run:
+                #             wait_or_confirm_next_run(
+                #                 next_run_number=(run_idx + 2),
+                #                 nr_runs=cough_inputs["nr_runs"],
+                #                 multi_run_interval_s=float(
+                #                     cough_inputs["multi_run_interval_s"]),
+                #                 confirm_before_starting_next_run=cough_inputs[
+                #                     "confirm_before_starting_next_run"
+                #                 ],
+                #             )
 
-            # Film mode
             case "film":
-                # ------------------------------------------------------
-                # Mode: Film
-                # ------------------------------------------------------
+                # ------------------------------------------------------------------
+                # 5B) Film atomisation mode
+                # ------------------------------------------------------------------
 
                 # Ask user to start the experiment
                 ask_start_confirmation(experiment_name=experiment_name)
@@ -406,11 +408,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     if run_idx == 0:
                         first_run_log_path = run_log_path
 
-            # PIV mode
             case "piv":
-                # ------------------------------------------------------
-                # Mode: PIV
-                # ------------------------------------------------------
+                # ------------------------------------------------------------------
+                # 5C) PIV mode
+                # ------------------------------------------------------------------
+                # TODO: Remove pump references
 
                 # assert pump is not None
 
@@ -525,7 +527,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         )
 
         # ------------------------------------------------------------------
-        # 5) Finalize run and write artifacts
+        # 6) Finalize run and write (meta)data
         # ------------------------------------------------------------------
         if save_data:
             assert output_dir is not None
@@ -609,11 +611,12 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 print("No data was saved (series_directory='None').")
             print("Exiting.")
     finally:
+        # TODO: Check whether this try-finally clause is still needed
         if console_log is not None:
             console_log.close()
 
     # ------------------------------------------------------------------
-    # 6) Clear interrupt-handling references and return
+    # 7) Clear interrupt-handling references and return
     # ------------------------------------------------------------------
 
     # Clear registered devices after a normal, successful run.
