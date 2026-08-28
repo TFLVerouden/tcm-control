@@ -172,10 +172,12 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
         )
 
     series_directory = _normalize_optional_path_string(series_directory_raw)
-    save_data = True
     if series_directory is not None and series_directory.strip().lower() == "none":
         series_directory = None
+    if series_directory is None:
         save_data = False
+    else:
+        save_data = True
 
     # ------------------------------------------------------------------
     # Cough run controls

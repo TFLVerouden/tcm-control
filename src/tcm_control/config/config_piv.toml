@@ -1,8 +1,7 @@
 [experiment]
 name = "" # keep empty to prompt
 mode = "piv" # droplet | film | piv
-series_directory = "C:\CoughMachineData\260820_piv\tests" # keep empty to prompt; set to "None" to disable saving data
-save_data = true
+#series_directory = "C:\CoughMachineData\260820_piv\tests" # keep empty to prompt; set to "None" to disable saving data
 
 [inputs.cough]
 debug_mode = false
