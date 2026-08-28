@@ -343,7 +343,7 @@ class CoughMachine(PoFSerialDevice):
                 f"Pressure must be between 0 and {MAX_PRESSURE_BAR} bar")
 
         reply, _lines = self._query_and_drain(
-            f"N {pressure_bar}", expected_prefix="SET_NEB_PRESSURE", echo=echo
+            f"M {pressure_bar}", expected_prefix="SET_NEB_PRESSURE", echo=echo
         )
         return reply or ""
 
