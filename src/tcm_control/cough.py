@@ -1,6 +1,5 @@
 """Main experiment runner for the Twente Cough Machine."""
 
-from contextlib import nullcontext
 import time
 from pathlib import Path
 
@@ -53,7 +52,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     # 1) Load and validate configuration
     # ------------------------------------------------------------------
 
-    # Load and unpack normalized config dictionaries.
+    # LOAD AND UNPACK VARIABLES
+
+    # Load the experiment config from the TOML file and validate it
     config = load_experiment_config(config_path)
 
     # Split the normalized config into local sections used throughout this run
@@ -65,13 +66,43 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     nebuliser_inputs = cough_machine_inputs["nebuliser"]
     pump_inputs = config["devices"]["pump"]["inputs"]
     camera_inputs = config["devices"]["camera"]["inputs"]
-
     vertical_stage_inputs = config["devices"]["vertical_stage"]["inputs"]
     spraytec_inputs = config["devices"]["spraytec"]["inputs"]
+
     # Cache the selected mode for the central match/case branch below
     experiment_mode = exp_conf["mode"]
+
+    # Toggle for optional SprayTec setup and post-processing branches
+    record_droplet_size = bool(cough_inputs["record_droplet_size"])
+
+    # Host-level pre-trigger delay that is sent to the cough machine
+    wait_before_run_us = cough_machine_inputs["wait_before_run_us"]
+
+    # Initialise variables
+    pump = None
+    lift = None
+    lift_pos_z_mm = None
+    stage_pos_x_mm = None
+    stage_pos_y_mm = None
+    spraytec_target_z_mm = None
+    spraytec = None
+    spraytec_x_mm = None
+    spraytec_y_mm = None
+    spraytec_z_mm = None
+    spraytec_audit_path = None
+    spraytec_laser_intensity = None
+
+    # SET UP EXPERIMENT DIRECTORY
+
     # Default to saving unless config explicitly disables it
     save_data = bool(exp_conf.get("save_data", True))
+
+    # Start mirroring stdout/stderr to a temp log right away so prompts below
+    # are captured even before the experiment folder exists.
+    console_log: Optional[logger.ConsoleLogCapture] = None
+    if save_data:
+        console_log = logger.ConsoleLogCapture(
+            logger.create_pending_console_log_path())
 
     if save_data:
         # Resolve and validate the root folder where this experiment run will be stored
@@ -105,26 +136,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         empty_error="Experiment name cannot be empty.",
     )
 
-    # Toggle for optional SprayTec setup and post-processing branches
-    record_droplet_size = bool(cough_inputs["record_droplet_size"])
-
-    # Host-level pre-trigger delay that is sent to the cough machine
-    wait_before_run_us = cough_machine_inputs["wait_before_run_us"]
-
-    pump = None
-    lift = None
-    lift_pos_z_mm = None
-    stage_pos_x_mm = None
-    stage_pos_y_mm = None
-    spraytec_target_z_mm = None
-    spraytec = None
-    spraytec_x_mm = None
-    spraytec_y_mm = None
-    spraytec_z_mm = None
-    spraytec_audit_path = None
-    spraytec_laser_intensity = None
-    first_run_log_path = None
-
     # ------------------------------------------------------------------
     # 2) Prepare output folder and host logging
     # ------------------------------------------------------------------
@@ -135,6 +146,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     console_log_path: Optional[Path] = None
     if save_data:
         assert series_directory is not None
+        assert console_log is not None
         # Create output directory for this experiment.
         output_dir = logger.create_experiment_dir(
             series_directory, experiment_name, start_time=time_start)
@@ -144,18 +156,15 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         )
         # Register folder globally so Ctrl+C cleanup can optionally remove it
         set_active_output_dir(output_dir)
-        # Derive fixed path for host console logging in this experiment folder
-        console_log_path = logger.create_console_log_path(output_dir)
-        # Mirror stdout/stderr to the file for reproducibility and debugging
-        logging_context = logger.capture_terminal_output(console_log_path)
+        # Move the temp console log into the experiment folder now that it exists
+        console_log_path = console_log.relocate(
+            logger.create_console_log_path(output_dir))
     else:
         # No output directory exists in non-saving mode
         set_active_output_dir(None)
-        # Use a no-op context manager so code below stays linear
-        logging_context = nullcontext()
 
     # Set up logger to write all prints to a file when saving is enabled.
-    with logging_context:
+    try:
         # --------------------------------------------------------------
         # 3) Initialize devices and resolve run geometry
         # --------------------------------------------------------------
@@ -599,6 +608,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             if not save_data:
                 print("No data was saved (series_directory='None').")
             print("Exiting.")
+    finally:
+        if console_log is not None:
+            console_log.close()
 
     # ------------------------------------------------------------------
     # 6) Clear interrupt-handling references and return

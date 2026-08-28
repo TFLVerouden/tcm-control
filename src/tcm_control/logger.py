@@ -214,31 +214,74 @@ class _TimestampedTee(io.TextIOBase):
     def isatty(self) -> bool:
         return self._terminal_stream.isatty()
 
+    def set_log_stream(self, log_stream: TextIO) -> None:
+        """Redirect subsequent writes to a new log file after relocation."""
+        self._log_stream = log_stream
+        self._log_stream_broken = False
+        self._line_start = True
+
+
+PENDING_CONSOLE_LOGS_DIRNAME = ".logs"
+
+
+def create_pending_console_log_path() -> Path:
+    """Return a temp path (repo root/.logs) to log to before the experiment dir exists."""
+    from tcm_utils.file_dialogs import find_repo_root
+
+    logs_dir = find_repo_root() / PENDING_CONSOLE_LOGS_DIRNAME
+    return logs_dir / f"pending_{timestamp_str()}.txt"
+
+
+class ConsoleLogCapture:
+    """Mirrors stdout/stderr to a log file, relocatable while the process runs."""
+
+    def __init__(self, log_path: Path) -> None:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        self.log_path = log_path
+        self._log_stream = open(log_path, "a", encoding="utf-8")
+        self._original_stdout = sys.stdout
+        self._original_stderr = sys.stderr
+        self._stdout_tee = _TimestampedTee(
+            self._original_stdout, self._log_stream, "STDOUT")
+        self._stderr_tee = _TimestampedTee(
+            self._original_stderr, self._log_stream, "STDERR")
+        sys.stdout = self._stdout_tee
+        sys.stderr = self._stderr_tee
+
+    def relocate(self, new_path: Path) -> Path:
+        """Move the log file to new_path and keep mirroring output there."""
+        self._log_stream.flush()
+        self._log_stream.close()
+        new_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(self.log_path), str(new_path))
+        self._log_stream = open(new_path, "a", encoding="utf-8")
+        self._stdout_tee.set_log_stream(self._log_stream)
+        self._stderr_tee.set_log_stream(self._log_stream)
+        self.log_path = new_path
+        return new_path
+
+    def close(self) -> None:
+        sys.stdout = self._original_stdout
+        sys.stderr = self._original_stderr
+        for stream in (self._stdout_tee, self._stderr_tee, self._original_stdout, self._original_stderr):
+            try:
+                stream.flush()
+            except Exception:
+                pass
+        try:
+            self._log_stream.close()
+        except Exception:
+            pass
+
 
 @contextmanager
 def capture_terminal_output(log_path: Path):
     """Capture all process stdout/stderr to a timestamped text file."""
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-
-    with open(log_path, "a", encoding="utf-8") as log_stream:
-        original_stdout = sys.stdout
-        original_stderr = sys.stderr
-        captured_stdout = _TimestampedTee(
-            original_stdout, log_stream, "STDOUT")
-        captured_stderr = _TimestampedTee(
-            original_stderr, log_stream, "STDERR")
-        sys.stdout = captured_stdout
-        sys.stderr = captured_stderr
-        try:
-            yield log_path
-        finally:
-            sys.stdout = original_stdout
-            sys.stderr = original_stderr
-            for stream in (captured_stdout, captured_stderr, original_stdout, original_stderr):
-                try:
-                    stream.flush()
-                except Exception:
-                    pass
+    capture = ConsoleLogCapture(log_path)
+    try:
+        yield capture.log_path
+    finally:
+        capture.close()
 
 
 def _to_jsonable(value: Any) -> Any:
