@@ -1,9 +1,9 @@
 # cough-machine-control
 
 How to install tcm-utils to a virtual environment[^1]?
-- Make sure to activate your virtual environment[^2], this is succesfull if, at the start of each line in the terminal, it says `(.venv)`;
+- Make sure to activate your virtual environment[^2], this is succesful if, at the start of each line in the terminal, it says `(.venv)`. If this is not the case, enter `source .venv/bin/activate` into the terminal;
 - Clone [`tcm-utils`](https://github.com/TFLVerouden/tcm-utils) to the same folder that `tcm-control` is located in;
-- Into the terminal, enter `pip install -e ../tcm-utils`.
+- Into the terminal, enter `pip install -e ../tcm-utils`, or, when you are using the full [twente-cough-machine](https://github.com/TFLVerouden/twente-cough-machine) repository, enter `pip install -e ../utils`.
 
 [^1] The reason it is not included in [pyproject.toml](/pyproject.toml), is that editable installs on a relative path are [not allowed by `setuptools`](https://github.com/pypa/setuptools/discussions/2951).
 [^2] On Windows, one might have issues activating this virtual environment because the terminal in VS Code is not allowed to run scripts. We tried to mitigate this using the default profile specified in [settings.json](/.vscode/settings.json), but the error and how to fix it are described [here on StackOverflow](https://stackoverflow.com/questions/56199111/visual-studio-code-cmd-error-cannot-be-loaded-because-running-scripts-is-disabl).
