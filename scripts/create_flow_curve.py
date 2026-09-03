@@ -162,14 +162,14 @@ def generate_step_curve_csv(
 def main() -> None:
     generated = generate_step_curve_csv(
         default_subfolder="piv",
-        step_current_ma=20.0,
+        step_current_ma=13.0,
         closed_current_ma=12.0,
-        step_duration_ms=3000,
-        pre_record_ms=0,
-        post_record_ms=0,
+        step_duration_ms=89,
+        pre_record_ms=15,
+        post_record_ms=16,
         solenoid_lead_ms=5,
         solenoid_lag_ms=0,
-        polling_interval_ms=5,
+        polling_interval_ms=1,
         trigger_at_start=True,
     )
     print(f"Step curve written to {generated}")
