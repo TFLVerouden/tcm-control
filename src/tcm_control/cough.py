@@ -27,7 +27,7 @@ from tcm_utils.io_utils import (
     prompt_input,
     prompt_yes_no,
     wait_with_progress,
-    countdown_beep,
+    beep,
 )
 from tcm_utils.time_utils import timestamp_str
 from tcm_control.thin_film import take_snapshot, tube_cleaning, make_layer
@@ -205,6 +205,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         #     # Register pump so interrupt cleanup can call stop() on it
         #     set_active_pump(pump)
 
+        tcm.load_flowcurve(
+            csv_path=cough_machine_inputs["flow_curve_csv_path"],
+            experiment_dir=output_dir if save_data else None,
+        )
+        tcm.set_wait_us(wait_us=wait_before_run_us)
         tcm.set_pressure(
             # Drive tank to target pressure and hold until tolerance is satisfied
             tank_inputs["pressure_bar"],
@@ -214,13 +219,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             poll_interval_s=tank_inputs["poll_interval_s"],
             interm_press_diff_bar=tank_inputs["intermediate_diff_bar"],
             interm_press_time_s=tank_inputs["intermediate_time_s"],
-        )
-        # Program the fixed pre-run wait into the cough machine controller
-        tcm.set_wait_us(wait_us=wait_before_run_us)
-        tcm.load_flowcurve(
-            # Load the configured flow curve and optionally copy it into output_dir
-            csv_path=cough_machine_inputs["flow_curve_csv_path"],
-            experiment_dir=output_dir if save_data else None,
         )
         # Store the resolved flow curve path for metadata traceability.
         cough_machine_inputs["flow_curve_csv_path"] = tcm.get_flowcurve_csv_path(
@@ -424,8 +422,12 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 nebuliser_pressure_bar = nebuliser_inputs["pressure_bar"]
                 nebuliser_fill_time_s = nebuliser_inputs["fill_time_s"]
 
-                # Before first run, fill the nebuliser tank
-                # Fill the nebuliser tank before each run.
+                # FIRST RUN
+                # Ask for confirmation that the laser is turned on
+                # prompt_yes_no(
+                #     "Press ENTER to confirm that the PIV laser is turned on...")
+
+                # Fill the nebuliser tank
                 neb.set_nebuliser(True)
                 wait_with_progress(
                     wait_s=nebuliser_fill_time_s,
@@ -434,7 +436,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
                 # Ask user to start the experiment
                 ask_start_confirmation(experiment_name=experiment_name)
-                countdown_beep()
+                # countdown_beep()
 
                 # Record temperature and humidity
                 temperature_start, humidity_start = tcm.read_temperature_humidity(
@@ -444,7 +446,29 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 # Execute configured number of PIV runs with pump start/stop timing
                 for run_idx in range(cough_inputs["nr_runs"]):
 
-                    # Start nebuliser before each run
+                    # FROM SECOND RUN ONWARDS
+                    if run_idx > 0:
+                        # Before each run, fill the nebuliser tank again
+                        neb.set_nebuliser(True)
+                        wait_with_progress(
+                            wait_s=nebuliser_fill_time_s,
+                            label="Filling nebuliser tank...",
+                        )
+
+                        # Confirm before starting next run
+                        wait_or_confirm_next_run(
+                            next_run_number=(run_idx + 1),
+                            nr_runs=cough_inputs["nr_runs"],
+                            multi_run_interval_s=float(
+                                cough_inputs["multi_run_interval_s"]),
+                            confirm_before_starting_next_run=cough_inputs[
+                                "confirm_before_starting_next_run"
+                            ],
+                        )
+
+                    # ALL RUNS
+                    # Start seeding air flow
+                    beep()
                     print("Turning on nebuliser air flow")
                     neb.set_nebuliser_pressure(nebuliser_pressure_bar)
                     pump_stopped = False
@@ -512,18 +536,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                                   dry_duration_s=cleaning_inputs["dry_duration_s"],
                                   dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"],
                                   cycle_count=cleaning_inputs["cycle_count"])
-
-                    # Wait between coughs if needed
-                    if run_idx > 0:
-                        wait_or_confirm_next_run(
-                            next_run_number=(run_idx + 2),
-                            nr_runs=cough_inputs["nr_runs"],
-                            multi_run_interval_s=float(
-                                cough_inputs["multi_run_interval_s"]),
-                            confirm_before_starting_next_run=cough_inputs[
-                                "confirm_before_starting_next_run"
-                            ],
-                        )
 
         # ------------------------------------------------------------------
         # 6) Finalize run and write (meta)data
