@@ -14,7 +14,7 @@ flow_curve_csv_path = ""
 wait_before_run_ms = 0
 
 [devices.cough_machine.inputs.nebuliser]
-fill_time_s = 45
+fill_time_s = 60
 pressure_bar = 0.1
 
 [devices.cough_machine.inputs.cleaning]

@@ -12,6 +12,7 @@ from tcm_control.interrupt_handling import (
     reset_interrupt_cleanup_state,
     set_active_output_dir,
     set_active_pump,
+    set_active_nebuliser,
     set_active_tcm,
 )
 from tcm_control.processing.run_log_processing import plot_run_log
@@ -55,6 +56,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     # Reset interrupt state for a fresh run and clear stale references.
     reset_interrupt_cleanup_state()
     set_active_tcm(None)
+    set_active_nebuliser(None)
     set_active_pump(None)
     set_active_output_dir(None)
 
@@ -113,13 +115,16 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     # Initialise cough machine
     tcm = CoughMachine(debug=cough_inputs["debug_mode"])
 
-    # TODO: temporarily added nebuliser on separate MCU
+    # TODO(merge nebuliser MCU): use the cough-machine controller for nebuliser
+    # commands too, remove this second connection and set_active_nebuliser call,
+    # and keep only one active-device registration.
     neb = CoughMachine(
         debug=cough_inputs["debug_mode"], expected_id="NEB_control",
         name="Nebuliser_MCU", supported_protocol_version=6)
 
-    # Register device so interrupt cleanup can call quit() on it
+    # Register devices so interrupt cleanup can stop them.
     set_active_tcm(tcm)
+    set_active_nebuliser(neb)
 
     # Vertical stage is only needed when SprayTec measurements are enabled.
     if record_droplet_size:
@@ -424,8 +429,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
                 # FIRST RUN
                 # Ask for confirmation that the laser is turned on
-                # prompt_yes_no(
-                #     "Press ENTER to confirm that the PIV laser is turned on...")
+                prompt_yes_no(
+                    "Press ENTER to confirm that the PIV laser is turned on...")
 
                 # Fill the nebuliser tank
                 neb.set_nebuliser(True)
@@ -636,6 +641,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
     # Clear registered devices after a normal, successful run.
     set_active_tcm(None)
+    set_active_nebuliser(None)
     set_active_pump(None)
     set_active_output_dir(None)
 
