@@ -197,6 +197,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         tcm.load_flowcurve(
             # Load the configured flow curve and optionally copy it into output_dir
             csv_path=cough_machine_inputs["flow_curve_csv_path"],
+            tank_pressure_bar=tank_inputs["pressure_bar"],
             experiment_dir=output_dir if save_data else None,
         )
         # Store the resolved flow curve path for metadata traceability.
