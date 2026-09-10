@@ -1,11 +1,13 @@
 """Main experiment runner for the Twente Cough Machine."""
 
 import time
+from contextlib import nullcontext
 from pathlib import Path
-
+import time
 from typing import Optional
 
 from tcm_control.devices import CoughMachine, VerticalStage, SyringePump, SprayTec, Camera, SyringePump2
+from tcm_control.devices.spraytec import warn_if_experiment_dir_name_too_long
 from tcm_control import logger
 from tcm_control.initialise_config import load_experiment_config
 from tcm_control.interrupt_handling import (
@@ -16,6 +18,8 @@ from tcm_control.interrupt_handling import (
     set_active_tcm,
 )
 from tcm_control.processing.run_log_processing import plot_run_log
+from tcm_control.thin_film import take_snapshot, make_layer
+from tcm_control.film_height import determine_film_height, determine_plate_height
 from tcm_control.user_input import (
     ask_start_confirmation,
     ask_user_for_comments,
@@ -31,8 +35,6 @@ from tcm_utils.io_utils import (
     beep,
 )
 from tcm_utils.time_utils import timestamp_str
-from tcm_control.thin_film import take_snapshot, tube_cleaning, make_layer
-from tcm_control.film_height import determine_film_height, determine_plate_height
 
 
 def cough(config_path: Path | str | None = None) -> Optional[Path]:
@@ -175,6 +177,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     if save_data:
         assert series_directory is not None
         assert console_log is not None
+        if record_droplet_size:
+            # Warn (but proceed) if SprayTec won't be able to display the full name
+            warn_if_experiment_dir_name_too_long(time_start, experiment_name)
         # Create output directory for this experiment.
         output_dir = logger.create_experiment_dir(
             series_directory, experiment_name, start_time=time_start)
@@ -214,7 +219,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             csv_path=cough_machine_inputs["flow_curve_csv_path"],
             experiment_dir=output_dir if save_data else None,
         )
-        tcm.set_wait_us(wait_us=wait_before_run_us)
         tcm.set_pressure(
             # Drive tank to target pressure and hold until tolerance is satisfied
             tank_inputs["pressure_bar"],
@@ -224,6 +228,14 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             poll_interval_s=tank_inputs["poll_interval_s"],
             interm_press_diff_bar=tank_inputs["intermediate_diff_bar"],
             interm_press_time_s=tank_inputs["intermediate_time_s"],
+        )
+        # Program the fixed pre-run wait into the cough machine controller
+        tcm.set_wait_us(wait_us=wait_before_run_us)
+        tcm.load_flowcurve(
+            # Load the configured flow curve and optionally copy it into output_dir
+            csv_path=cough_machine_inputs["flow_curve_csv_path"],
+            tank_pressure_bar=tank_inputs["pressure_bar"],
+            experiment_dir=output_dir if save_data else None,
         )
         # Store the resolved flow curve path for metadata traceability.
         cough_machine_inputs["flow_curve_csv_path"] = tcm.get_flowcurve_csv_path(
