@@ -25,7 +25,7 @@ DEFAULT_CLEAN_DRY_DURATION_S = 0.0
 DEFAULT_CLEAN_DRY_VALVE_CURRENT_MA = 14.0
 DEFAULT_CLEAN_CYCLE_COUNT = 0
 # Keep protocol version as a single integer. Bump only for breaking serial changes.
-DEFAULT_SUPPORTED_PROTOCOL_VERSION = 5
+DEFAULT_SUPPORTED_PROTOCOL_VERSION = 8
 
 
 class CoughMachine(PoFSerialDevice):
