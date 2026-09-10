@@ -122,7 +122,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     # and keep only one active-device registration.
     neb = CoughMachine(
         debug=cough_inputs["debug_mode"], expected_id="NEB_control",
-        name="Nebuliser_MCU", supported_protocol_version=6)
+        name="Nebuliser_MCU", supported_protocol_version=8)
 
     # Register devices so interrupt cleanup can stop them.
     set_active_tcm(tcm)
