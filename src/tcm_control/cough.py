@@ -440,7 +440,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 )
 
                 # Ask user to start the experiment
-                ask_start_confirmation(experiment_name=experiment_name)
+                # ask_start_co  nfirmation(experiment_name=experiment_name)
                 # countdown_beep()
 
                 # Record temperature and humidity
