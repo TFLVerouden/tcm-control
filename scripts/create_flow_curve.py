@@ -232,7 +232,9 @@ def main() -> None:
     output_path = "C:\\Users\\local2\\Documents\\GitHub\\twente-cough-machine\\control\\src\\tcm_control\\flow_curves\\from_model\\gupta_71kg_1-94m.csv"
     gupta_model = CoughModel.from_gupta("Male", weight_kg=71, height_m=1.94)
     generated = generate_flow_curve_csv(
-        cough_model=gupta_model, output_csv_path=output_path, model_duration_ms=600, pre_record_ms=100, post_record_ms=100, solenoid_lead_ms=5, solenoid_lag_ms=0, polling_interval_ms=1, trigger_at_start=True)
+        cough_model=gupta_model, output_csv_path=output_path, model_duration_ms=500, pre_record_ms=50, post_record_ms=50, solenoid_lead_ms=5, solenoid_lag_ms=0, polling_interval_ms=1, trigger_at_start=True)
+
+    print(f"Flow curve written to {generated}")
 
 
 if __name__ == "__main__":
