@@ -4,7 +4,7 @@ mode = "piv" # droplet | film | piv
 series_directory = "C:\CoughMachineData\260820_piv\final" # keep empty to prompt; set to "None" to disable saving data
 
 [inputs.cough]
-nr_runs = 1
+nr_runs = 3
 multi_run_interval_s = 0
 confirm_before_starting_next_run = false
 record_droplet_size = false
@@ -14,13 +14,13 @@ flow_curve_csv_path = "gupta_71kg_1-94m.csv"
 wait_before_run_ms = 0
 
 [devices.cough_machine.inputs.nebuliser]
-fill_time_s = 1
+fill_time_s = 30
 pressure_bar = 0.1
 
 [devices.cough_machine.inputs.cleaning]
 clean_pressure_bar = 5.0
 valve_open_duration_s = 10
-cycle_count = 0
+cycle_count = 1
 
 [devices.cough_machine.inputs.tank]
 pressure_bar = 2.5
