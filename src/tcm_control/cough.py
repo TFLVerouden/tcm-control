@@ -527,12 +527,12 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         )
 
                         # Plot run log
-                        if save_data and run_log_path is not None:
-                            plot_run_log(
-                                run_log_path=run_log_path,
-                                experiment_dir=output_dir,
-                                show=False,
-                            )
+                        # if save_data and run_log_path is not None:
+                        # plot_run_log(
+                        #    run_log_path=run_log_path,
+                        #    experiment_dir=output_dir,
+                        #    show=False,
+                        # )
 
                     finally:
                         # Always stop pump, even if the run or waits raise an error
