@@ -122,6 +122,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     spraytec_audit_path = None
     spraytec_laser_intensity = None
     first_run_log_path = None
+    film_height_mm = None
 
     # ------------------------------------------------------------------
     # 2) Prepare output folder and host logging
@@ -526,53 +527,41 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                                                          offer_archive_if_large=True,
                                                          )
 
-            # Group run-level values in one dictionary to keep metadata wiring compact
-            # Add new run-wide metadata values here
-            run_context = {
-                "config_file_path": exp_conf["config_file_path"],
-                "time_start": time_start,
-                "time_finish": time_finish,
-                "experiment_name": experiment_name,
-                "experiment_mode": experiment_mode,
-                "output_dir": output_dir,
-                "wait_before_run_us": wait_before_run_us,
-                "temperature_start": temperature_start,
-                "humidity_start": humidity_start,
-                "temperature_finish": temperature_finish,
-                "humidity_finish": humidity_finish,
-                "thin_film_height_mm": film_height_mm if experiment_mode == "film" else None,
-                "comments": comments,
-            }
-
-            # Group device/config values separately for easier extension per device
-            # Add device-specific metadata values here
-            device_context = {
-                "tcm": tcm,
-                "cough_machine_inputs": cough_machine_inputs,
-                "pump": pump,
-                "pump_inputs": pump_inputs,
-                "record_droplet_size": record_droplet_size,
-                "spraytec_inputs": spraytec_inputs,
-                "spraytec_x_mm": spraytec_x_mm,
-                "spraytec_y_mm": spraytec_y_mm,
-                "spraytec_z_mm": spraytec_z_mm,
-                "spraytec_audit_path": spraytec_audit_path,
-                "spraytec_laser_intensity": spraytec_laser_intensity,
-                "lift_pos_z_mm": lift_pos_z_mm,
-                "stage_pos_x_mm": stage_pos_x_mm,
-                "stage_pos_y_mm": stage_pos_y_mm,
-                "spraytec_target_z_mm": spraytec_target_z_mm,
-                "lift": lift,
-            }
-
             metadata = logger.build_run_metadata(
-                run_context=run_context,
-                cough_inputs=cough_inputs,
-                device_context=device_context,
+                config,
+                time_start=time_start,
+                time_finish=time_finish,
+                experiment_name=experiment_name,
+                experiment_mode=experiment_mode,
+                output_dir=output_dir,
+                wait_before_run_us=wait_before_run_us,
+                temperature_start=temperature_start,
+                humidity_start=humidity_start,
+                temperature_finish=temperature_finish,
+                humidity_finish=humidity_finish,
+                film_height_mm=film_height_mm,
+                comments=comments,
+                tcm=tcm,
+                cough_machine_inputs=cough_machine_inputs,
+                pump=pump,
+                pump_inputs=pump_inputs,
+                camera_inputs=camera_inputs,
+                record_droplet_size=record_droplet_size,
+                spraytec_inputs=spraytec_inputs,
+                spraytec_x_mm=spraytec_x_mm,
+                spraytec_y_mm=spraytec_y_mm,
+                spraytec_z_mm=spraytec_z_mm,
+                spraytec_audit_path=spraytec_audit_path,
+                spraytec_laser_intensity=spraytec_laser_intensity,
+                stage_pos_z_mm=stage_pos_z_mm,
+                stage_pos_x_mm=stage_pos_x_mm,
+                stage_pos_y_mm=stage_pos_y_mm,
+                spraytec_target_z_mm=spraytec_target_z_mm,
+                vertical_stage=vertical_stage,
             )
             # Persist full run metadata snapshot.
             logger.write_run_metadata(
-                experiment_dir=output_dir, metadata=metadata)
+                experiment_dir=output_dir, meta=metadata)
 
             print("Experiment completed, all data saved to ", output_dir)
             print("Exiting.")
