@@ -272,6 +272,7 @@ def build_run_metadata(config, **meta) -> dict[str, Any]:
     multi_run_interval_s = config["inputs"]["cough"]["multi_run_interval_s"]
     confirm_before_starting_next_run = config["inputs"]["cough"]["confirm_before_starting_next_run"]
     record_droplet_size = config["inputs"]["cough"]["record_droplet_size"]
+    config_file_path = config["experiment"]["config_file_path"]
 
     # Prefer configured syringe geometry values because runtime objects may
     # not expose table-based conversions in all pump implementations.
@@ -312,10 +313,13 @@ def build_run_metadata(config, **meta) -> dict[str, Any]:
                 "finish": meta["time_finish"],
             },
             "files": {
-                "config_file_path": meta["config_file_path"],
+                "config_file_path": config_file_path,
                 "output_dir": meta["output_dir"],
             },
             "settings": {
+                "nr_runs": nr_runs,
+                "multi_run_interval_s": multi_run_interval_s,
+                "confirm_before_starting_next_run": confirm_before_starting_next_run,
                 "wait_before_run_us": meta["wait_before_run_us"],
             },
             "measurements": {
@@ -330,6 +334,7 @@ def build_run_metadata(config, **meta) -> dict[str, Any]:
                 "film_height_mm": meta["film_height_mm"],
             },
             "comments": meta["comments"],
+            "debug_mode": debug_mode,
         },
         "devices": {
             "cough_machine": {
@@ -369,7 +374,6 @@ def build_run_metadata(config, **meta) -> dict[str, Any]:
                 "inputs": meta["camera_inputs"],
             },
             "spraytec": {
-                "name": getattr(meta["spraytec"], "name", None),
                 "mode": "enabled" if record_droplet_size else "disabled",
                 "inputs": meta["spraytec_inputs"],
                 "measurement_position_mm": {
@@ -380,7 +384,7 @@ def build_run_metadata(config, **meta) -> dict[str, Any]:
                 "operator_readable_position_mm": {
                     "stage_x_read_off": meta["stage_pos_x_mm"],
                     "stage_y_read_off": meta["stage_pos_y_mm"],
-                    "lift_pos_z_set": meta["lift_pos_z_mm"],
+                    "stage_pos_z_set": meta["stage_pos_z_mm"],
                 },
                 "audit_csv": meta["spraytec_audit_path"],
                 "laser_intensity": meta["spraytec_laser_intensity"],

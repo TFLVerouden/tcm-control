@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 MINIMUM_THICKNESS_PIXELS = 10
 IMAGE_CROP_LEFT = 2
 
+# TODO: Move to processing folder
+
 
 def detect_film_rim(
     edge_x: np.ndarray,
