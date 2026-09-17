@@ -212,6 +212,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 camera_output_dir.mkdir(exist_ok=True)
             camera = Camera(exposure_us=camera_inputs["camera_exposure_us"],
                             output_dir=camera_output_dir)
+            # TODO: Simplify how pump gets input...
             pump = SyringePump2(pump_inputs)
 
             set_active_pump(pump)
@@ -331,14 +332,16 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 # ------------------------------------------------------
                 # Mode: Film
                 # ------------------------------------------------------
-
-                # Ask user to start the experiment
-                ask_start_confirmation(experiment_name=experiment_name)
-
-                # Record temperature and humidity
-                temperature_start, humidity_start = tcm.read_temperature_humidity(
-                    show_reading=True,
+                # Explicitly require operator confirmation of syringe being filled
+                confirm_syringe_filled = prompt_yes_no(
+                    "Press ENTER to confirm the syringe is filled with > "
+                    f"PLACEHOLDER mL...",
+                    default=True,
                 )
+                # TODO: get film making protocol volume here
+                if not confirm_syringe_filled:
+                    print("Aborted.")
+                    exit(1)
 
                 # Execute repeated runs
                 for run_idx in range(cough_inputs["nr_runs"]):
@@ -349,18 +352,26 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             background_path, camera_output_dir)
 
                     # Make a layer
-                    make_layer(pump)  # type: ignore
+                    # make_layer(pump)  # type: ignore
 
                     # Take a picture of the layer
                     thin_film_path = take_snapshot(camera, tcm)
                     if camera_output_dir is not None:
                         film_height_px = determine_film_height(
                             thin_film_path, plate_height_px, camera_output_dir)
-                        film_height_mm = film_height_px / \
+                        film_height_mm = film_height_px * \
                             camera_inputs["pixel_per_meter"] * 1000
                         print(f"Film height (mm): {film_height_mm:.3f}")
 
                     # Wait between coughs if needed
+                    if run_idx == 0:
+                        # Ask user to start the experiment
+                        ask_start_confirmation(experiment_name=experiment_name)
+
+                        # Record temperature and humidity
+                        temperature_start, humidity_start = tcm.read_temperature_humidity(
+                            show_reading=True,
+                        )
                     if run_idx > 0:
                         wait_or_confirm_next_run(
                             next_run_number=(run_idx + 1),
