@@ -110,8 +110,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     wait_before_run_us = cough_machine_inputs["wait_before_run_us"]
 
     pump = None
-    lift = None
-    lift_pos_z_mm = None
+    vertical_stage = None
+    stage_pos_z_mm = None
     stage_pos_x_mm = None
     stage_pos_y_mm = None
     spraytec_target_z_mm = None
@@ -218,9 +218,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         # Optional SprayTec setup and geometry resolution
         if record_droplet_size:
             # Vertical stage is only needed when SprayTec measurements are enabled.
-            lift = VerticalStage()
-            spraytec_x_mm, spraytec_y_mm, spraytec_z_mm, stage_pos_x_mm, stage_pos_y_mm, spraytec_target_z_mm, lift_pos_z_mm = set_spraytec_pos(
-                lift,
+            vertical_stage = VerticalStage()
+            spraytec_x_mm, spraytec_y_mm, spraytec_z_mm, stage_pos_x_mm, stage_pos_y_mm, spraytec_target_z_mm, stage_pos_z_mm = set_spraytec_pos(
+                vertical_stage,
                 spraytec_inputs["tcm_trachea_exit_to_ref_x_mm"],
                 spraytec_inputs["tcm_trachea_exit_to_ref_y_mm"],
                 spraytec_inputs["spraytec_to_ref_x_mm"],
