@@ -6,7 +6,7 @@ import tomllib
 
 from tcm_control.devices.camera import Camera
 from tcm_control.devices.cough_machine import CoughMachine
-from tcm_control.devices.syringe_pump2 import SyringePump2
+from tcm_control.devices.syringe_pump import SyringePump
 
 
 def take_snapshot(
@@ -50,11 +50,11 @@ if __name__ == "__main__":
     syringe_inputs = config["devices"]["pump"]["syringe"]
     clean_tube = config["devices"]["pump"]["clean_tube"]
 
-    pump = SyringePump2(syringe_inputs["syringe_vendor_code"],
-                        syringe_inputs["syringe_volume_mL"],
-                        syringe_inputs["syringe_diameter_mm"],
-                        syringe_inputs["syringe_gang"],
-                        syringe_inputs["syringe_force_percent"])
+    pump = SyringePump(syringe_inputs["syringe_vendor_code"],
+                       syringe_inputs["syringe_volume_mL"],
+                       syringe_inputs["syringe_diameter_mm"],
+                       syringe_inputs["syringe_gang"],
+                       syringe_inputs["syringe_force_percent"])
 
     pump.clean_tubes(volume_ml_layer=clean_tube["volume_ml_layer"],
                      rate_ml_min_layer=clean_tube["rate_ml_min_layer"],

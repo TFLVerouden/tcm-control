@@ -35,7 +35,7 @@ PROMPT_DESCRIPTIONS = {
 }
 
 
-class SyringePump2:
+class SyringePump:
     DEFAULT_SERIAL_CFG = {
         "port": "COM4",
         "baudrate": 9600,
@@ -545,22 +545,22 @@ def main(specs_path: Path = DEFAULT_SPECS_PATH) -> None:
     layer_inputs = config["devices"]["pump"]["layer"]
     clean_tube = config["devices"]["pump"]["clean_tube"]
 
-    pump = SyringePump2(syringe_inputs["syringe_vendor_code"],
-                        syringe_inputs["syringe_volume_mL"],
-                        syringe_inputs["syringe_diameter_mm"],
-                        syringe_inputs["syringe_gang"],
-                        syringe_inputs["syringe_force_percent"])
+    pump = SyringePump(syringe_inputs["syringe_vendor_code"],
+                       syringe_inputs["syringe_volume_mL"],
+                       syringe_inputs["syringe_diameter_mm"],
+                       syringe_inputs["syringe_gang"],
+                       syringe_inputs["syringe_force_percent"])
 
     pump.make_layer(infuse_volume_ml=layer_inputs["infuse_volume_ml"],
                     infuse_rate_ml_min=layer_inputs["infuse_rate_ml_min"],
                     withdraw_volume_ml=layer_inputs["withdraw_volume_ml"],
                     withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"])
 
-    pump = SyringePump2(syringe_inputs["syringe_vendor_code"],
-                        syringe_inputs["syringe_volume_mL"],
-                        syringe_inputs["syringe_diameter_mm"],
-                        syringe_inputs["syringe_gang"],
-                        syringe_inputs["syringe_force_percent"])
+    pump = SyringePump(syringe_inputs["syringe_vendor_code"],
+                       syringe_inputs["syringe_volume_mL"],
+                       syringe_inputs["syringe_diameter_mm"],
+                       syringe_inputs["syringe_gang"],
+                       syringe_inputs["syringe_force_percent"])
 
     pump.clean_tubes(volume_ml_layer=clean_tube["volume_ml_layer"],
                      rate_ml_min_layer=clean_tube["rate_ml_min_layer"],

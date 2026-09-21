@@ -5,7 +5,7 @@ from pathlib import Path
 import time
 from typing import Optional
 
-from tcm_control.devices import CoughMachine, VerticalStage, SprayTec, Camera, SyringePump2
+from tcm_control.devices import CoughMachine, VerticalStage, SprayTec, Camera, SyringePump
 from tcm_control.devices.spraytec import warn_if_experiment_dir_name_too_long
 from tcm_control import logger
 from tcm_control.initialise_config import load_experiment_config
@@ -204,13 +204,12 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             camera = Camera(exposure_us=camera_inputs["camera_exposure_us"],
                             output_dir=camera_output_dir)
 
-            # TODO: Simplify how pump gets input...
             # TODO: Set up pump in droplet mode
-            pump = SyringePump2(syringe_inputs["syringe_vendor_code"],
-                                syringe_inputs["syringe_volume_mL"],
-                                syringe_inputs["syringe_diameter_mm"],
-                                syringe_inputs["syringe_gang"],
-                                syringe_inputs["syringe_force_percent"])
+            pump = SyringePump(syringe_inputs["syringe_vendor_code"],
+                               syringe_inputs["syringe_volume_mL"],
+                               syringe_inputs["syringe_diameter_mm"],
+                               syringe_inputs["syringe_gang"],
+                               syringe_inputs["syringe_force_percent"])
 
             set_active_pump(pump)
 
