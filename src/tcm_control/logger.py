@@ -276,10 +276,10 @@ def build_run_metadata(config, **meta) -> dict[str, Any]:
 
     # Prefer configured syringe geometry values because runtime objects may
     # not expose table-based conversions in all pump implementations.
-    configured_syringe_volume_ml = meta["pump_inputs"].get(
-        "syringe_volume_ml")
-    configured_syringe_diameter_mm = meta["pump_inputs"].get(
-        "syringe_diameter_mm")
+    # configured_syringe_volume_ml = meta["pump_inputs"].get(
+    #     "syringe_volume_ml")
+    # configured_syringe_diameter_mm = meta["pump_inputs"].get(
+    #     "syringe_diameter_mm")
 
     runtime_syringe_volume_ml = getattr(
         meta["pump"], "syringe_volume_ml", None)
@@ -293,16 +293,16 @@ def build_run_metadata(config, **meta) -> dict[str, Any]:
         except Exception:
             runtime_syringe_diameter_mm = None
 
-    resolved_syringe_volume_ml = (
-        configured_syringe_volume_ml
-        if configured_syringe_volume_ml is not None
-        else runtime_syringe_volume_ml
-    )
-    resolved_syringe_diameter_mm = (
-        configured_syringe_diameter_mm
-        if configured_syringe_diameter_mm is not None
-        else runtime_syringe_diameter_mm
-    )
+    # resolved_syringe_volume_ml = (
+    #     configured_syringe_volume_ml
+    #     if configured_syringe_volume_ml is not None
+    #     else runtime_syringe_volume_ml
+    # )
+    # resolved_syringe_diameter_mm = (
+    #     configured_syringe_diameter_mm
+    #     if configured_syringe_diameter_mm is not None
+    #     else runtime_syringe_diameter_mm
+    # )
 
     return {
         "experiment": {
@@ -353,22 +353,24 @@ def build_run_metadata(config, **meta) -> dict[str, Any]:
                     if meta["experiment_mode"] in ["droplet", "piv"]
                     else "disabled"
                 ),
-                "inputs": meta["pump_inputs"],
+                # "inputs": meta["pump_inputs"],
+                "syringe": meta["syringe_inputs"],
+                "layer": meta["layer_inputs"],
                 "connection": {
                     "port": getattr(meta["pump"], "port", None),
                     "baudrate": getattr(meta["pump"], "baudrate", None),
                     "timeout_s": getattr(meta["pump"], "timeout_s", None),
                     "pump_address": getattr(meta["pump"], "pump_address", None),
                 },
-                "resolved": {
-                    "syringe_volume_ml": resolved_syringe_volume_ml,
-                    "syringe_diameter_mm": resolved_syringe_diameter_mm,
-                    "rate_ml_per_min": (
-                        meta["pump_inputs"].get("pump_rate_ml_per_min")
-                        if meta["experiment_mode"] in ["droplet", "piv"]
-                        else None
-                    ),
-                },
+                # "resolved": {
+                #     "syringe_volume_ml": resolved_syringe_volume_ml,
+                #     "syringe_diameter_mm": resolved_syringe_diameter_mm,
+                #     "rate_ml_per_min": (
+                #         meta["pump_inputs"].get("pump_rate_ml_per_min")
+                #         if meta["experiment_mode"] in ["droplet", "piv"]
+                #         else None
+                #     ),
+                # },
             },
             "camera": {
                 "inputs": meta["camera_inputs"],

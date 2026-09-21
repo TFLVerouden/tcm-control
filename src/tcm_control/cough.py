@@ -349,11 +349,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             background_path, camera_output_dir)
 
                     # Make a layer
-                    if pump is not None:
-                        pump.make_layer(infuse_volume_ml=layer_inputs["infuse_volume_ml"],
-                                        infuse_rate_ml_min=layer_inputs["infuse_rate_ml_min"],
-                                        withdraw_volume_ml=layer_inputs["withdraw_volume_ml"],
-                                        withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"])
+                    # if pump is not None:
+                    #     pump.make_layer(infuse_volume_ml=layer_inputs["infuse_volume_ml"],
+                    #                     infuse_rate_ml_min=layer_inputs["infuse_rate_ml_min"],
+                    #                     withdraw_volume_ml=layer_inputs["withdraw_volume_ml"],
+                    #                     withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"])
 
                     # Take a picture of the layer
                     thin_film_path = take_snapshot(camera, tcm)
