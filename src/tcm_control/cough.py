@@ -334,7 +334,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     f"{layer_inputs['infuse_volume_ml']} mL...",
                     default=True,
                 )
-                # TODO: get film making protocol volume here
                 if not confirm_syringe_filled:
                     print("Aborted.")
                     exit(1)

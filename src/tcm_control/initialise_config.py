@@ -233,6 +233,15 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
                 default=0.0,
             )
         ),
+        "nr_droplets_to_skip_before_recording": _required_non_negative_int(
+            _nested_get(
+                raw,
+                "devices",
+                "pump",
+                "inputs",
+                "nr_droplets_to_skip_before_recording",
+            )
+        ),
         "tank": {
             "pressure_bar": float(
                 _nested_get(
@@ -439,15 +448,6 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             _nested_get(raw, "devices", "pump",
                         "inputs", "pump_rate_ml_per_min")
         ),
-        "nr_droplets_to_skip_before_recording": _required_non_negative_int(
-            _nested_get(
-                raw,
-                "devices",
-                "pump",
-                "inputs",
-                "nr_droplets_to_skip_before_recording",
-            )
-        ),
         "piv_pump_start_before_run_s": float(
             _nested_get(
                 raw,
@@ -539,6 +539,8 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             default=0,
         ),
     }
+
+    # TODO: Can these pump inputs now be deleted?
     syringe_volume_ml = pump_inputs["syringe_volume_ml"]
     syringe_diameter_mm = pump_inputs["syringe_diameter_mm"]
 
