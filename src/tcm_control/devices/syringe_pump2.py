@@ -11,7 +11,7 @@ except ModuleNotFoundError:  # Python < 3.11
 import serial
 
 DEFAULT_SPECS_PATH = Path(__file__).resolve().parent.parent / \
-    "config" / "config.toml"
+    "config" / "config_layer.toml"
 DEFAULT_SYRINGES_PATH = Path(__file__).resolve().parent / \
     "lookup_tables" / "syringes.toml"
 
@@ -52,12 +52,11 @@ class SyringePump2:
         "phase_timeout_s": 3600,
     }
 
-    def __init__(self, specs: dict | None = None):
-        self.specs = specs or {}
+    def __init__(self, syringe_vendor_code, syringe_volume_mL, syringe_diameter_mm, syringe_gang, syringe_force_percent) -> None:
+        # self.specs = specs or {}
 
-        serial_cfg = {**self.DEFAULT_SERIAL_CFG,
-                      **self.specs.get("serial", {})}
-        pump_cfg = {**self.DEFAULT_PUMP_CFG, **self.specs.get("pump", {})}
+        serial_cfg = {**self.DEFAULT_SERIAL_CFG}
+        pump_cfg = {**self.DEFAULT_PUMP_CFG}
 
         self.port = serial_cfg["port"]
         self.baudrate = int(serial_cfg.get("baudrate", 9600))
@@ -89,6 +88,15 @@ class SyringePump2:
         self.cmd_clear_volume = "cvolume"
         self.cmd_clear_ivolume = "civolume"
         self.cmd_clear_wvolume = "cwvolume"
+
+        self.syringe_vendor_code = syringe_vendor_code
+        self.syringe_volume_mL = syringe_volume_mL
+        self.syringe_diameter_mm = syringe_diameter_mm
+        self.syringe_gang = syringe_gang
+        self.syringe_force_percent = syringe_force_percent
+
+        self.prepare()
+        self.apply_profile()
 
     def _log_info(self, msg: str) -> None:
         print(msg)
@@ -241,14 +249,13 @@ class SyringePump2:
         self._log_info(
             f"Connected to serial device SyringePump at {self.port}")
 
-    def prepare(self, profile: dict) -> None:
+    def prepare(self) -> None:
         """Prepare pump for direct infuse/withdraw calls."""
         self.connect()
         self.select_pump_address()
         self.clear_previous_command_state()
         self.set_poll_mode("off")
         self.ensure_quickstart_mode()
-        self.apply_profile(profile)
 
     def stop(self) -> None:
         """Stop motor and close serial connection."""
@@ -331,13 +338,13 @@ class SyringePump2:
         self._send(self.cmd_clear_ivolume)
         self._send(self.cmd_clear_wvolume)
 
-    def apply_profile(self, profile: dict) -> None:
+    def apply_profile(self) -> None:
         self.select_pump_address()
         self._send(
-            f"{self.cmd_set_syringe} {profile['vendor_code']} {profile['volume_ml']:g} ml")
-        self._send(f"{self.cmd_set_diameter} {profile['diameter_mm']:g}")
-        self._send(f"{self.cmd_set_gang} {profile['gang']}")
-        self._send(f"{self.cmd_set_force} {profile['force_percent']}")
+            f"{self.cmd_set_syringe} {self.syringe_vendor_code} {self.syringe_volume_mL:g} ml")
+        self._send(f"{self.cmd_set_diameter} {self.syringe_diameter_mm:g}")
+        self._send(f"{self.cmd_set_gang} {self.syringe_gang}")
+        self._send(f"{self.cmd_set_force} {self.syringe_force_percent:g}")
 
     def _wait_until_phase_complete(self, phase_name: str) -> bool:
         started = time.time()
@@ -473,80 +480,93 @@ class SyringePump2:
             if settle_s > 0:
                 time.sleep(settle_s)
 
-    def get_active_profile(self) -> dict:
-        pump_inputs = self.specs.get("devices", {}).get(
-            "pump", {}).get("inputs", {})
+    def make_layer(self, infuse_volume_ml: float, infuse_rate_ml_min: float, withdraw_volume_ml: float, withdraw_rate_ml_min: float) -> None:
+        """Create a thin film layer using the syringe pump."""
+        try:
+            # Infuse fluid to create the layer
 
-        active_profile_key = self.specs.get("serial", {}).get(
-            "active_profile",
-            pump_inputs.get("active_profile",
-                            SyringePump2.DEFAULT_SERIAL_CFG["active_profile"]),
-        )
+            self.infuse(
+                volume_ml=infuse_volume_ml,
+                rate_ml_min=infuse_rate_ml_min
+            )
 
-        profiles: dict = {}
-        if DEFAULT_SYRINGES_PATH.exists():
-            with DEFAULT_SYRINGES_PATH.open("rb") as f:
-                profiles = tomllib.load(f).get("profiles", {})
+            # Allow the pump system and fluid to relax
+            time.sleep(5)
 
-        # Backward compatibility for older configs that still define inline profiles.
-        if not profiles:
-            profiles = self.specs.get("profiles", {})
-        if active_profile_key not in profiles:
-            raise KeyError(
-                f"active_profile '{active_profile_key}' was not found in profiles loaded from {DEFAULT_SYRINGES_PATH}")
-        return profiles[active_profile_key]
+            # Partially withdraw to create a thin film layer
+            self.withdraw(
+                volume_ml=withdraw_volume_ml,
+                rate_ml_min=withdraw_rate_ml_min
+            )
+        except Exception as exc:
+            self._log_error(str(exc))
+            raise
+        finally:
+            # Always stop the pump after operation
+            self.stop()
 
-    def get_first_action_step(self, action_name: str) -> dict | None:
-        # Legacy format: top-level `infuse` / `withdraw` arrays.
-        steps = self.specs.get(action_name, [])
-        if isinstance(steps, list) and steps:
-            return steps[0]
-        if isinstance(steps, dict):
-            return steps
+    def clean_tubes(self, volume_ml_layer: float, rate_ml_min_layer: float, volume_ml_repetition: float, rate_ml_min_repetition: float, repetitions: int) -> None:
+        """Clean the tubes by performing repeated infuse/withdraw cycles."""
+        try:
+            # Initial infusion to create fluid layer
+            self.infuse(
+                volume_ml=volume_ml_layer,
+                rate_ml_min=rate_ml_min_layer
+            )
 
-        # Current format: [devices.pump.infuse] / [devices.pump.withdraw]
-        action_cfg = self.specs.get("devices", {}).get(
-            "pump", {}).get(action_name)
-        if isinstance(action_cfg, dict):
-            return action_cfg
-        if isinstance(action_cfg, list) and action_cfg:
-            # Supports [[devices.pump.infuse]] style arrays of tables.
-            return action_cfg[0]
-        return None
+            # Seesaw fluid back and forth through tubes to clean them
+            if repetitions > 0:
+                for _ in range(repetitions):
+                    self.withdraw(
+                        volume_ml=volume_ml_repetition,
+                        rate_ml_min=rate_ml_min_repetition
+                    )
+                    self.infuse(
+                        volume_ml=volume_ml_repetition,
+                        rate_ml_min=rate_ml_min_repetition
+                    )
+            else:
+                self._log_info("SyringePump config has no clean_tube steps")
+
+        except Exception as exc:
+            self._log_error(str(exc))
+            raise
+        finally:
+            # Always stop the pump after operation
+            self.stop()
 
 
 def main(specs_path: Path = DEFAULT_SPECS_PATH) -> None:
-    specs: dict = {}
+    config: dict = {}
     if specs_path.exists():
-        specs = tomllib.load(specs_path.open("rb"))
+        config = tomllib.load(specs_path.open("rb"))
 
-    pump = SyringePump2(specs)
-    try:
-        profile = pump.get_active_profile()
-        infuse_step = pump.get_first_action_step("infuse")
-        withdraw_step = pump.get_first_action_step("withdraw")
+    syringe_inputs = config["devices"]["pump"]["syringe"]
+    layer_inputs = config["devices"]["pump"]["layer"]
+    clean_tube = config["devices"]["pump"]["clean_tube"]
 
-        pump.prepare(profile)
+    pump = SyringePump2(syringe_inputs["syringe_vendor_code"],
+                        syringe_inputs["syringe_volume_mL"],
+                        syringe_inputs["syringe_diameter_mm"],
+                        syringe_inputs["syringe_gang"],
+                        syringe_inputs["syringe_force_percent"])
 
-        if infuse_step is not None:
-            pump.infuse(
-                volume_ml=infuse_step["volume_ml"],
-                rate_ml_min=infuse_step["rate_ml_min"]
-            )
+    pump.make_layer(infuse_volume_ml=layer_inputs["infuse_volume_ml"],
+                    infuse_rate_ml_min=layer_inputs["infuse_rate_ml_min"],
+                    withdraw_volume_ml=layer_inputs["withdraw_volume_ml"],
+                    withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"])
 
-        if withdraw_step is not None:
-            pump.withdraw(
-                volume_ml=withdraw_step["volume_ml"],
-                rate_ml_min=withdraw_step["rate_ml_min"]
-            )
+    pump = SyringePump2(syringe_inputs["syringe_vendor_code"],
+                        syringe_inputs["syringe_volume_mL"],
+                        syringe_inputs["syringe_diameter_mm"],
+                        syringe_inputs["syringe_gang"],
+                        syringe_inputs["syringe_force_percent"])
 
-        if infuse_step is None and withdraw_step is None:
-            pump._log_info("SyringePump config has no infuse/withdraw steps")
-    except Exception as exc:
-        pump._log_error(str(exc))
-        raise
-    finally:
-        pump.stop()
+    pump.clean_tubes(volume_ml_layer=clean_tube["volume_ml_layer"],
+                     rate_ml_min_layer=clean_tube["rate_ml_min_layer"],
+                     volume_ml_repetition=clean_tube["volume_ml_repetition"],
+                     rate_ml_min_repetition=clean_tube["rate_ml_min_repetition"],
+                     repetitions=clean_tube["repetitions"])
 
 
 if __name__ == "__main__":

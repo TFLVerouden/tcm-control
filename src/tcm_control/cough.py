@@ -5,7 +5,7 @@ from pathlib import Path
 import time
 from typing import Optional
 
-from tcm_control.devices import CoughMachine, VerticalStage, SyringePump, SprayTec, Camera, SyringePump2
+from tcm_control.devices import CoughMachine, VerticalStage, SprayTec, Camera, SyringePump2
 from tcm_control.devices.spraytec import warn_if_experiment_dir_name_too_long
 from tcm_control import logger
 from tcm_control.initialise_config import load_experiment_config
@@ -16,7 +16,7 @@ from tcm_control.interrupt_handling import (
     set_active_tcm,
 )
 from tcm_control.processing.run_log_processing import plot_run_log
-from tcm_control.thin_film import take_snapshot, make_layer
+from tcm_control.thin_film import take_snapshot
 from tcm_control.film_height import determine_film_height, determine_plate_height
 from tcm_control.user_input import (
     ask_start_confirmation,
@@ -60,8 +60,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     cough_inputs = config["inputs"]["cough"]
     cough_machine_inputs = config["devices"]["cough_machine"]["inputs"]
     tank_inputs = cough_machine_inputs["tank"]
+    syringe_inputs = config["devices"]["pump"]["syringe"]
+    layer_inputs = config["devices"]["pump"]["layer"]
     cleaning_inputs = cough_machine_inputs["cleaning"]
-    pump_inputs = config["devices"]["pump"]["inputs"]
     camera_inputs = config["devices"]["camera"]["inputs"]
 
     vertical_stage_inputs = config["devices"]["vertical_stage"]["inputs"]
@@ -173,18 +174,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         # Register device so interrupt cleanup can call quit() on it
         set_active_tcm(tcm)
 
-        # In droplet and PIV modes, set up the pump
-        if experiment_mode in ["droplet", "piv"]:
-            pump = SyringePump(
-                syringe_volume_ml=pump_inputs["syringe_volume_ml"],
-                syringe_diameter_mm=pump_inputs["syringe_diameter_mm"],
-            )
-
-            # Register pump so interrupt cleanup can call stop() on it
-            set_active_pump(pump)
-
+        # Drive tank to target pressure and hold until tolerance is satisfied
         tcm.set_pressure(
-            # Drive tank to target pressure and hold until tolerance is satisfied
             tank_inputs["pressure_bar"],
             timeout_s=tank_inputs["settling_time_s"],
             avg_window_s=tank_inputs["avg_window_s"],
@@ -212,8 +203,14 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 camera_output_dir.mkdir(exist_ok=True)
             camera = Camera(exposure_us=camera_inputs["camera_exposure_us"],
                             output_dir=camera_output_dir)
+
             # TODO: Simplify how pump gets input...
-            pump = SyringePump2(pump_inputs)
+            # TODO: Set up pump in droplet mode
+            pump = SyringePump2(syringe_inputs["syringe_vendor_code"],
+                                syringe_inputs["syringe_volume_mL"],
+                                syringe_inputs["syringe_diameter_mm"],
+                                syringe_inputs["syringe_gang"],
+                                syringe_inputs["syringe_force_percent"])
 
             set_active_pump(pump)
 
@@ -335,7 +332,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 # Explicitly require operator confirmation of syringe being filled
                 confirm_syringe_filled = prompt_yes_no(
                     "Press ENTER to confirm the syringe is filled with > "
-                    f"PLACEHOLDER mL...",
+                    f"{layer_inputs['infuse_volume_ml']} mL...",
                     default=True,
                 )
                 # TODO: get film making protocol volume here
@@ -346,16 +343,24 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 # Execute repeated runs
                 for run_idx in range(cough_inputs["nr_runs"]):
                     # Initial picture
-                    background_path = take_snapshot(camera, tcm)
+                    background_path = take_snapshot(
+                        camera, tcm, filename=f"background_run{run_idx + 1}.png")
                     if camera_output_dir is not None:
                         plate_height_px = determine_plate_height(
                             background_path, camera_output_dir)
 
                     # Make a layer
-                    # make_layer(pump)  # type: ignore
+                    if pump is not None:
+                        pump.make_layer(infuse_volume_ml=layer_inputs["infuse_volume_ml"],
+                                        infuse_rate_ml_min=layer_inputs["infuse_rate_ml_min"],
+                                        withdraw_volume_ml=layer_inputs["withdraw_volume_ml"],
+                                        withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"])
+                    # Wait for the layer to settle before imaging
+                    time.sleep(10)
 
                     # Take a picture of the layer
-                    thin_film_path = take_snapshot(camera, tcm)
+                    thin_film_path = take_snapshot(
+                        camera, tcm, filename=f"thin_film_run{run_idx + 1}.png")
                     if camera_output_dir is not None:
                         film_height_px = determine_film_height(
                             thin_film_path, plate_height_px, camera_output_dir)
@@ -401,7 +406,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     )
 
                     # Image the channel after cleaning
-                    _ = take_snapshot(camera, tcm)
+                    _ = take_snapshot(
+                        camera, tcm, filename=f"cleaned_run{run_idx + 1}.png")
 
                     # Cache first run log for the summary plot in finalization
                     if run_idx == 0:
@@ -441,7 +447,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 # Execute configured number of PIV runs with pump start/stop timing
                 for run_idx in range(cough_inputs["nr_runs"]):
                     # Start liquid feed before each run
-                    pump.infuse(pump_rate_ml_mn=pump_rate_ml_per_min)
+                    pump.infuse(rate_ml_min=pump_rate_ml_per_min)
                     pump_stopped = False
                     try:
                         if pump_inputs["piv_pump_start_before_run_s"] > 0:
@@ -555,7 +561,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 tcm=tcm,
                 cough_machine_inputs=cough_machine_inputs,
                 pump=pump,
-                pump_inputs=pump_inputs,
+                syringe_inputs=syringe_inputs,
+                layer_inputs=layer_inputs,
                 camera_inputs=camera_inputs,
                 record_droplet_size=record_droplet_size,
                 spraytec_inputs=spraytec_inputs,
