@@ -60,11 +60,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     cough_inputs = config["inputs"]["cough"]
     cough_machine_inputs = config["devices"]["cough_machine"]["inputs"]
     tank_inputs = cough_machine_inputs["tank"]
-    cleaning_inputs = cough_machine_inputs["cleaning"]
-
-    print(config["devices"]["pump"])
     syringe_inputs = config["devices"]["pump"]["syringe"]
     layer_inputs = config["devices"]["pump"]["layer"]
+    cleaning_inputs = cough_machine_inputs["cleaning"]
     camera_inputs = config["devices"]["camera"]["inputs"]
 
     vertical_stage_inputs = config["devices"]["vertical_stage"]["inputs"]
@@ -334,7 +332,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 # Explicitly require operator confirmation of syringe being filled
                 confirm_syringe_filled = prompt_yes_no(
                     "Press ENTER to confirm the syringe is filled with > "
-                    f"{syringe_inputs['syringe_volume_mL']} mL...",
+                    f"{layer_inputs['infuse_volume_ml']} mL...",
                     default=True,
                 )
                 # TODO: get film making protocol volume here
@@ -558,7 +556,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 tcm=tcm,
                 cough_machine_inputs=cough_machine_inputs,
                 pump=pump,
-                pump_inputs=pump_inputs,
+                syringe_inputs=syringe_inputs,
+                layer_inputs=layer_inputs,
                 camera_inputs=camera_inputs,
                 record_droplet_size=record_droplet_size,
                 spraytec_inputs=spraytec_inputs,
