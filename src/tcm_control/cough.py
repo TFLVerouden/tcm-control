@@ -343,7 +343,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 # Execute repeated runs
                 for run_idx in range(cough_inputs["nr_runs"]):
                     # Initial picture
-                    background_path = take_snapshot(camera, tcm)
+                    background_path = take_snapshot(
+                        camera, tcm, filename=f"background_run{run_idx + 1}.png")
                     if camera_output_dir is not None:
                         plate_height_px = determine_plate_height(
                             background_path, camera_output_dir)
@@ -354,9 +355,12 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                                         infuse_rate_ml_min=layer_inputs["infuse_rate_ml_min"],
                                         withdraw_volume_ml=layer_inputs["withdraw_volume_ml"],
                                         withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"])
+                    # Wait for the layer to settle before imaging
+                    time.sleep(10)
 
                     # Take a picture of the layer
-                    thin_film_path = take_snapshot(camera, tcm)
+                    thin_film_path = take_snapshot(
+                        camera, tcm, filename=f"thin_film_run{run_idx + 1}.png")
                     if camera_output_dir is not None:
                         film_height_px = determine_film_height(
                             thin_film_path, plate_height_px, camera_output_dir)
@@ -402,7 +406,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     )
 
                     # Image the channel after cleaning
-                    _ = take_snapshot(camera, tcm)
+                    _ = take_snapshot(
+                        camera, tcm, filename=f"cleaned_run{run_idx + 1}.png")
 
                     # Cache first run log for the summary plot in finalization
                     if run_idx == 0:
