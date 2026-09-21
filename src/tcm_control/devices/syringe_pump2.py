@@ -480,29 +480,24 @@ class SyringePump2:
             if settle_s > 0:
                 time.sleep(settle_s)
 
-    def make_layer(self, infuse_step: dict, withdraw_step: dict) -> None:
+    def make_layer(self, infuse_volume_ml: float, infuse_rate_ml_min: float, withdraw_volume_ml: float, withdraw_rate_ml_min: float) -> None:
         """Create a thin film layer using the syringe pump."""
         try:
             # Infuse fluid to create the layer
-            if infuse_step is not None:
-                self.infuse(
-                    volume_ml=infuse_step["volume_ml"],
-                    rate_ml_min=infuse_step["rate_ml_min"]
-                )
 
-                # Allow the pump system and fluid to relax
-                time.sleep(5)
+            self.infuse(
+                volume_ml=infuse_volume_ml,
+                rate_ml_min=infuse_rate_ml_min
+            )
 
-            # Partially withdraw to stabilize the layer
-            if withdraw_step is not None:
-                self.withdraw(
-                    volume_ml=withdraw_step["volume_ml"],
-                    rate_ml_min=withdraw_step["rate_ml_min"]
-                )
-            else:
-                self._log_info(
-                    "SyringePump config has no infuse/withdraw steps"
-                )
+            # Allow the pump system and fluid to relax
+            time.sleep(5)
+
+            # Partially withdraw to create a thin film layer
+            self.withdraw(
+                volume_ml=withdraw_volume_ml,
+                rate_ml_min=withdraw_rate_ml_min
+            )
         except Exception as exc:
             self._log_error(str(exc))
             raise
@@ -547,8 +542,7 @@ def main(specs_path: Path = DEFAULT_SPECS_PATH) -> None:
         config = tomllib.load(specs_path.open("rb"))
 
     syringe_inputs = config["devices"]["pump"]["syringe"]
-    infuse = config["devices"]["pump"]["infuse"]
-    withdraw = config["devices"]["pump"]["withdraw"]
+    layer_inputs = config["devices"]["pump"]["layer"]
     clean_tube = config["devices"]["pump"]["clean_tube"]
 
     pump = SyringePump2(syringe_inputs["syringe_vendor_code"],
@@ -557,7 +551,10 @@ def main(specs_path: Path = DEFAULT_SPECS_PATH) -> None:
                         syringe_inputs["syringe_gang"],
                         syringe_inputs["syringe_force_percent"])
 
-    pump.make_layer(infuse_step=infuse, withdraw_step=withdraw)
+    pump.make_layer(infuse_volume_ml=layer_inputs["infuse_volume_ml"],
+                    infuse_rate_ml_min=layer_inputs["infuse_rate_ml_min"],
+                    withdraw_volume_ml=layer_inputs["withdraw_volume_ml"],
+                    withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"])
 
     pump = SyringePump2(syringe_inputs["syringe_vendor_code"],
                         syringe_inputs["syringe_volume_mL"],
