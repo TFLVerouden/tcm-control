@@ -62,4 +62,4 @@ if __name__ == "__main__":
 
     # Clean channel
     tcm = CoughMachine()
-    tcm.clean(clean_pressure_bar=4, valve_open_duration_s=1, cycle_count=3)
+    tcm.clean(clean_pressure_bar=5, valve_open_duration_s=1, cycle_count=1)

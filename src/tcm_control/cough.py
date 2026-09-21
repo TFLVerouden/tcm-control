@@ -349,11 +349,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             background_path, camera_output_dir)
 
                     # Make a layer
-                    # if pump is not None:
-                    #     pump.make_layer(infuse_volume_ml=layer_inputs["infuse_volume_ml"],
-                    #                     infuse_rate_ml_min=layer_inputs["infuse_rate_ml_min"],
-                    #                     withdraw_volume_ml=layer_inputs["withdraw_volume_ml"],
-                    #                     withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"])
+                    if pump is not None:
+                        pump.make_layer(infuse_volume_ml=layer_inputs["infuse_volume_ml"],
+                                        infuse_rate_ml_min=layer_inputs["infuse_rate_ml_min"],
+                                        withdraw_volume_ml=layer_inputs["withdraw_volume_ml"],
+                                        withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"])
 
                     # Take a picture of the layer
                     thin_film_path = take_snapshot(camera, tcm)
@@ -442,7 +442,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 # Execute configured number of PIV runs with pump start/stop timing
                 for run_idx in range(cough_inputs["nr_runs"]):
                     # Start liquid feed before each run
-                    pump.infuse(pump_rate_ml_mn=pump_rate_ml_per_min)
+                    pump.infuse(rate_ml_min=pump_rate_ml_per_min)
                     pump_stopped = False
                     try:
                         if pump_inputs["piv_pump_start_before_run_s"] > 0:
