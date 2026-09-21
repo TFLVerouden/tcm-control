@@ -128,7 +128,7 @@ def determine_film_height(
 
     # Calculate film thickness
     thickness = float(np.mean(rim_y) - plate_height)
-    print(min_x, max_x)
+
     # Save visualization
     plt.figure()
     plt.imshow(image, cmap='gray', origin='lower')
