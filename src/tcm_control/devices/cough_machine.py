@@ -25,7 +25,7 @@ DEFAULT_CLEAN_DRY_DURATION_S = 0.0
 DEFAULT_CLEAN_DRY_VALVE_CURRENT_MA = 14.0
 DEFAULT_CLEAN_CYCLE_COUNT = 0
 # Keep protocol version as a single integer. Bump only for breaking serial changes.
-DEFAULT_SUPPORTED_PROTOCOL_VERSION = 6
+DEFAULT_SUPPORTED_PROTOCOL_VERSION = 8
 
 
 class CoughMachine(PoFSerialDevice):
@@ -333,6 +333,20 @@ class CoughMachine(PoFSerialDevice):
         raise RuntimeError(
             "Could not reach setpoint value or pressure too unstable.")
 
+    def set_nebuliser_pressure(self, pressure_bar: float, *, echo: Optional[bool] = None) -> str:
+        """Set nebuliser pressure with `M <bar>`.
+
+        Expects a reply beginning with `SET_NEB_PRESSURE`.
+        """
+        if pressure_bar < 0 or pressure_bar > MAX_PRESSURE_BAR:
+            raise ValueError(
+                f"Pressure must be between 0 and {MAX_PRESSURE_BAR} bar")
+
+        reply, _lines = self._query_and_drain(
+            f"M {pressure_bar}", expected_prefix="SET_NEB_PRESSURE", echo=echo
+        )
+        return reply or ""
+
     def open_solenoid(self, *, echo: Optional[bool] = None) -> str:
         """Open the solenoid valve using `O`.
 
@@ -576,6 +590,17 @@ class CoughMachine(PoFSerialDevice):
         )
         return reply or ""
 
+    def set_nebuliser(self, enabled: bool, *, echo: Optional[bool] = None) -> str:
+        """Toggle the nebuliser using `N <0|1>`.
+
+        Expects `NEBULISER_ON` when enabled and `NEBULISER_OFF` when disabled.
+        """
+        cmd = "N 1" if enabled else "N 0"
+        expected = "NEBULISER_ON" if enabled else "NEBULISER_OFF"
+        reply, _lines = self._query_and_drain(
+            cmd, expected=expected, echo=echo)
+        return reply or ""
+
     def set_fan_speed(self, speed, *, echo: Optional[bool] = None) -> str:
         """Set fan speed using `F <val>`.
 
@@ -707,6 +732,7 @@ class CoughMachine(PoFSerialDevice):
     def load_flowcurve(
         self,
         csv_path: str | Path | None = None,
+        tank_pressure_bar: Optional[float] = None,
         *,
         delimiter: str = ",",
         echo: Optional[bool] = None,
@@ -716,7 +742,7 @@ class CoughMachine(PoFSerialDevice):
         """Load and upload a flow-curve dataset using serial command `L`.
 
         The selected CSV is converted to protocol payload format
-        `<N> <duration_ms> <ms0>,<mA0>,<e0>,<t0>,...` and sent as one `L` command,
+        `<N> <duration_ms> <ms0>,<Lps0>,<e0>,<t0>,...` and sent as one `L` command,
         where `e` is solenoid enable and `t` is trigger event (both 0/1).
         Waits for upload confirmation ending with `DATASET_SAVED`.
         """
@@ -738,18 +764,21 @@ class CoughMachine(PoFSerialDevice):
         if self._flowcurve_csv_path is None:
             raise SystemExit("No flow curve CSV selected")
 
-        time_arr, mA_arr, sol_enable_arr, trig_enable_arr = self._extract_csv(
+        time_arr, Lps_arr, sol_enable_arr, trig_enable_arr = self._extract_csv(
             self._flowcurve_csv_path, delimiter=delimiter
         )
         serial_command = self._format_dataset(
             time_arr,
-            mA_arr,
+            Lps_arr,
             sol_enable_arr,
             trig_enable_arr,
         )
 
         if self._debug:
             print(f"Formatted serial command:\n{serial_command}")
+
+        # Check whether the flow rate values do not exceed the maximum that is possible with the current pressure
+        # TODO: Implement check based on max_flow_rate.csv
 
         if not self.write(serial_command):
             raise RuntimeError("Failed to write dataset to device.")
@@ -990,12 +1019,12 @@ class CoughMachine(PoFSerialDevice):
         """Read flow-curve CSV into arrays for time/current/solenoid/trigger.
 
         CSV rows must contain four non-empty values in the order
-        `time_ms,prop_valve_ma,sol_valve,trig`.
+        `time_ms,flow_rate_lps,sol_valve,trig`.
         """
         # Parse a CSV file into time, current, solenoid and trigger arrays
         # for the L command.
         time_arr: list[str] = []
-        mA_arr: list[str] = []
+        Lps_arr: list[str] = []
         sol_enable_arr: list[str] = []
         trig_enable_arr: list[str] = []
         has_header = False
@@ -1009,7 +1038,7 @@ class CoughMachine(PoFSerialDevice):
                 if len(rows) < 4:
                     raise ValueError(
                         f"Row {file_row_idx} must have 4 columns: "
-                        "time_ms,prop_valve_ma,sol_valve,trig"
+                        f"time_ms,flow_rate_lps,sol_valve,trig"
                     )
 
                 time_str = rows[0].strip()
@@ -1020,7 +1049,7 @@ class CoughMachine(PoFSerialDevice):
                 if (
                     file_row_idx == 1
                     and time_str.lower() == "time_ms"
-                    and current_str.lower() == "prop_valve_ma"
+                    and current_str.lower() == "flow_rate_lps"
                     and sol_str.lower() == "sol_valve"
                     and trig_str.lower() == "trig"
                 ):
@@ -1054,20 +1083,20 @@ class CoughMachine(PoFSerialDevice):
                     )
 
                 time_arr.append(time_clean)
-                mA_arr.append(current_clean)
+                Lps_arr.append(current_clean)
                 sol_enable_arr.append(sol_str)
                 trig_enable_arr.append(trig_str)
 
-        if not time_arr or not mA_arr or not sol_enable_arr or not trig_enable_arr:
+        if not time_arr or not Lps_arr or not sol_enable_arr or not trig_enable_arr:
             raise ValueError("CSV contains no data.")
         # if has_header:
             # print(f"Detected and skipped CSV header in {filename}")
-        return time_arr, mA_arr, sol_enable_arr, trig_enable_arr
+        return time_arr, Lps_arr, sol_enable_arr, trig_enable_arr
 
     @staticmethod
     def _format_dataset(
         time_array: list[str],
-        mA_array: list[str],
+        Lps_array: list[str],
         sol_enable_array: list[str],
         trig_enable_array: list[str],
         *,
@@ -1077,18 +1106,18 @@ class CoughMachine(PoFSerialDevice):
     ) -> str:
         """Build the dataset upload string in MCU `L` command format.
 
-        Output format is `L <N> <duration_ms> <ms0>,<mA0>,<e0>,<t0>,...`.
+        Output format is `L <N> <duration_ms> <ms0>,<Lps0>,<e0>,<t0>,...`.
         """
         # Format the arrays into the serial protocol for dataset upload.
         if (
             not time_array
-            or len(time_array) != len(mA_array)
+            or len(time_array) != len(Lps_array)
             or len(time_array) != len(sol_enable_array)
             or len(time_array) != len(trig_enable_array)
         ):
             raise ValueError(
                 f"Arrays are not compatible! Time length: {len(time_array)}, "
-                f"mA length: {len(mA_array)}, solenoid length: {len(sol_enable_array)}, "
+                f"Lps length: {len(Lps_array)}, solenoid length: {len(sol_enable_array)}, "
                 f"trigger length: {len(trig_enable_array)}"
             )
 
@@ -1099,13 +1128,13 @@ class CoughMachine(PoFSerialDevice):
         )
         data = [
             str(val)
-            for t, mA, e, trig in zip(
+            for t, Lps, e, trig in zip(
                 time_array,
-                mA_array,
+                Lps_array,
                 sol_enable_array,
                 trig_enable_array,
             )
-            for val in (t, mA, e, trig)
+            for val in (t, Lps, e, trig)
         ]
         return header + data_delim.join(data)
 
