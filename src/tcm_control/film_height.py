@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 MINIMUM_THICKNESS_PIXELS = 10
 IMAGE_CROP_LEFT = 2
 
+# TODO: Move to processing folder
+
 
 def detect_film_rim(
     edge_x: np.ndarray,
@@ -126,7 +128,7 @@ def determine_film_height(
 
     # Calculate film thickness
     thickness = float(np.mean(rim_y) - plate_height)
-    print(min_x, max_x)
+
     # Save visualization
     plt.figure()
     plt.imshow(image, cmap='gray', origin='lower')

@@ -4,12 +4,12 @@
 
 from tcm_control.devices import CoughMachine
 
-PRESSURE_BAR = 5
+PRESSURE_BAR = 4
 OPEN_DURATION_S = 5
 DRY_PRESSURE_BAR = 2
 DRY_DURATION_S = 0
 DRY_VALVE_CURRENT_MA = 13
-REPEATS = 1
+REPEATS = 3
 
 
 def main() -> None:

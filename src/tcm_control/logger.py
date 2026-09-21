@@ -305,173 +305,161 @@ def _to_jsonable(value: Any) -> Any:
 
 def write_run_metadata(
         experiment_dir: Path,
-        metadata: dict[str, Any],
+        meta: dict[str, Any],
         filename: str = "metadata.json") -> Path:
     """Write the final experiment metadata payload to disk as JSON."""
     file_path = experiment_dir / filename
-    save_metadata_json(_to_jsonable(metadata), file_path)
+    save_metadata_json(_to_jsonable(meta), file_path)
     print(f"Run metadata saved to {file_path}")
     return file_path
 
 
-def build_run_metadata(
-    *,
-    run_context: dict[str, Any],
-    cough_inputs: dict[str, Any],
-    device_context: dict[str, Any],
-) -> dict[str, Any]:
-    """Construct the run metadata dictionary before JSON serialization.
-
-    This API keeps call sites compact by accepting grouped context dictionaries
-    instead of a long list of keyword arguments.
+def build_run_metadata(config, **meta) -> dict[str, Any]:
+    """Construct the run metadata dictionary.
     """
-    # Unpack run-level context values.
-    config_file_path = run_context["config_file_path"]
-    time_start = run_context["time_start"]
-    time_finish = run_context["time_finish"]
-    experiment_name = run_context["experiment_name"]
-    experiment_mode = run_context["experiment_mode"]
-    output_dir = run_context["output_dir"]
-    wait_before_run_us = run_context["wait_before_run_us"]
-    temperature_start = run_context["temperature_start"]
-    humidity_start = run_context["humidity_start"]
-    temperature_finish = run_context["temperature_finish"]
-    humidity_finish = run_context["humidity_finish"]
-    thin_film_height_mm = run_context["thin_film_height_mm"]
-    comments = run_context["comments"]
 
-    # Unpack device-level context values.
-    tcm = device_context["tcm"]
-    cough_machine_inputs = device_context["cough_machine_inputs"]
-    pump = device_context["pump"]
-    pump_inputs = device_context["pump_inputs"]
-    record_droplet_size = device_context["record_droplet_size"]
-    spraytec_inputs = device_context["spraytec_inputs"]
-    spraytec_x_mm = device_context["spraytec_x_mm"]
-    spraytec_y_mm = device_context["spraytec_y_mm"]
-    spraytec_z_mm = device_context["spraytec_z_mm"]
-    lift_pos_z_mm = device_context["lift_pos_z_mm"]
-    stage_pos_x_mm = device_context["stage_pos_x_mm"]
-    stage_pos_y_mm = device_context["stage_pos_y_mm"]
-    spraytec_target_z_mm = device_context["spraytec_target_z_mm"]
-    spraytec_audit_path = device_context["spraytec_audit_path"]
-    spraytec_laser_intensity = device_context["spraytec_laser_intensity"]
-    lift = device_context["lift"]
+    debug_mode = config["inputs"]["cough"]["debug_mode"]
+    nr_runs = config["inputs"]["cough"]["nr_runs"]
+    multi_run_interval_s = config["inputs"]["cough"]["multi_run_interval_s"]
+    confirm_before_starting_next_run = config["inputs"]["cough"]["confirm_before_starting_next_run"]
+    record_droplet_size = config["inputs"]["cough"]["record_droplet_size"]
+    config_file_path = config["experiment"]["config_file_path"]
 
     # Prefer configured syringe geometry values because runtime objects may
     # not expose table-based conversions in all pump implementations.
-    configured_syringe_volume_ml = pump_inputs.get("syringe_volume_ml")
-    configured_syringe_diameter_mm = pump_inputs.get("syringe_diameter_mm")
+    # configured_syringe_volume_ml = meta["pump_inputs"].get(
+    #     "syringe_volume_ml")
+    # configured_syringe_diameter_mm = meta["pump_inputs"].get(
+    #     "syringe_diameter_mm")
 
-    runtime_syringe_volume_ml = getattr(pump, "syringe_volume_ml", None)
-    runtime_syringe_diameter_mm = getattr(pump, "syringe_diameter_mm", None)
+    runtime_syringe_volume_ml = getattr(
+        meta["pump"], "syringe_volume_ml", None)
+    runtime_syringe_diameter_mm = getattr(
+        meta["pump"], "syringe_diameter_mm", None)
 
-    if runtime_syringe_diameter_mm is None and pump is not None and hasattr(pump, "get_diameter"):
+    if runtime_syringe_diameter_mm is None and meta["pump"] is not None and hasattr(meta["pump"], "get_diameter"):
         try:
-            runtime_syringe_diameter_mm = float(pump.get_diameter())
+            runtime_syringe_diameter_mm = float(
+                meta["pump"].get_diameter())
         except Exception:
             runtime_syringe_diameter_mm = None
 
-    resolved_syringe_volume_ml = (
-        configured_syringe_volume_ml
-        if configured_syringe_volume_ml is not None
-        else runtime_syringe_volume_ml
-    )
-    resolved_syringe_diameter_mm = (
-        configured_syringe_diameter_mm
-        if configured_syringe_diameter_mm is not None
-        else runtime_syringe_diameter_mm
-    )
+    # resolved_syringe_volume_ml = (
+    #     configured_syringe_volume_ml
+    #     if configured_syringe_volume_ml is not None
+    #     else runtime_syringe_volume_ml
+    # )
+    # resolved_syringe_diameter_mm = (
+    #     configured_syringe_diameter_mm
+    #     if configured_syringe_diameter_mm is not None
+    #     else runtime_syringe_diameter_mm
+    # )
 
     return {
-        "time": {
-            "start": time_start,
-            "finish": time_finish,
-        },
         "experiment": {
-            "config_file_path": config_file_path,
-            "name": experiment_name,
-            "mode": experiment_mode,
-            "wait_before_run_us": wait_before_run_us,
-            "temperature_start": temperature_start,
-            "humidity_start": humidity_start,
-            "temperature_finish": temperature_finish,
-            "humidity_finish": humidity_finish,
-            "thin_film_height_mm": thin_film_height_mm,
-            "comments": comments,
-            "output_dir": output_dir,
-        },
-        "inputs": {
-            "cough": cough_inputs,
+            "name": meta["experiment_name"],
+            "mode": meta["experiment_mode"],
+            "time": {
+                "start": meta["time_start"],
+                "finish": meta["time_finish"],
+            },
+            "files": {
+                "config_file_path": config_file_path,
+                "output_dir": meta["output_dir"],
+            },
+            "settings": {
+                "nr_runs": nr_runs,
+                "multi_run_interval_s": multi_run_interval_s,
+                "confirm_before_starting_next_run": confirm_before_starting_next_run,
+                "wait_before_run_us": meta["wait_before_run_us"],
+            },
+            "measurements": {
+                "temperature": {
+                    "start": meta["temperature_start"],
+                    "finish": meta["temperature_finish"],
+                },
+                "humidity": {
+                    "start": meta["humidity_start"],
+                    "finish": meta["humidity_finish"],
+                },
+                "film_height_mm": meta["film_height_mm"],
+            },
+            "comments": meta["comments"],
+            "debug_mode": debug_mode,
         },
         "devices": {
             "cough_machine": {
-                "name": tcm.name,
-                "protocol_version": getattr(tcm, "protocol_version", None),
-                "inputs": cough_machine_inputs,
+                "name": meta["tcm"].name,
+                "protocol_version": getattr(meta["tcm"], "protocol_version", None),
+                "inputs": meta["cough_machine_inputs"],
                 "connection": {
-                    "port": getattr(getattr(tcm, "ser", None), "port", None),
-                    "baudrate": tcm.serial_settings.get("baudrate"),
-                    "timeout_s": tcm.serial_settings.get("timeout"),
+                    "port": getattr(getattr(meta["tcm"], "ser", None), "port", None),
+                    "baudrate": meta["tcm"].serial_settings.get("baudrate"),
+                    "timeout_s": meta["tcm"].serial_settings.get("timeout"),
                 },
             },
             "pump": {
                 "mode": (
                     "enabled"
-                    if experiment_mode in ["droplet", "piv"]
+                    if meta["experiment_mode"] in ["droplet", "piv"]
                     else "disabled"
                 ),
-                "inputs": pump_inputs,
+                # "inputs": meta["pump_inputs"],
+                "syringe": meta["syringe_inputs"],
+                "layer": meta["layer_inputs"],
                 "connection": {
-                    "port": getattr(pump, "port", None),
-                    "baudrate": getattr(pump, "baudrate", None),
-                    "timeout_s": getattr(pump, "timeout_s", None),
-                    "pump_address": getattr(pump, "pump_address", None),
+                    "port": getattr(meta["pump"], "port", None),
+                    "baudrate": getattr(meta["pump"], "baudrate", None),
+                    "timeout_s": getattr(meta["pump"], "timeout_s", None),
+                    "pump_address": getattr(meta["pump"], "pump_address", None),
                 },
-                "resolved": {
-                    "syringe_volume_ml": resolved_syringe_volume_ml,
-                    "syringe_diameter_mm": resolved_syringe_diameter_mm,
-                    "rate_ml_per_min": (
-                        pump_inputs.get("pump_rate_ml_per_min")
-                        if experiment_mode in ["droplet", "piv"]
-                        else None
-                    ),
-                },
+                # "resolved": {
+                #     "syringe_volume_ml": resolved_syringe_volume_ml,
+                #     "syringe_diameter_mm": resolved_syringe_diameter_mm,
+                #     "rate_ml_per_min": (
+                #         meta["pump_inputs"].get("pump_rate_ml_per_min")
+                #         if meta["experiment_mode"] in ["droplet", "piv"]
+                #         else None
+                #     ),
+                # },
+            },
+            "camera": {
+                "inputs": meta["camera_inputs"],
             },
             "spraytec": {
                 "mode": "enabled" if record_droplet_size else "disabled",
-                "inputs": spraytec_inputs,
+                "inputs": meta["spraytec_inputs"],
                 "measurement_position_mm": {
-                    "x": spraytec_x_mm,
-                    "y": spraytec_y_mm,
-                    "z": spraytec_z_mm,
+                    "x": meta["spraytec_x_mm"],
+                    "y": meta["spraytec_y_mm"],
+                    "z": meta["spraytec_z_mm"],
                 },
-                "operator_visible_position_mm": {
-                    "stage_x_read_off": stage_pos_x_mm,
-                    "stage_y_read_off": stage_pos_y_mm,
-                    "lift_pos_z_set": lift_pos_z_mm,
+                "operator_readable_position_mm": {
+                    "stage_x_read_off": meta["stage_pos_x_mm"],
+                    "stage_y_read_off": meta["stage_pos_y_mm"],
+                    "stage_pos_z_set": meta["stage_pos_z_mm"],
                 },
-                "audit_csv": spraytec_audit_path,
-                "laser_intensity": spraytec_laser_intensity,
+                "audit_csv": meta["spraytec_audit_path"],
+                "laser_intensity": meta["spraytec_laser_intensity"],
             },
-            "spraytec_lift": {
-                "name": getattr(lift, "name", None),
+            "vertical_stage": {
+                "name": getattr(meta["vertical_stage"], "name", None),
                 "connection": {
-                    "port": getattr(getattr(lift, "ser", None), "port", None),
+                    "port": getattr(getattr(meta["vertical_stage"], "ser", None), "port", None),
                     "baudrate": (
                         None
-                        if lift is None
-                        else lift.serial_settings.get("baudrate")
+                        if meta["vertical_stage"] is None
+                        else meta["vertical_stage"].serial_settings.get("baudrate")
                     ),
                     "timeout_s": (
                         None
-                        if lift is None
-                        else lift.serial_settings.get("timeout")
+                        if meta["vertical_stage"] is None
+                        else meta["vertical_stage"].serial_settings.get("timeout")
                     ),
                     "lift_pos_z_mm": (
                         None
-                        if lift is None
-                        else lift_pos_z_mm
+                        if meta["vertical_stage"] is None
+                        else meta["vertical_stage"].serial_settings.get("lift_pos_z_mm")
                     ),
                 },
             },

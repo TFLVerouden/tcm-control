@@ -6,7 +6,7 @@ from pathlib import Path
 import time
 from typing import Optional
 
-from tcm_control.devices import CoughMachine, VerticalStage, SyringePump, SprayTec, Camera, SyringePump2
+from tcm_control.devices import CoughMachine, VerticalStage, SprayTec, Camera, SyringePump
 from tcm_control.devices.spraytec import warn_if_experiment_dir_name_too_long
 from tcm_control import logger
 from tcm_control.initialise_config import load_experiment_config
@@ -18,7 +18,7 @@ from tcm_control.interrupt_handling import (
     set_active_tcm,
 )
 from tcm_control.processing.run_log_processing import plot_run_log
-from tcm_control.thin_film import take_snapshot, make_layer
+from tcm_control.thin_film import take_snapshot
 from tcm_control.film_height import determine_film_height, determine_plate_height
 from tcm_control.user_input import (
     ask_start_confirmation,
@@ -77,6 +77,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     cough_inputs = config["inputs"]["cough"]
     cough_machine_inputs = config["devices"]["cough_machine"]["inputs"]
     tank_inputs = cough_machine_inputs["tank"]
+    syringe_inputs = config["devices"]["pump"]["syringe"]
+    layer_inputs = config["devices"]["pump"]["layer"]
     cleaning_inputs = cough_machine_inputs["cleaning"]
     nebuliser_inputs = cough_machine_inputs["nebuliser"]
     pump_inputs = config["devices"]["pump"]["inputs"]
@@ -220,7 +222,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             experiment_dir=output_dir if save_data else None,
         )
         tcm.set_pressure(
-            # Drive tank to target pressure and hold until tolerance is satisfied
             tank_inputs["pressure_bar"],
             timeout_s=tank_inputs["settling_time_s"],
             avg_window_s=tank_inputs["avg_window_s"],
@@ -249,16 +250,22 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 camera_output_dir.mkdir(exist_ok=True)
             camera = Camera(exposure_us=camera_inputs["camera_exposure_us"],
                             output_dir=camera_output_dir)
-            pump = SyringePump2(pump_inputs)
+
+            # TODO: Set up pump in droplet mode
+            pump = SyringePump(syringe_inputs["syringe_vendor_code"],
+                               syringe_inputs["syringe_volume_mL"],
+                               syringe_inputs["syringe_diameter_mm"],
+                               syringe_inputs["syringe_gang"],
+                               syringe_inputs["syringe_force_percent"])
 
             set_active_pump(pump)
 
         # Optional SprayTec setup and geometry resolution
         if record_droplet_size:
             # Vertical stage is only needed when SprayTec measurements are enabled.
-            lift = VerticalStage()
-            spraytec_x_mm, spraytec_y_mm, spraytec_z_mm, stage_pos_x_mm, stage_pos_y_mm, spraytec_target_z_mm, lift_pos_z_mm = set_spraytec_pos(
-                lift,
+            vertical_stage = VerticalStage()
+            spraytec_x_mm, spraytec_y_mm, spraytec_z_mm, stage_pos_x_mm, stage_pos_y_mm, spraytec_target_z_mm, stage_pos_z_mm = set_spraytec_pos(
+                vertical_stage,
                 spraytec_inputs["tcm_trachea_exit_to_ref_x_mm"],
                 spraytec_inputs["tcm_trachea_exit_to_ref_y_mm"],
                 spraytec_inputs["spraytec_to_ref_x_mm"],
@@ -358,39 +365,56 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 #             )
 
             case "film":
-                # ------------------------------------------------------------------
+                # ------------------------------------------------------
                 # 5B) Film atomisation mode
-                # ------------------------------------------------------------------
-
-                # Ask user to start the experiment
-                ask_start_confirmation(experiment_name=experiment_name)
-
-                # Record temperature and humidity
-                temperature_start, humidity_start = tcm.read_temperature_humidity(
-                    show_reading=True,
+                # ------------------------------------------------------
+                # Explicitly require operator confirmation of syringe being filled
+                confirm_syringe_filled = prompt_yes_no(
+                    "Press ENTER to confirm the syringe is filled with > "
+                    f"{layer_inputs['infuse_volume_ml']} mL...",
+                    default=True,
                 )
+                if not confirm_syringe_filled:
+                    print("Aborted.")
+                    exit(1)
 
                 # Execute repeated runs
                 for run_idx in range(cough_inputs["nr_runs"]):
                     # Initial picture
-                    background_path = take_snapshot(camera, tcm)
+                    background_path = take_snapshot(
+                        camera, tcm, filename=f"background_run{run_idx + 1}.png")
                     if camera_output_dir is not None:
                         plate_height_px = determine_plate_height(
                             background_path, camera_output_dir)
 
                     # Make a layer
-                    make_layer(pump)  # type: ignore
+                    if pump is not None:
+                        pump.make_layer(infuse_volume_ml=layer_inputs["infuse_volume_ml"],
+                                        infuse_rate_ml_min=layer_inputs["infuse_rate_ml_min"],
+                                        withdraw_volume_ml=layer_inputs["withdraw_volume_ml"],
+                                        withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"])
+                    # Wait for the layer to settle before imaging
+                    time.sleep(10)
 
                     # Take a picture of the layer
-                    thin_film_path = take_snapshot(camera, tcm)
+                    thin_film_path = take_snapshot(
+                        camera, tcm, filename=f"thin_film_run{run_idx + 1}.png")
                     if camera_output_dir is not None:
                         film_height_px = determine_film_height(
                             thin_film_path, plate_height_px, camera_output_dir)
-                        film_height_mm = film_height_px / \
+                        film_height_mm = film_height_px * \
                             camera_inputs["pixel_per_meter"] * 1000
                         print(f"Film height (mm): {film_height_mm:.3f}")
 
                     # Wait between coughs if needed
+                    if run_idx == 0:
+                        # Ask user to start the experiment
+                        ask_start_confirmation(experiment_name=experiment_name)
+
+                        # Record temperature and humidity
+                        temperature_start, humidity_start = tcm.read_temperature_humidity(
+                            show_reading=True,
+                        )
                     if run_idx > 0:
                         wait_or_confirm_next_run(
                             next_run_number=(run_idx + 1),
@@ -428,7 +452,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     )
 
                     # Image the channel after cleaning
-                    _ = take_snapshot(camera, tcm)
+                    _ = take_snapshot(
+                        camera, tcm, filename=f"cleaned_run{run_idx + 1}.png")
 
             case "piv":
                 # ------------------------------------------------------------------
@@ -452,7 +477,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 )
 
                 # Ask user to start the experiment
-                # ask_start_co  nfirmation(experiment_name=experiment_name)
+                # ask_start_confirmation(experiment_name=experiment_name)
                 # countdown_beep()
 
                 # Record temperature and humidity
@@ -527,12 +552,12 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         )
 
                         # Plot run log
-                        # if save_data and run_log_path is not None:
-                        # plot_run_log(
-                        #    run_log_path=run_log_path,
-                        #    experiment_dir=output_dir,
-                        #    show=False,
-                        # )
+                        if save_data and run_log_path is not None:
+                        plot_run_log(
+                           run_log_path=run_log_path,
+                           experiment_dir=output_dir,
+                           show=False,
+                        )
 
                     finally:
                         # Always stop pump, even if the run or waits raise an error
@@ -583,53 +608,42 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                                                          offer_archive_if_large=True,
                                                          )
 
-            # Group run-level values in one dictionary to keep metadata wiring compact
-            # Add new run-wide metadata values here
-            run_context = {
-                "config_file_path": exp_conf["config_file_path"],
-                "time_start": time_start,
-                "time_finish": time_finish,
-                "experiment_name": experiment_name,
-                "experiment_mode": experiment_mode,
-                "output_dir": output_dir,
-                "wait_before_run_us": wait_before_run_us,
-                "temperature_start": temperature_start,
-                "humidity_start": humidity_start,
-                "temperature_finish": temperature_finish,
-                "humidity_finish": humidity_finish,
-                "thin_film_height_mm": film_height_mm if experiment_mode == "film" else None,
-                "comments": comments,
-            }
-
-            # Group device/config values separately for easier extension per device
-            # Add device-specific metadata values here
-            device_context = {
-                "tcm": tcm,
-                "cough_machine_inputs": cough_machine_inputs,
-                "pump": pump,
-                "pump_inputs": pump_inputs,
-                "record_droplet_size": record_droplet_size,
-                "spraytec_inputs": spraytec_inputs,
-                "spraytec_x_mm": spraytec_x_mm,
-                "spraytec_y_mm": spraytec_y_mm,
-                "spraytec_z_mm": spraytec_z_mm,
-                "spraytec_audit_path": spraytec_audit_path,
-                "spraytec_laser_intensity": spraytec_laser_intensity,
-                "lift_pos_z_mm": lift_pos_z_mm,
-                "stage_pos_x_mm": stage_pos_x_mm,
-                "stage_pos_y_mm": stage_pos_y_mm,
-                "spraytec_target_z_mm": spraytec_target_z_mm,
-                "lift": lift,
-            }
-
             metadata = logger.build_run_metadata(
-                run_context=run_context,
-                cough_inputs=cough_inputs,
-                device_context=device_context,
+                config,
+                time_start=time_start,
+                time_finish=time_finish,
+                experiment_name=experiment_name,
+                experiment_mode=experiment_mode,
+                output_dir=output_dir,
+                wait_before_run_us=wait_before_run_us,
+                temperature_start=temperature_start,
+                humidity_start=humidity_start,
+                temperature_finish=temperature_finish,
+                humidity_finish=humidity_finish,
+                film_height_mm=film_height_mm,
+                comments=comments,
+                tcm=tcm,
+                cough_machine_inputs=cough_machine_inputs,
+                pump=pump,
+                syringe_inputs=syringe_inputs,
+                layer_inputs=layer_inputs,
+                camera_inputs=camera_inputs,
+                record_droplet_size=record_droplet_size,
+                spraytec_inputs=spraytec_inputs,
+                spraytec_x_mm=spraytec_x_mm,
+                spraytec_y_mm=spraytec_y_mm,
+                spraytec_z_mm=spraytec_z_mm,
+                spraytec_audit_path=spraytec_audit_path,
+                spraytec_laser_intensity=spraytec_laser_intensity,
+                stage_pos_z_mm=stage_pos_z_mm,
+                stage_pos_x_mm=stage_pos_x_mm,
+                stage_pos_y_mm=stage_pos_y_mm,
+                spraytec_target_z_mm=spraytec_target_z_mm,
+                vertical_stage=vertical_stage,
             )
             # Persist full run metadata snapshot.
             logger.write_run_metadata(
-                experiment_dir=output_dir, metadata=metadata)
+                experiment_dir=output_dir, meta=metadata)
 
             print("Experiment completed, all data saved to ", output_dir)
             print("Exiting.")

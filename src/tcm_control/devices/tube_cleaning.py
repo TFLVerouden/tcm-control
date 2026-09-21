@@ -3,7 +3,7 @@
 import cv2
 
 from tcm_control.devices.camera import Camera
-from tcm_control.devices.syringe_pump2 import SyringePump2
+from tcm_control.devices.syringe_pump import SyringePump
 from tcm_control.devices.light import LightSwitchController
 from tcm_control.film_height import determine_film_height, determine_plate_height
 
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     if specs_path.exists():
         specs = tomllib.load(specs_path.open("rb"))
 
-    pump = SyringePump2(specs)
+    pump = SyringePump(specs)
 
     profile = pump.get_active_profile()
     infuse_step = pump.get_first_action_step("infuse")
