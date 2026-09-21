@@ -12,6 +12,7 @@ from tcm_control.devices.syringe_pump2 import SyringePump2
 def take_snapshot(
     camera: Camera,
     tcm: CoughMachine,
+    filename: str | None = None,
     brightness: float = 1.0,
 ) -> Path:
     """Capture a camera snapshot with lighting control.
@@ -30,7 +31,8 @@ def take_snapshot(
     tcm.set_light(brightness)
 
     # Capture image
-    image_path = camera.snapshot()
+    image_path = camera.snapshot(filename=filename)
+
     print(f"Saved image to: {image_path}")
 
     # Disable lighting
