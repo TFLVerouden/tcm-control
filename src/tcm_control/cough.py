@@ -217,10 +217,22 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         #     # Register pump so interrupt cleanup can call stop() on it
         #     set_active_pump(pump)
 
+        # Clear memory before starting the experiment
+        tcm.clear_memory()
+
+        # Load flow curve
         tcm.load_flowcurve(
             csv_path=cough_machine_inputs["flow_curve_csv_path"],
             experiment_dir=output_dir if save_data else None,
         )
+        # Store the resolved flow curve path for metadata traceability.
+        cough_machine_inputs["flow_curve_csv_path"] = tcm.get_flowcurve_csv_path(
+        )
+
+        # Program the fixed pre-run wait into the cough machine controller
+        tcm.set_wait_us(wait_us=wait_before_run_us)
+
+        # Set tank pressure
         tcm.set_pressure(
             tank_inputs["pressure_bar"],
             timeout_s=tank_inputs["settling_time_s"],
@@ -445,6 +457,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     )
 
                     # Image the channel after cleaning
+                    # TODO: Put run number first
                     _ = take_snapshot(
                         camera, tcm, filename=f"cleaned_run{run_idx + 1}.png")
 
@@ -558,11 +571,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             neb.set_nebuliser_pressure(0.0)
                             neb.set_nebuliser(False)
 
-                        # Flush nebuliser chamber before cleaning channel
-                        neb.set_nebuliser_pressure(0.3)
-                        wait_with_progress(
-                            wait_s=10, label="Flushing nebuliser chamber...")
-                        neb.set_nebuliser_pressure(0.0)
+                        # # Flush nebuliser chamber before cleaning channel
+                        # neb.set_nebuliser_pressure(0.3)
+                        # wait_with_progress(
+                        #     wait_s=10, label="Flushing nebuliser chamber...")
+                        # neb.set_nebuliser_pressure(0.0)
 
                         # Run cleaning routine every cycle
                         tcm.clean(clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
@@ -578,14 +591,14 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         if save_data:
             assert output_dir is not None
 
-            # Collect comments
-            comments = ask_user_for_comments(output_dir=output_dir)
-
             # Record temperature and humidity
             temperature_finish, humidity_finish = tcm.read_temperature_humidity(
                 show_reading=True,
             )
             time_finish = timestamp_str()
+
+            # Collect comments
+            comments = ask_user_for_comments(output_dir=output_dir)
 
             # Optional SprayTec post-processing.
             if record_droplet_size:
