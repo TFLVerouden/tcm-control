@@ -99,10 +99,10 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
     # Initialise variables
     pump = None
-    lift = None
-    lift_pos_z_mm = None
+    vertical_stage = None
     stage_pos_x_mm = None
     stage_pos_y_mm = None
+    stage_pos_z_mm = None
     spraytec_target_z_mm = None
     spraytec = None
     spraytec_x_mm = None
@@ -110,6 +110,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     spraytec_z_mm = None
     spraytec_audit_path = None
     spraytec_laser_intensity = None
+    film_height_mm = None
 
     # --------------------------------------------------------------------------
     # 2) Make connections to external devices
@@ -131,7 +132,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
     # Vertical stage is only needed when SprayTec measurements are enabled.
     if record_droplet_size:
-        lift = VerticalStage()
+        vertical_stage = VerticalStage()
 
     # --------------------------------------------------------------------------
     # 3) Set up experiment directory and logging
@@ -228,17 +229,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             poll_interval_s=tank_inputs["poll_interval_s"],
             interm_press_diff_bar=tank_inputs["intermediate_diff_bar"],
             interm_press_time_s=tank_inputs["intermediate_time_s"],
-        )
-        # Program the fixed pre-run wait into the cough machine controller
-        tcm.set_wait_us(wait_us=wait_before_run_us)
-        tcm.load_flowcurve(
-            # Load the configured flow curve and optionally copy it into output_dir
-            csv_path=cough_machine_inputs["flow_curve_csv_path"],
-            tank_pressure_bar=tank_inputs["pressure_bar"],
-            experiment_dir=output_dir if save_data else None,
-        )
-        # Store the resolved flow curve path for metadata traceability.
-        cough_machine_inputs["flow_curve_csv_path"] = tcm.get_flowcurve_csv_path(
         )
 
         # In film mode, set up the camera and pump

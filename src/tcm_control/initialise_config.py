@@ -19,8 +19,7 @@ import tomllib
 
 
 VALID_EXPERIMENT_MODES = {"droplet", "film", "piv"}
-PUMP_REQUIRED_MODES = {"droplet"}
-
+PUMP_REQUIRED_MODES = {"droplet", "film"}
 
 # -----------------------------------------------------------------------------
 # Generic value helpers
@@ -497,90 +496,118 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
     # Pump inputs (required in droplet/piv mode only)
     # ------------------------------------------------------------------
     pump_required = experiment_mode in PUMP_REQUIRED_MODES
+    if pump_required:
+        syringe_inputs = {
+            "syringe_vendor_code": str(
+                _nested_get(raw, "devices", "pump",
+                            "syringe", "syringe_vendor_code")
+            ),
+            "syringe_volume_mL": float(
+                _nested_get(raw, "devices", "pump",
+                            "syringe", "syringe_volume_mL")
+            ),
+            "syringe_diameter_mm": float(
+                _nested_get(raw, "devices", "pump",
+                            "syringe", "syringe_diameter_mm")
+            ),
+            "syringe_gang": int(
+                _nested_get(raw, "devices", "pump", "syringe", "syringe_gang")
+            ),
+            "syringe_force_percent": float(
+                _nested_get(raw, "devices", "pump", "syringe",
+                            "syringe_force_percent")
+            ),
+        }
 
-    syringe_inputs = {
-        "syringe_vendor_code": str(
-            _nested_get(raw, "devices", "pump",
-                        "syringe", "syringe_vendor_code")
-        ),
-        "syringe_volume_mL": float(
-            _nested_get(raw, "devices", "pump", "syringe", "syringe_volume_mL")
-        ),
-        "syringe_diameter_mm": float(
-            _nested_get(raw, "devices", "pump",
-                        "syringe", "syringe_diameter_mm")
-        ),
-        "syringe_gang": int(
-            _nested_get(raw, "devices", "pump", "syringe", "syringe_gang")
-        ),
-        "syringe_force_percent": float(
-            _nested_get(raw, "devices", "pump", "syringe",
-                        "syringe_force_percent")
-        ),
-    }
+        if syringe_inputs["syringe_vendor_code"] is None:
+            raise ValueError(
+                "Config [devices.pump.syringe].vendor_code must be a non-empty string."
+            )
+        if syringe_inputs["syringe_volume_mL"] <= 0:
+            raise ValueError(
+                "Config [devices.pump.syringe].syringe_volume_mL must be > 0."
+            )
+        if syringe_inputs["syringe_diameter_mm"] <= 0:
+            raise ValueError(
+                "Config [devices.pump.syringe].syringe_diameter_mm must be > 0."
+            )
+        if syringe_inputs["syringe_gang"] <= 0 or not isinstance(syringe_inputs["syringe_gang"], int):
+            raise ValueError(
+                "Config [devices.pump.syringe].syringe_gang must be a positive integer."
+            )
+        if syringe_inputs["syringe_force_percent"] <= 0 or syringe_inputs["syringe_force_percent"] > 100 or syringe_inputs["syringe_force_percent"] % 10 != 0:
+            raise ValueError(
+                "Config [devices.pump.syringe].syringe_force_percent must be a percentage between 0 and 100."
+                " It must be a multiple of 10."
+            )
+    else:
+        syringe_inputs = None
+        layer_inputs = None
+        pump_clean_tube = None
+    if experiment_mode == "film":
+        layer_inputs = {
+            "film_settling_time_s": int(
+                _nested_get(raw, "devices", "pump",
+                            "layer", "film_settling_time_s")
+            ),
+            "infuse_volume_ml": float(
+                _nested_get(raw, "devices", "pump",
+                            "layer", "infuse_volume_ml")
+            ),
+            "infuse_rate_ml_min": float(
+                _nested_get(raw, "devices", "pump",
+                            "layer", "infuse_rate_ml_min")
+            ),
+            "withdraw_volume_ml": float(
+                _nested_get(raw, "devices", "pump",
+                            "layer", "withdraw_volume_ml")
+            ),
+            "withdraw_rate_ml_min": float(
+                _nested_get(raw, "devices", "pump",
+                            "layer", "withdraw_rate_ml_min")
+            ),
+        }
 
-    layer_inputs = {
-        "film_settling_time_s": int(
-            _nested_get(raw, "devices", "pump",
-                        "layer", "film_settling_time_s")
-        ),
-        "infuse_volume_ml": float(
-            _nested_get(raw, "devices", "pump", "layer", "infuse_volume_ml")
-        ),
-        "infuse_rate_ml_min": float(
-            _nested_get(raw, "devices", "pump", "layer", "infuse_rate_ml_min")
-        ),
-        "withdraw_volume_ml": float(
-            _nested_get(raw, "devices", "pump", "layer", "withdraw_volume_ml")
-        ),
-        "withdraw_rate_ml_min": float(
-            _nested_get(raw, "devices", "pump",
-                        "layer", "withdraw_rate_ml_min")
-        ),
-    }
+        pump_clean_tube = {
+            "volume_ml_layer": _optional_float(
+                _nested_get(raw, "devices", "pump",
+                            "clean_tube", "volume_ml_layer")
+            ),
+            "rate_ml_min_layer": _optional_float(
+                _nested_get(raw, "devices", "pump",
+                            "clean_tube", "rate_ml_min_layer")
+            ),
+            "volume_ml_repetition": _optional_float(
+                _nested_get(raw, "devices", "pump",
+                            "clean_tube", "volume_ml_repetition")
+            ),
+            "rate_ml_min_repetition": _optional_float(
+                _nested_get(raw, "devices", "pump", "clean_tube",
+                            "rate_ml_min_repetition")
+            ),
+            "repetitions": _required_non_negative_int(
+                _nested_get(raw, "devices", "pump",
+                            "clean_tube", "repetitions"),
+                default=0,
+            ),
+        }
 
-    pump_clean_tube = {
-        "volume_ml_layer": _optional_float(
-            _nested_get(raw, "devices", "pump",
-                        "clean_tube", "volume_ml_layer")
-        ),
-        "rate_ml_min_layer": _optional_float(
-            _nested_get(raw, "devices", "pump",
-                        "clean_tube", "rate_ml_min_layer")
-        ),
-        "volume_ml_repetition": _optional_float(
-            _nested_get(raw, "devices", "pump",
-                        "clean_tube", "volume_ml_repetition")
-        ),
-        "rate_ml_min_repetition": _optional_float(
-            _nested_get(raw, "devices", "pump", "clean_tube",
-                        "rate_ml_min_repetition")
-        ),
-        "repetitions": _required_non_negative_int(
-            _nested_get(raw, "devices", "pump", "clean_tube", "repetitions"),
-            default=0,
-        ),
-    }
-
-    # TODO: Can these pump inputs now be deleted?
-    syringe_volume_ml = syringe_inputs["syringe_volume_ml"]
-    syringe_diameter_mm = syringe_inputs["syringe_diameter_mm"]
-
-    if syringe_volume_ml is not None and syringe_volume_ml <= 0:
-        raise ValueError(
-            "Config [devices.pump.inputs].syringe_volume_ml must be > 0."
-        )
-
-    if syringe_diameter_mm is not None and syringe_diameter_mm <= 0:
-        raise ValueError(
-            "Config [devices.pump.inputs].syringe_diameter_mm must be > 0."
-        )
-
-    if pump_required and syringe_volume_ml is None and syringe_diameter_mm is None:
-        raise ValueError(
-            "Config [devices.pump.inputs] must set either "
-            "syringe_volume_ml or syringe_diameter_mm for droplet and piv modes."
-        )
+        if pump_clean_tube["volume_ml_layer"] is not None and pump_clean_tube["volume_ml_layer"] < 0:
+            raise ValueError(
+                "Config [devices.pump.clean_tube].volume_ml_layer must be >= 0."
+            )
+        if pump_clean_tube["rate_ml_min_layer"] is not None and pump_clean_tube["rate_ml_min_layer"] <= 0:
+            raise ValueError(
+                "Config [devices.pump.clean_tube].rate_ml_min_layer must be > 0."
+            )
+        if pump_clean_tube["volume_ml_repetition"] is not None and pump_clean_tube["volume_ml_repetition"] < 0:
+            raise ValueError(
+                "Config [devices.pump.clean_tube].volume_ml_repetition must be >= 0."
+            )
+        if pump_clean_tube["rate_ml_min_repetition"] is not None and pump_clean_tube["rate_ml_min_repetition"] <= 0:
+            raise ValueError(
+                "Config [devices.pump.clean_tube].rate_ml_min_repetition must be > 0."
+            )
 
     # if experiment_mode == "droplet":
     #     if syringe_inputs["pump_rate_ml_per_min"] is None:
@@ -605,45 +632,6 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
                 "Config [devices.cough_machine.inputs.nebuliser].pressure_bar "
                 "must be > 0."
             )
-
-    if syringe_inputs["syringe_vendor_code"] is None:
-        raise ValueError(
-            "Config [devices.pump.syringe].vendor_code must be a non-empty string."
-        )
-    if syringe_inputs["syringe_volume_mL"] <= 0:
-        raise ValueError(
-            "Config [devices.pump.syringe].syringe_volume_mL must be > 0."
-        )
-    if syringe_inputs["syringe_diameter_mm"] <= 0:
-        raise ValueError(
-            "Config [devices.pump.syringe].syringe_diameter_mm must be > 0."
-        )
-    if syringe_inputs["syringe_gang"] <= 0 or not isinstance(syringe_inputs["syringe_gang"], int):
-        raise ValueError(
-            "Config [devices.pump.syringe].syringe_gang must be a positive integer."
-        )
-    if syringe_inputs["syringe_force_percent"] <= 0 or syringe_inputs["syringe_force_percent"] > 100 or syringe_inputs["syringe_force_percent"] % 10 != 0:
-        raise ValueError(
-            "Config [devices.pump.syringe].syringe_force_percent must be a percentage between 0 and 100."
-            " It must be a multiple of 10."
-        )
-
-    if pump_clean_tube["volume_ml_layer"] is not None and pump_clean_tube["volume_ml_layer"] < 0:
-        raise ValueError(
-            "Config [devices.pump.clean_tube].volume_ml_layer must be >= 0."
-        )
-    if pump_clean_tube["rate_ml_min_layer"] is not None and pump_clean_tube["rate_ml_min_layer"] <= 0:
-        raise ValueError(
-            "Config [devices.pump.clean_tube].rate_ml_min_layer must be > 0."
-        )
-    if pump_clean_tube["volume_ml_repetition"] is not None and pump_clean_tube["volume_ml_repetition"] < 0:
-        raise ValueError(
-            "Config [devices.pump.clean_tube].volume_ml_repetition must be >= 0."
-        )
-    if pump_clean_tube["rate_ml_min_repetition"] is not None and pump_clean_tube["rate_ml_min_repetition"] <= 0:
-        raise ValueError(
-            "Config [devices.pump.clean_tube].rate_ml_min_repetition must be > 0."
-        )
 
     # ------------------------------------------------------------------
     # Camera inputs
