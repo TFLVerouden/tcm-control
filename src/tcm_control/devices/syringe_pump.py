@@ -480,7 +480,7 @@ class SyringePump:
             if settle_s > 0:
                 time.sleep(settle_s)
 
-    def make_layer(self, infuse_volume_ml: float, infuse_rate_ml_min: float, withdraw_volume_ml: float, withdraw_rate_ml_min: float) -> None:
+    def make_layer(self, infuse_volume_ml: float, infuse_rate_ml_min: float, withdraw_volume_ml: float, withdraw_rate_ml_min: float, settling_time_s: float) -> None:
         """Create a thin film layer using the syringe pump."""
         try:
             # Infuse fluid to create the layer
@@ -491,7 +491,7 @@ class SyringePump:
             )
 
             # Allow the pump system and fluid to relax
-            time.sleep(5)
+            time.sleep(settling_time_s)
 
             # Partially withdraw to create a thin film layer
             self.withdraw(
@@ -554,7 +554,8 @@ def main(specs_path: Path = DEFAULT_SPECS_PATH) -> None:
     pump.make_layer(infuse_volume_ml=layer_inputs["infuse_volume_ml"],
                     infuse_rate_ml_min=layer_inputs["infuse_rate_ml_min"],
                     withdraw_volume_ml=layer_inputs["withdraw_volume_ml"],
-                    withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"])
+                    withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"],
+                    settling_time_s=layer_inputs["film_settling_time_s"])
 
     pump = SyringePump(syringe_inputs["syringe_vendor_code"],
                        syringe_inputs["syringe_volume_mL"],

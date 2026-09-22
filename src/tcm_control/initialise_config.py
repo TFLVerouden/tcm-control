@@ -520,6 +520,10 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
     }
 
     layer_inputs = {
+        "film_settling_time_s": int(
+            _nested_get(raw, "devices", "pump",
+                        "layer", "film_settling_time_s")
+        ),
         "infuse_volume_ml": float(
             _nested_get(raw, "devices", "pump", "layer", "infuse_volume_ml")
         ),

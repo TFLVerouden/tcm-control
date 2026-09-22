@@ -391,9 +391,13 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         pump.make_layer(infuse_volume_ml=layer_inputs["infuse_volume_ml"],
                                         infuse_rate_ml_min=layer_inputs["infuse_rate_ml_min"],
                                         withdraw_volume_ml=layer_inputs["withdraw_volume_ml"],
-                                        withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"])
+                                        withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"],
+                                        settling_time_s=layer_inputs["film_settling_time_s"])
                     # Wait for the layer to settle before imaging
-                    time.sleep(10)
+                    wait_with_progress(
+                        wait_s=layer_inputs["film_settling_time_s"],
+                        label="Waiting for layer to settle...",
+                    )
 
                     # Take a picture of the layer
                     thin_film_path = take_snapshot(
