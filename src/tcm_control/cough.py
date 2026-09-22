@@ -81,7 +81,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     layer_inputs = config["devices"]["pump"]["layer"]
     cleaning_inputs = cough_machine_inputs["cleaning"]
     nebuliser_inputs = cough_machine_inputs["nebuliser"]
-    pump_inputs = config["devices"]["pump"]["inputs"]
     camera_inputs = config["devices"]["camera"]["inputs"]
     vertical_stage_inputs = config["devices"]["vertical_stage"]["inputs"]
     spraytec_inputs = config["devices"]["spraytec"]["inputs"]
@@ -520,24 +519,24 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     try:
 
                         # Optional pre-run pump lead-in time for stable nebulisation
-                        if pump_inputs["piv_pump_start_before_run_s"] > 0:
+                        if nebuliser_inputs["pre_run_start_s"] > 0:
                             print(
-                                f"Waiting {pump_inputs['piv_pump_start_before_run_s']} s before run {run_idx + 1}/{cough_inputs['nr_runs']}"
+                                f"Waiting {nebuliser_inputs['pre_run_start_s']} s before run {run_idx + 1}/{cough_inputs['nr_runs']}"
                             )
                             time.sleep(
-                                float(pump_inputs["piv_pump_start_before_run_s"]))
+                                float(nebuliser_inputs["pre_run_start_s"]))
 
                         # Start the run
                         tcm.start_run()
                         tcm.wait_for_run_finished()
 
                         # Optional post-run pump tail time after actuation finishes
-                        if pump_inputs["piv_pump_stop_after_run_s"] > 0:
+                        if nebuliser_inputs["post_run_finish_s"] > 0:
                             print(
-                                f"Waiting {pump_inputs['piv_pump_stop_after_run_s']} s after run {run_idx + 1}/{cough_inputs['nr_runs']}"
+                                f"Waiting {nebuliser_inputs['post_run_finish_s']} s after run {run_idx + 1}/{cough_inputs['nr_runs']}"
                             )
                             time.sleep(
-                                float(pump_inputs["piv_pump_stop_after_run_s"]))
+                                float(nebuliser_inputs["post_run_finish_s"]))
 
                         # Turn off nebuliser
                         neb.set_nebuliser(False)
@@ -553,11 +552,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
                         # Plot run log
                         if save_data and run_log_path is not None:
-                        plot_run_log(
-                           run_log_path=run_log_path,
-                           experiment_dir=output_dir,
-                           show=False,
-                        )
+                            plot_run_log(
+                                run_log_path=run_log_path,
+                                experiment_dir=output_dir,
+                                show=False,
+                            )
 
                     finally:
                         # Always stop pump, even if the run or waits raise an error

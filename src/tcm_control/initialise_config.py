@@ -267,6 +267,28 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
                     default=0.1,
                 )
             ),
+            "pre_run_start_s": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "nebuliser",
+                    "pre_run_start_s",
+                    default=0.0,
+                )
+            ),
+            "post_run_finish_s": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "nebuliser",
+                    "post_run_finish_s",
+                    default=0.0,
+                )
+            ),
         },
         "tank": {
             "pressure_bar": float(
@@ -475,49 +497,6 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
     # Pump inputs (required in droplet/piv mode only)
     # ------------------------------------------------------------------
     pump_required = experiment_mode in PUMP_REQUIRED_MODES
-    pump_inputs = {
-        "syringe_volume_ml": _optional_float(
-            _nested_get(raw, "devices", "pump", "inputs", "syringe_volume_ml")
-        ),
-        "syringe_diameter_mm": _optional_float(
-            _nested_get(raw, "devices", "pump",
-                        "inputs", "syringe_diameter_mm")
-        ),
-        "pump_rate_ml_per_min": _optional_float(
-            _nested_get(raw, "devices", "pump",
-                        "inputs", "pump_rate_ml_per_min")
-        ),
-        "piv_pump_start_before_run_s": float(
-            _nested_get(
-                raw,
-                "devices",
-                "pump",
-                "inputs",
-                "piv_pump_start_before_run_s",
-                default=0.0,
-            )
-        ),
-        "piv_pump_stop_after_run_s": float(
-            _nested_get(
-                raw,
-                "devices",
-                "pump",
-                "inputs",
-                "piv_pump_stop_after_run_s",
-                default=0.0,
-            )
-        ),
-        "piv_nebuliser_pressure_bar": float(
-            _nested_get(
-                raw,
-                "devices",
-                "pump",
-                "inputs",
-                "piv_nebuliser_pressure_bar",
-                default=0.5,
-            )
-        ),
-    }
 
     syringe_inputs = {
         "syringe_vendor_code": str(
@@ -580,8 +559,8 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
     }
 
     # TODO: Can these pump inputs now be deleted?
-    syringe_volume_ml = pump_inputs["syringe_volume_ml"]
-    syringe_diameter_mm = pump_inputs["syringe_diameter_mm"]
+    syringe_volume_ml = syringe_inputs["syringe_volume_ml"]
+    syringe_diameter_mm = syringe_inputs["syringe_diameter_mm"]
 
     if syringe_volume_ml is not None and syringe_volume_ml <= 0:
         raise ValueError(
@@ -599,27 +578,27 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             "syringe_volume_ml or syringe_diameter_mm for droplet and piv modes."
         )
 
-    if experiment_mode == "droplet":
-        if pump_inputs["pump_rate_ml_per_min"] is None:
-            raise ValueError(
-                "Config [devices.pump.inputs].pump_rate_ml_per_min must be set "
-                "for droplet mode."
-            )
+    # if experiment_mode == "droplet":
+    #     if syringe_inputs["pump_rate_ml_per_min"] is None:
+    #         raise ValueError(
+    #             "Config [devices.pump.inputs].pump_rate_ml_per_min must be set "
+    #             "for droplet mode."
+    #         )
 
     if experiment_mode == "piv":
-        if pump_inputs["piv_pump_start_before_run_s"] < 0:
+        if nebuliser_inputs["pre_run_start_s"] < 0:
             raise ValueError(
-                "Config [devices.pump.inputs].piv_pump_start_before_run_s "
+                "Config [devices.cough_machine.inputs.nebuliser].pre_run_start_s"
                 "must be >= 0."
             )
-        if pump_inputs["piv_pump_stop_after_run_s"] < 0:
+        if nebuliser_inputs["post_run_finish_s"] < 0:
             raise ValueError(
-                "Config [devices.pump.inputs].piv_pump_stop_after_run_s "
+                "Config [devices.cough_machine.inputs.nebuliser].post_run_finish_s"
                 "must be >= 0."
             )
-        if pump_inputs["piv_nebuliser_pressure_bar"] <= 0:
+        if nebuliser_inputs["pressure_bar"] <= 0:
             raise ValueError(
-                "Config [devices.pump.inputs].piv_nebuliser_pressure_bar "
+                "Config [devices.cough_machine.inputs.nebuliser].pressure_bar "
                 "must be > 0."
             )
 
@@ -661,12 +640,6 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
         raise ValueError(
             "Config [devices.pump.clean_tube].rate_ml_min_repetition must be > 0."
         )
-
-    # # Keep action blocks inside pump_inputs for call sites that pass only this dict
-    # # into SyringePump2 as its specs object.
-    # pump_inputs["infuse"] = pump_infuse
-    # pump_inputs["withdraw"] = pump_withdraw
-    # pump_inputs["clean_tube"] = pump_clean_tube
 
     # ------------------------------------------------------------------
     # Camera inputs
