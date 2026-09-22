@@ -162,6 +162,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         series_directory = None
         experiment_prompt = "Enter experiment name: "
         # Keep a clear runtime message when the run is intentionally non-persistent
+        # TODO: Empty string for directory should prompt rather than set to none
         print("Data saving disabled via config setting series_directory='None'.")
 
     # Ensure the experiment name is never empty because it is used in
@@ -383,10 +384,10 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 for run_idx in range(cough_inputs["nr_runs"]):
                     # Initial picture
                     background_path = take_snapshot(
-                        camera, tcm, filename=f"background_run{run_idx + 1}.png")
+                        camera, tcm, filename=f"run{run_idx + 1}_background")
                     if camera_output_dir is not None:
                         plate_height_px = determine_plate_height(
-                            background_path, camera_output_dir)
+                            background_path, camera_output_dir, camera_inputs["pixel_per_meter"], filename=f"run{run_idx + 1}_plate_height.png")
 
                     # Make a layer
                     if pump is not None:
@@ -403,10 +404,10 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
                     # Take a picture of the layer
                     thin_film_path = take_snapshot(
-                        camera, tcm, filename=f"thin_film_run{run_idx + 1}.png")
+                        camera, tcm, filename=f"run{run_idx + 1}_thin_film")
                     if camera_output_dir is not None:
                         film_height_px = determine_film_height(
-                            thin_film_path, plate_height_px, camera_output_dir)
+                            thin_film_path, plate_height_px, camera_output_dir, camera_inputs["pixel_per_meter"], filename=f"run{run_idx + 1}_film_height.png")
                         film_height_mm = film_height_px * \
                             camera_inputs["pixel_per_meter"] * 1000
                         print(f"Film height (mm): {film_height_mm:.3f}")
@@ -459,7 +460,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     # Image the channel after cleaning
                     # TODO: Put run number first
                     _ = take_snapshot(
-                        camera, tcm, filename=f"cleaned_run{run_idx + 1}.png")
+                        camera, tcm, filename=f"cleaned_run.png")
 
             case "piv":
                 # ------------------------------------------------------------------
@@ -571,11 +572,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             neb.set_nebuliser_pressure(0.0)
                             neb.set_nebuliser(False)
 
-                        # # Flush nebuliser chamber before cleaning channel
-                        # neb.set_nebuliser_pressure(0.3)
-                        # wait_with_progress(
-                        #     wait_s=10, label="Flushing nebuliser chamber...")
-                        # neb.set_nebuliser_pressure(0.0)
+                        # Flush nebuliser chamber before cleaning channel
+                        neb.set_nebuliser_pressure(0.3)
+                        wait_with_progress(
+                            wait_s=5, label="Flushing nebuliser chamber...")
+                        neb.set_nebuliser_pressure(0.0)
 
                         # Run cleaning routine every cycle
                         tcm.clean(clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
