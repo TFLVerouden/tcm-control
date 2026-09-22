@@ -1,7 +1,7 @@
 [experiment]
 name = "" # keep empty to prompt
 mode = "film" # droplet | film | piv
-series_directory = "" # keep empty to prompt; set to "None" to disable saving data
+series_directory = ""C:\CoughMachineData\260922_Panorama" # keep empty to prompt; set to "None" to disable saving data
 
 [inputs.cough]
 debug_mode = false
@@ -11,8 +11,8 @@ confirm_before_starting_next_run = false
 record_droplet_size = false
 
 [devices.cough_machine.inputs]
-flow_curve_csv_path = "step300ms"
-wait_before_run_ms = 59.5
+flow_curve_csv_path = "gupta_71kg_1-94m.csv"
+wait_before_run_ms = 0
 nr_droplets_to_skip_before_recording = 5
 
 [devices.cough_machine.inputs.cleaning]
@@ -24,7 +24,7 @@ dry_valve_current_ma = 14.0
 cycle_count = 3
 
 [devices.cough_machine.inputs.tank]
-pressure_bar = 1.5
+pressure_bar = 2.5
 settling_time_s = 60.0
 avg_window_s = 5.0
 tolerance_bar = 0.05
@@ -40,6 +40,7 @@ syringe_gang = 1
 syringe_force_percent = 100
 
 [devices.pump.layer]
+film_settling_time_s = 10
 infuse_volume_ml = 5.5
 infuse_rate_ml_min = 15
 withdraw_volume_ml = 4.7
@@ -79,4 +80,5 @@ stage_pos_y_zero_mm = 655
 [devices.spraytec.inputs.position]
 spraytec_target_z_mm = "" # keep empty to prompt, or set target SprayTec z height in mm
 stage_pos_x_mm = "" # keep empty to prompt
-stage_pos_y_mm = "" # keep empty to prompt
+stage_pos_y_mm = "" # keep empty to prompt 
+
