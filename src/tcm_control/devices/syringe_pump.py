@@ -501,9 +501,6 @@ class SyringePump:
         except Exception as exc:
             self._log_error(str(exc))
             raise
-        finally:
-            # Always stop the pump after operation
-            self.stop()
 
     def clean_tubes(self, volume_ml_layer: float, rate_ml_min_layer: float, volume_ml_repetition: float, rate_ml_min_repetition: float, repetitions: int) -> None:
         """Clean the tubes by performing repeated infuse/withdraw cycles."""
@@ -531,9 +528,6 @@ class SyringePump:
         except Exception as exc:
             self._log_error(str(exc))
             raise
-        finally:
-            # Always stop the pump after operation
-            self.stop()
 
 
 def main(specs_path: Path = DEFAULT_SPECS_PATH) -> None:
