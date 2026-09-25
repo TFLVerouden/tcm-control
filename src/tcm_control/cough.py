@@ -79,7 +79,10 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     tank_inputs = cough_machine_inputs["tank"]
     syringe_inputs = config["devices"]["pump"]["syringe"]
     layer_inputs = config["devices"]["pump"]["layer"]
+    cleaning_tube_inputs = config["devices"]["pump"]["clean_tube"]
+
     cleaning_inputs = cough_machine_inputs["cleaning"]
+    drying = cough_machine_inputs["drying"]
     nebuliser_inputs = cough_machine_inputs["nebuliser"]
     camera_inputs = config["devices"]["camera"]["inputs"]
     vertical_stage_inputs = config["devices"]["vertical_stage"]["inputs"]
@@ -380,6 +383,28 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     print("Aborted.")
                     exit(1)
 
+                # Ask for cleaning protocol
+                confirm_cleaning = prompt_yes_no(
+                    "Do you want the tubes to be cleaned y/n ?",
+                    default=False)
+                if confirm_cleaning:
+                    if pump is not None:
+                        pump.clean_tubes(volume_ml_layer=cleaning_tube_inputs["volume_ml_layer"],
+                                         rate_ml_min_layer=cleaning_tube_inputs["rate_ml_min_layer"],
+                                         volume_ml_repetition=cleaning_tube_inputs["volume_ml_repetition"],
+                                         rate_ml_min_repetition=cleaning_tube_inputs["rate_ml_min_repetition"],
+                                         repetitions=cleaning_tube_inputs["repetitions"])
+
+                    # Clean the channel afterwards
+                    tcm.clean(
+                        clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
+                        valve_open_duration_s=cleaning_inputs["valve_open_duration_s"],
+                        dry_pressure_bar=cleaning_inputs["dry_pressure_bar"],
+                        dry_duration_s=cleaning_inputs["dry_duration_s"],
+                        dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"],
+                        cycle_count=cleaning_inputs["cycle_count"],
+                    )
+
                 # Execute repeated runs
                 for run_idx in range(cough_inputs["nr_runs"]):
                     # Initial picture
@@ -387,7 +412,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         camera, tcm, filename=f"run{run_idx + 1}_background")
                     if camera_output_dir is not None:
                         plate_height_px = determine_plate_height(
-                            background_path, camera_output_dir, camera_inputs["pixel_per_meter"], filename=f"run{run_idx + 1}_plate_height.png")
+                            background_path, camera_output_dir, camera_inputs["pixel_per_meter"], filename=f"run{run_idx + 1}_plate_height")
 
                     # Make a layer
                     if pump is not None:
@@ -407,7 +432,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         camera, tcm, filename=f"run{run_idx + 1}_thin_film")
                     if camera_output_dir is not None:
                         film_height_px = determine_film_height(
-                            thin_film_path, plate_height_px, camera_output_dir, camera_inputs["pixel_per_meter"], filename=f"run{run_idx + 1}_film_height.png")
+                            thin_film_path, plate_height_px, camera_output_dir, camera_inputs["pixel_per_meter"], filename=f"run{run_idx + 1}_film_height")
                         film_height_mm = film_height_px * \
                             camera_inputs["pixel_per_meter"] * 1000
                         print(f"Film height (mm): {film_height_mm:.3f}")
@@ -455,6 +480,15 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         dry_duration_s=cleaning_inputs["dry_duration_s"],
                         dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"],
                         cycle_count=cleaning_inputs["cycle_count"],
+                    )
+
+                    tcm.clean(
+                        clean_pressure_bar=drying["clean_pressure_bar"],
+                        valve_open_duration_s=drying["valve_open_duration_s"],
+                        dry_pressure_bar=drying["dry_pressure_bar"],
+                        dry_duration_s=drying["dry_duration_s"],
+                        dry_valve_current_ma=drying["dry_valve_current_ma"],
+                        cycle_count=drying["cycle_count"],
                     )
 
                     # Image the channel after cleaning
