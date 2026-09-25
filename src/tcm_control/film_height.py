@@ -142,9 +142,12 @@ def determine_film_height(
     else:
         plt.title(f"Film Height: {thickness:.2f} px")
     if filename:
-        plt.savefig(output_dir / filename)
+        # Save both a png and a pdf
+        plt.savefig(output_dir / f"{filename}.png")
+        plt.savefig(output_dir / f"{filename}.pdf")
     else:
         plt.savefig(output_dir / "film_height.png")
+        plt.savefig(output_dir / "film_height.pdf")
     plt.close()
     return thickness
 
@@ -205,9 +208,12 @@ def determine_plate_height(
     plt.scatter(top_x, top_y, s=1, color='green')
     plt.title(f"Plate Height: {plate_height:.1f} px")
     if filename:
-        plt.savefig(output_dir / filename)
+        # Save both a png and a pdf
+        plt.savefig(output_dir / f"{filename}.png")
+        plt.savefig(output_dir / f"{filename}.pdf")
     else:
         plt.savefig(output_dir / "background_plate_height.png")
+        plt.savefig(output_dir / "background_plate_height.pdf")
     plt.close()
 
     return plate_height
