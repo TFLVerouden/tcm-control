@@ -1,7 +1,7 @@
 [experiment]
 name = "" # keep empty to prompt
 mode = "film" # droplet | film | piv
-series_directory = "C:\CoughMachineData\260922_Panorama" # keep empty to prompt; set to "None" to disable saving data
+series_directory = "C:\\CoughMachineData\\260925_SpraytecWaterTest" # keep empty to prompt; set to "None" to disable saving data
 
 [inputs.cough]
 debug_mode = false
@@ -16,12 +16,20 @@ wait_before_run_ms = 0
 nr_droplets_to_skip_before_recording = 5
 
 [devices.cough_machine.inputs.cleaning]
-clean_pressure_bar = 4.0
+clean_pressure_bar = 5.0
 valve_open_duration_s = 2.5
 dry_pressure_bar = 4.0
 dry_duration_s = 0.0
 dry_valve_current_ma = 14.0
 cycle_count = 3
+
+[devices.cough_machine.inputs.drying]
+clean_pressure_bar = 2.5
+valve_open_duration_s = 20
+dry_pressure_bar = 4.0
+dry_duration_s = 0.0
+dry_valve_current_ma = 14.0
+cycle_count = 1
 
 [devices.cough_machine.inputs.tank]
 pressure_bar = 2.5
@@ -40,10 +48,10 @@ syringe_gang = 1
 syringe_force_percent = 100
 
 [devices.pump.layer]
-film_settling_time_s = 10
-infuse_volume_ml = 5.5
+film_settling_time_s = 15
+infuse_volume_ml = 4.5
 infuse_rate_ml_min = 15
-withdraw_volume_ml = 4.7
+withdraw_volume_ml = 3.7
 withdraw_rate_ml_min = 5
 
 [devices.camera.inputs]
@@ -51,9 +59,9 @@ camera_exposure_us = 4000
 pixel_per_meter = 0.015678e-3
 
 [devices.pump.clean_tube]
-volume_ml_layer = 5
-rate_ml_min_layer = 10
-volume_ml_repetition = 1
+volume_ml_layer = 3
+rate_ml_min_layer = 15
+volume_ml_repetition = 0.5
 rate_ml_min_repetition = 5
 repetitions = 5
 
@@ -79,5 +87,5 @@ stage_pos_y_zero_mm = 655
 
 [devices.spraytec.inputs.position]
 spraytec_target_z_mm = "" # keep empty to prompt, or set target SprayTec z height in mm
-stage_pos_x_mm = "" # keep empty to prompt
+stage_pos_x_mm = "" # keep empty to prompt 
 stage_pos_y_mm = "" # keep empty to prompt
