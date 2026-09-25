@@ -48,6 +48,7 @@ if __name__ == "__main__":
         config = tomllib.load(specs_path.open("rb"))
 
     syringe_inputs = config["devices"]["pump"]["syringe"]
+    layer = config["devices"]["pump"]["layer"]
     clean_tube = config["devices"]["pump"]["clean_tube"]
 
     pump = SyringePump(syringe_inputs["syringe_vendor_code"],
@@ -56,6 +57,12 @@ if __name__ == "__main__":
                        syringe_inputs["syringe_gang"],
                        syringe_inputs["syringe_force_percent"])
 
+    # pump.make_layer(infuse_volume_ml=layer["infuse_volume_ml"],
+    #                 infuse_rate_ml_min=layer["infuse_rate_ml_min"],
+    #                 withdraw_volume_ml=layer["withdraw_volume_ml"],
+    #                 withdraw_rate_ml_min=layer["withdraw_rate_ml_min"],
+    #                 settling_time_s=layer["film_settling_time_s"])
+
     pump.clean_tubes(volume_ml_layer=clean_tube["volume_ml_layer"],
                      rate_ml_min_layer=clean_tube["rate_ml_min_layer"],
                      volume_ml_repetition=clean_tube["volume_ml_repetition"],
@@ -63,5 +70,10 @@ if __name__ == "__main__":
                      repetitions=clean_tube["repetitions"])
 
     # Clean channel
-    tcm = CoughMachine()
-    tcm.clean(clean_pressure_bar=5, valve_open_duration_s=1, cycle_count=1)
+    # tcm = CoughMachine()
+    # tcm.clean(clean_pressure_bar=5, valve_open_duration_s=1, cycle_count=1)
+
+    # camera = Camera()
+    # tcm = CoughMachine()
+
+    # take_snapshot(camera, tcm, filename="test_snapshot.png", brightness=1.0)
