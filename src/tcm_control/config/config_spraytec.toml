@@ -1,14 +1,14 @@
 [experiment]
 name = "" # keep empty to prompt
 mode = "film" # droplet | film | piv
-series_directory = "C:\\CoughMachineData\\260925_SpraytecWaterTest" # keep empty to prompt; set to "None" to disable saving data
+series_directory = "C:\\CoughMachineData\\260928_SpraytecWaterTest" # keep empty to prompt; set to "None" to disable saving data
 
 [inputs.cough]
 debug_mode = false
 nr_runs = 1
 multi_run_interval_s = 40
 confirm_before_starting_next_run = false
-record_droplet_size = false
+record_droplet_size = true
 
 [devices.cough_machine.inputs]
 flow_curve_csv_path = "gupta_71kg_1-94m"
