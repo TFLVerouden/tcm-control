@@ -220,12 +220,13 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         # 4) Set up devices and resolve run geometry
         # --------------------------------------------------------------
 
-        # In droplet and PIV modes, set up the pump
+        # # In droplet and PIV modes, set up the pump
         # if experiment_mode in ["droplet", "piv"]:
         #     pump = SyringePump(
         #         syringe_volume_ml=pump_inputs["syringe_volume_ml"],
         #         syringe_diameter_mm=pump_inputs["syringe_diameter_mm"],
         #     )
+        # pump = SyringePump2(pump_inputs)
 
         #     # Register pump so interrupt cleanup can call stop() on it
         #     set_active_pump(pump)
@@ -500,6 +501,13 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             save_logs=save_data,
                         )
 
+                        # Keep the connection open until the background
+                        # recording thread has finished
+                        recorded_csv = ops.collect_recording()
+
+                    OPS_visualize_data(output_dir=OUT_OPS_DIR)
+                    print(f"Saved data to {recorded_csv}")
+
                     # Plot run log
                     if save_data and run_log_path is not None:
                         plot_run_log(
@@ -510,11 +518,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         # Cache first run log for the summary plot in finalization
                         if run_idx == 0:
                             first_run_log_path = run_log_path
-
-                        recorded_csv = ops.collect_recording()
-                        OPS_visualize_data(output_dir=OUT_OPS_DIR)
-
-                        print(f"Saved data to {recorded_csv}")
 
                     # Clean the channel
                     tcm.clean(
