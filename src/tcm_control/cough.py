@@ -134,8 +134,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     set_active_nebuliser(neb)
 
     # Vertical stage is only needed when SprayTec measurements are enabled.
-    if record_droplet_size:
-        vertical_stage = VerticalStage()
+    # if record_droplet_size:
+    #     vertical_stage = VerticalStage()
 
     # --------------------------------------------------------------------------
     # 3) Set up experiment directory and logging
@@ -263,7 +263,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                                syringe_inputs["syringe_gang"],
                                syringe_inputs["syringe_force_percent"])
 
-            set_active_pump(pump)
+            # set_active_pump(pump)
 
         # Optional SprayTec setup and geometry resolution
         if record_droplet_size:
