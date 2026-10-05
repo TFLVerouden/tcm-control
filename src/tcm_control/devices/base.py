@@ -48,6 +48,7 @@ class PoFSerialDevice(SerialDevice):
         )
 
         # Auto connect to device; suppress print of connection attempts
+        # TODO: Give more specific error message if id or version does not match
         if debug:
             connected = self.auto_connect(
                 filepath_last_known_port=CONNECTIONS_FILENAME

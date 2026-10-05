@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 MINIMUM_THICKNESS_PIXELS = 10
 IMAGE_CROP_LEFT = 2
 
+# TODO: Move to processing folder
+
 
 def detect_film_rim(
     edge_x: np.ndarray,
@@ -92,6 +94,8 @@ def determine_film_height(
     image_path: Path,
     plate_height: float,
     output_dir: Path,
+    pixel_per_meter: float | None = None,
+    filename: str | None = None
 ) -> float:
     """Determine mean film height in pixels.
 
@@ -126,15 +130,24 @@ def determine_film_height(
 
     # Calculate film thickness
     thickness = float(np.mean(rim_y) - plate_height)
-    print(min_x, max_x)
+
     # Save visualization
     plt.figure()
     plt.imshow(image, cmap='gray', origin='lower')
     plt.scatter(rim_x, rim_y, s=1, color='blue')
     plt.axhline(y=plate_height, xmin=float(min_x)/image_width, xmax=float(
                 max_x), color='green')
-    plt.title(f"Film Height: {thickness:.2f} px")
-    plt.savefig(output_dir / "film_height.png")
+    if pixel_per_meter is not None:
+        plt.title(f"Film Height: {thickness * pixel_per_meter * 1000:.2f} mm")
+    else:
+        plt.title(f"Film Height: {thickness:.2f} px")
+    if filename:
+        # Save both a png and a pdf
+        plt.savefig(output_dir / f"{filename}.png")
+        plt.savefig(output_dir / f"{filename}.pdf")
+    else:
+        plt.savefig(output_dir / "film_height.png")
+        plt.savefig(output_dir / "film_height.pdf")
     plt.close()
     return thickness
 
@@ -142,6 +155,8 @@ def determine_film_height(
 def determine_plate_height(
     background_path: Path,
     output_dir: Path,
+    pixel_per_meter: float | None = None,
+    filename: str | None = None,
 ) -> float:
     """Determine the plate height in pixels from a background image.
 
@@ -151,6 +166,8 @@ def determine_plate_height(
     Args:
         background_path: Path to the background image file.
         output_dir: Directory to save diagnostic visualization.
+        pixel_per_meter: Number of pixels per meter in the image.
+        filename: Name of the output file (optional).
 
     Returns:
         Plate height in pixels (mean y-coordinate of detected rim).
@@ -190,7 +207,13 @@ def determine_plate_height(
     plt.imshow(background, cmap='gray', origin='lower')
     plt.scatter(top_x, top_y, s=1, color='green')
     plt.title(f"Plate Height: {plate_height:.1f} px")
-    plt.savefig(output_dir / "background_plate_height.png")
+    if filename:
+        # Save both a png and a pdf
+        plt.savefig(output_dir / f"{filename}.png")
+        plt.savefig(output_dir / f"{filename}.pdf")
+    else:
+        plt.savefig(output_dir / "background_plate_height.png")
+        plt.savefig(output_dir / "background_plate_height.pdf")
     plt.close()
 
     return plate_height

@@ -56,7 +56,7 @@ class Camera:
     def exposure_us(self) -> int:
         return self._exposure_us
 
-    def snapshot(self, output_path: Optional[str | Path] = None) -> Path:
+    def snapshot(self, output_path: Optional[str | Path] = None, filename: Optional[str] = None) -> Path:
         """Capture one frame and save it to disk, returning the saved path."""
         self.start()
 
@@ -67,8 +67,9 @@ class Camera:
             raise RuntimeError("Camera returned an empty frame.")
 
         if output_path is None:
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            save_path = self.output_dir / f"capture_{timestamp}.png"
+            # Use timestamped filename containing only the time
+            timestamp = time.strftime("%H%M%S")
+            save_path = self.output_dir / f"{filename}_{timestamp}.png"
         else:
             save_path = Path(output_path)
             if not save_path.is_absolute():

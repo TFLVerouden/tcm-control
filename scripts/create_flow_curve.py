@@ -1,17 +1,72 @@
 import csv
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from tcm_utils.cough_model import CoughModel
+from tcm_utils.cough_model import CoughModel
 
 
 def generate_flow_curve_csv(
         cough_model: "CoughModel",
-        pressure_bar: float,
-        output_csv_path: str):
+        output_csv_path: str,
+        model_duration_ms: float = 500,
+        pre_record_ms: float = 100.0,
+        post_record_ms: float = 100.0,
+        solenoid_lead_ms: float = 5.0,
+        solenoid_lag_ms: float = 0.0,
+        polling_interval_ms: float = 1.0,
+        trigger_at_start: bool = True,):
+    # TODO: Can be merged with other generation function
+    durations = {
+        "pre_record_ms": pre_record_ms,
+        "post_record_ms": post_record_ms,
+        "solenoid_lead_ms": solenoid_lead_ms,
+        "solenoid_lag_ms": solenoid_lag_ms,
+    }
+    for name, value in durations.items():
+        if value < 0:
+            raise ValueError(f"{name} must be >= 0")
+        if not _is_multiple_of(float(value), float(polling_interval_ms)):
+            raise ValueError(
+                f"{name} ({value} ms) must be a multiple of polling_interval_ms "
+                f"({polling_interval_ms} ms)"
+            )
 
-    raise NotImplementedError("This function is not implemented yet.")
+    # Get parameters from cough model
+    time_model, flow_rate_model = cough_model.flow(
+        dt=polling_interval_ms / 1000.0, duration_s=model_duration_ms / 1000.0)
+
+    solenoid_open_ms = pre_record_ms
+    start_model = solenoid_open_ms + solenoid_lead_ms
+    end_model = start_model + int((time_model[-1] * 1e3))
+    solenoid_close_ms = end_model + solenoid_lag_ms
+    total_duration_ms = solenoid_close_ms + post_record_ms
+
+    total_steps = int(round(total_duration_ms / polling_interval_ms))
+    row_times = [round(step * polling_interval_ms, 9)
+                 for step in range(total_steps + 1)]
+    _validate_max_curve_rows(len(row_times))
+
+    rows: list[tuple[float, float, int, int]] = []
+
+    for idx, time_ms in enumerate(row_times):
+        if start_model <= time_ms < end_model:
+            model_idx = int(
+                round((time_ms - start_model) / polling_interval_ms))
+            flow_rate_Lps = flow_rate_model[model_idx]
+        else:
+            flow_rate_Lps = 0.0
+
+        solenoid_open = solenoid_open_ms <= time_ms < solenoid_close_ms
+        trig = 1 if trigger_at_start and idx == 0 else 0
+
+        rows.append((time_ms, flow_rate_Lps, int(solenoid_open), trig))
+
+    output_path = Path(output_csv_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["time_ms", "flow_rate_lps", "sol_valve", "trig"])
+        writer.writerows(rows)
+    return output_path
 
     # STEPS TO BE IMPLEMENTED
 
@@ -69,7 +124,7 @@ def _default_step_curve_output_path(
     rounded_current = round(step_current_ma, 1)
     rounded_duration_ms = int(round(step_duration_ms))
     current_label = f"{rounded_current:.1f}".replace(".", "-")
-    filename = f"step_{current_label}mA_{rounded_duration_ms}ms.csv"
+    filename = f"step_{current_label}Lps_{rounded_duration_ms}ms.csv"
     return flow_curves_dir / filename
 
 
@@ -77,13 +132,13 @@ def generate_step_curve_csv(
     output_csv_path: str | Path | None = None,
     *,
     default_subfolder: str | Path | None = None,
-    step_current_ma: float,
-    closed_current_ma: float = 12.0,
+    step_flow_rate_Lps: float,
+    closed_flow_rate_lps: float = 12.0,
     step_duration_ms: float = 300.0,
     pre_record_ms: float = 100.0,
     post_record_ms: float = 100.0,
-    solenoid_lead_ms: float = 20.0,
-    solenoid_lag_ms: float = 20.0,
+    solenoid_lead_ms: float = 5.0,
+    solenoid_lag_ms: float = 0.0,
     polling_interval_ms: float = 1.0,
     trigger_at_start: bool = True,
 ) -> Path:
@@ -137,14 +192,14 @@ def generate_step_curve_csv(
         prop_open = prop_open_ms <= time_ms < prop_close_ms
         solenoid_open = solenoid_open_ms <= time_ms < solenoid_close_ms
 
-        prop_current_ma = step_current_ma if prop_open else closed_current_ma
+        prop_current_ma = step_flow_rate_Lps if prop_open else closed_flow_rate_lps
         trig = 1 if trigger_at_start and idx == 0 else 0
 
         rows.append((time_ms, prop_current_ma, int(solenoid_open), trig))
 
     if output_csv_path is None:
         output_path = _default_step_curve_output_path(
-            step_current_ma=step_current_ma,
+            step_current_ma=step_flow_rate_Lps,
             step_duration_ms=step_duration_ms,
             default_subfolder=default_subfolder,
         )
@@ -153,26 +208,33 @@ def generate_step_curve_csv(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["time_ms", "prop_valve_ma", "sol_valve", "trig"])
+        writer.writerow(["time_ms", "flow_rate_lps", "sol_valve", "trig"])
         writer.writerows(rows)
 
     return output_path
 
 
 def main() -> None:
-    generated = generate_step_curve_csv(
-        default_subfolder="piv",
-        step_current_ma=20.0,
-        closed_current_ma=12.0,
-        step_duration_ms=3000,
-        pre_record_ms=0,
-        post_record_ms=0,
-        solenoid_lead_ms=5,
-        solenoid_lag_ms=0,
-        polling_interval_ms=5,
-        trigger_at_start=True,
-    )
-    print(f"Step curve written to {generated}")
+    # generated = generate_step_curve_csv(
+    #     default_subfolder=None,
+    #     step_flow_rate_Lps=6.0,
+    #     closed_flow_rate_lps=0.0,
+    #     step_duration_ms=2000,
+    #     pre_record_ms=50,
+    #     post_record_ms=50,
+    #     solenoid_lead_ms=5,
+    #     solenoid_lag_ms=0,
+    #     polling_interval_ms=5,
+    #     trigger_at_start=True,
+    # )
+    # print(f"Step curve written to {generated}")
+
+    output_path = "C:\\Users\\local2\\Documents\\GitHub\\twente-cough-machine\\control\\src\\tcm_control\\flow_curves\\from_model\\gupta_71kg_1-94m.csv"
+    gupta_model = CoughModel.from_gupta("Male", weight_kg=71, height_m=1.94)
+    generated = generate_flow_curve_csv(
+        cough_model=gupta_model, output_csv_path=output_path, model_duration_ms=500, pre_record_ms=50, post_record_ms=50, solenoid_lead_ms=5, solenoid_lag_ms=0, polling_interval_ms=1, trigger_at_start=True)
+
+    print(f"Flow curve written to {generated}")
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ from tcm_control.devices import CoughMachine
 from tcm_control.interrupt_handling import set_active_tcm
 
 from tcm_control.devices.camera import Camera
-from tcm_control.devices.syringe_pump2 import SyringePump2
+from tcm_control.devices.syringe_pump import SyringePump
 from tcm_control.devices.light import LightSwitchController
 from tcm_control.film_height import determine_film_height, determine_plate_height
 from scripts.make_layer_picture import tube_cleaning, make_layer
