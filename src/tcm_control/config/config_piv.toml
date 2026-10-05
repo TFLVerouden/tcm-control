@@ -1,7 +1,7 @@
 [experiment]
 name = "" # keep empty to prompt
 mode = "piv" # droplet | film | piv
-series_directory = "C:\CoughMachineData\260922_flow_rate_input" # keep empty to prompt; set to "None" to disable saving data
+series_directory = "C:\CoughMachineData\260820_piv\particle_size" # keep empty to prompt; set to "None" to disable saving data
 
 [inputs.cough]
 nr_runs = 1
@@ -23,7 +23,7 @@ intermediate_diff_bar = -0.1 # set together with intermediate_time_s (empty disa
 intermediate_time_s = 1 # set together with intermediate_diff_bar (empty disables)
 
 [devices.cough_machine.inputs.nebuliser]
-fill_time_s = 0
+fill_time_s = 30
 pressure_bar = 0.1
 pre_run_start_s = 0
 post_run_finish_s = 0
@@ -31,5 +31,5 @@ post_run_finish_s = 0
 [devices.cough_machine.inputs.cleaning]
 clean_pressure_bar = 5.0
 valve_open_duration_s = 10
-cycle_count = 0
+cycle_count = 1
 
