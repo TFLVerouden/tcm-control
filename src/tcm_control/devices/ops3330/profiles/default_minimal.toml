@@ -23,7 +23,7 @@ use_start_date = false
 logging_enabled = true
 log_to_single_file = true
 survey_mode = false
-keep_pump_running = true
+keep_pump_running = false
 
 # Optional sections below -- omit any of these to leave that part of the
 # instrument's current configuration untouched.
