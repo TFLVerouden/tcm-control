@@ -20,12 +20,6 @@ def set_active_tcm(tcm: Any | None) -> None:
     _ACTIVE_TCM = tcm
 
 
-def set_active_nebuliser(nebuliser: Any | None) -> None:
-    """Register the active nebuliser controller for interrupt cleanup."""
-    global _ACTIVE_NEBULISER
-    _ACTIVE_NEBULISER = nebuliser
-
-
 def set_active_pump(pump: Any | None) -> None:
     """Register the active syringe pump for interrupt cleanup."""
     global _ACTIVE_PUMP
