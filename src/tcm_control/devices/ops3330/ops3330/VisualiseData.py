@@ -77,6 +77,12 @@ def calculate_average_and_std(data, output_dir):
 
     # Customize axes and title
     plt.xscale('log')
+    plt.xticks(
+        data[0].mean_diameters,
+        [f'{diameter:g}' for diameter in data[0].mean_diameters],
+        rotation=45,
+        ha='right'
+    )
     plt.xlabel('Diameter (μm)', fontsize=12)
     plt.ylabel('Count (#)', fontsize=12)
     plt.title('Count vs Diameter', fontsize=14)
@@ -128,6 +134,12 @@ def calculate_average_and_std_volume(data, output_dir):
 
     # Customize axes and title
     plt.xscale('log')
+    plt.xticks(
+        data[0].mean_diameters,
+        [f'{diameter:g}' for diameter in data[0].mean_diameters],
+        rotation=45,
+        ha='right'
+    )
     plt.xlabel('Diameter (μm)', fontsize=12)
     plt.ylabel('Average Volume (fL)', fontsize=12)
     plt.title('Averaged Volume vs Diameter', fontsize=14)
