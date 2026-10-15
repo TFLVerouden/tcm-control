@@ -14,7 +14,6 @@ from tcm_control.interrupt_handling import (
     reset_interrupt_cleanup_state,
     set_active_output_dir,
     set_active_pump,
-    set_active_nebuliser,
     set_active_tcm,
 )
 from tcm_control.processing.run_log_processing import plot_run_log
@@ -67,7 +66,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     # Reset interrupt state for a fresh run and clear stale references.
     reset_interrupt_cleanup_state()
     set_active_tcm(None)
-    set_active_nebuliser(None)
     set_active_pump(None)
     set_active_output_dir(None)
 
@@ -131,16 +129,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     # Initialise cough machine
     tcm = CoughMachine(debug=cough_inputs["debug_mode"])
 
-    # TODO(merge nebuliser MCU): use the cough-machine controller for nebuliser
-    # commands too, remove this second connection and set_active_nebuliser call,
-    # and keep only one active-device registration.
-    neb = CoughMachine(
-        debug=cough_inputs["debug_mode"], expected_id="NEB_control",
-        name="Nebuliser_MCU", supported_protocol_version=8)
-
     # Register devices so interrupt cleanup can stop them.
     set_active_tcm(tcm)
-    set_active_nebuliser(neb)
 
     # Vertical stage is only needed when SprayTec measurements are enabled.
     # if record_droplet_size:
@@ -558,7 +548,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     "Press ENTER to confirm that the PIV laser is turned on...")
 
                 # Fill the nebuliser tank
-                neb.set_nebuliser(True)
+                tcm.set_nebuliser(True)
                 wait_with_progress(
                     wait_s=nebuliser_fill_time_s,
                     label="Filling nebuliser tank...",
@@ -579,7 +569,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     # FROM SECOND RUN ONWARDS
                     if run_idx > 0:
                         # Before each run, fill the nebuliser tank again
-                        neb.set_nebuliser(True)
+                        tcm.set_nebuliser(True)
                         wait_with_progress(
                             wait_s=nebuliser_fill_time_s,
                             label="Filling nebuliser tank...",
@@ -600,7 +590,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     # Start seeding air flow
                     beep()
                     print("Turning on nebuliser air flow")
-                    neb.set_nebuliser_pressure(nebuliser_pressure_bar)
+                    tcm.set_nebuliser_pressure(nebuliser_pressure_bar)
                     pump_stopped = False
 
                     # If an error occurs, the nebuliser will always be turned off
@@ -628,9 +618,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                                 float(nebuliser_inputs["post_run_finish_s"]))
 
                         # Turn off nebuliser
-                        neb.set_nebuliser(False)
+                        tcm.set_nebuliser(False)
                         print("Turning off nebuliser air flow")
-                        neb.set_nebuliser_pressure(0.0)
+                        tcm.set_nebuliser_pressure(0.0)
                         pump_stopped = True
 
                         run_log_path = tcm.receive_run_log(
@@ -650,14 +640,14 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     finally:
                         # Always stop pump, even if the run or waits raise an error
                         if not pump_stopped:
-                            neb.set_nebuliser_pressure(0.0)
-                            neb.set_nebuliser(False)
+                            tcm.set_nebuliser_pressure(0.0)
+                            tcm.set_nebuliser(False)
 
                         # Flush nebuliser chamber before cleaning channel
-                        neb.set_nebuliser_pressure(0.3)
+                        tcm.set_nebuliser_pressure(0.3)
                         wait_with_progress(
                             wait_s=5, label="Flushing nebuliser chamber...")
-                        neb.set_nebuliser_pressure(0.0)
+                        tcm.set_nebuliser_pressure(0.0)
 
                         # Run cleaning routine every cycle
                         tcm.clean(clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
@@ -755,7 +745,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
     # Clear registered devices after a normal, successful run.
     set_active_tcm(None)
-    set_active_nebuliser(None)
     set_active_pump(None)
     set_active_output_dir(None)
 
