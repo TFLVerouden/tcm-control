@@ -492,7 +492,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         )
 
                         # Wait for the OPS to start recording before triggering the cough machine
-                        time.sleep(15)
+                        time.sleep(20)
                         countdown_beep()
 
                         run_log_path = tcm.run(
