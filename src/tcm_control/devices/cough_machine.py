@@ -732,7 +732,6 @@ class CoughMachine(PoFSerialDevice):
     def load_flowcurve(
         self,
         csv_path: str | Path | None = None,
-        tank_pressure_bar: Optional[float] = None,
         *,
         delimiter: str = ",",
         echo: Optional[bool] = None,

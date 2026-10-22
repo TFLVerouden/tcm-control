@@ -14,7 +14,6 @@ from tcm_control.interrupt_handling import (
     reset_interrupt_cleanup_state,
     set_active_output_dir,
     set_active_pump,
-    set_active_nebuliser,
     set_active_tcm,
 )
 from tcm_control.processing.run_log_processing import plot_run_log
@@ -35,6 +34,15 @@ from tcm_utils.io_utils import (
     beep,
 )
 from tcm_utils.time_utils import timestamp_str
+from tcm_utils.io_utils import countdown_beep
+
+from tcm_control.devices.ops3330.ops3330 import OPSClient, OPS
+from tcm_control.devices.ops3330.ops3330.VisualiseData import OPS_visualize_data
+import logging
+import sys
+import time
+from pathlib import Path
+import datetime
 
 
 def cough(config_path: Path | str | None = None) -> Optional[Path]:
@@ -58,7 +66,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     # Reset interrupt state for a fresh run and clear stale references.
     reset_interrupt_cleanup_state()
     set_active_tcm(None)
-    set_active_nebuliser(None)
     set_active_pump(None)
     set_active_output_dir(None)
 
@@ -79,9 +86,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     tank_inputs = cough_machine_inputs["tank"]
     syringe_inputs = config["devices"]["pump"]["syringe"]
     layer_inputs = config["devices"]["pump"]["layer"]
+    cleaning_tube_inputs = config["devices"]["pump"]["clean_tube"]
+
     cleaning_inputs = cough_machine_inputs["cleaning"]
+    drying = cough_machine_inputs["drying"]
     nebuliser_inputs = cough_machine_inputs["nebuliser"]
-    pump_inputs = config["devices"]["pump"]["inputs"]
     camera_inputs = config["devices"]["camera"]["inputs"]
     vertical_stage_inputs = config["devices"]["vertical_stage"]["inputs"]
     spraytec_inputs = config["devices"]["spraytec"]["inputs"]
@@ -100,10 +109,10 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
     # Initialise variables
     pump = None
-    lift = None
-    lift_pos_z_mm = None
+    vertical_stage = None
     stage_pos_x_mm = None
     stage_pos_y_mm = None
+    stage_pos_z_mm = None
     spraytec_target_z_mm = None
     spraytec = None
     spraytec_x_mm = None
@@ -111,6 +120,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     spraytec_z_mm = None
     spraytec_audit_path = None
     spraytec_laser_intensity = None
+    film_height_mm = None
 
     # --------------------------------------------------------------------------
     # 2) Make connections to external devices
@@ -119,20 +129,12 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     # Initialise cough machine
     tcm = CoughMachine(debug=cough_inputs["debug_mode"])
 
-    # TODO(merge nebuliser MCU): use the cough-machine controller for nebuliser
-    # commands too, remove this second connection and set_active_nebuliser call,
-    # and keep only one active-device registration.
-    neb = CoughMachine(
-        debug=cough_inputs["debug_mode"], expected_id="NEB_control",
-        name="Nebuliser_MCU", supported_protocol_version=8)
-
     # Register devices so interrupt cleanup can stop them.
     set_active_tcm(tcm)
-    set_active_nebuliser(neb)
 
     # Vertical stage is only needed when SprayTec measurements are enabled.
-    if record_droplet_size:
-        lift = VerticalStage()
+    # if record_droplet_size:
+    #     vertical_stage = VerticalStage()
 
     # --------------------------------------------------------------------------
     # 3) Set up experiment directory and logging
@@ -209,20 +211,33 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         # 4) Set up devices and resolve run geometry
         # --------------------------------------------------------------
 
-        # In droplet and PIV modes, set up the pump
+        # # In droplet and PIV modes, set up the pump
         # if experiment_mode in ["droplet", "piv"]:
         #     pump = SyringePump(
         #         syringe_volume_ml=pump_inputs["syringe_volume_ml"],
         #         syringe_diameter_mm=pump_inputs["syringe_diameter_mm"],
         #     )
+        # pump = SyringePump2(pump_inputs)
 
         #     # Register pump so interrupt cleanup can call stop() on it
         #     set_active_pump(pump)
 
+        # Clear memory before starting the experiment
+        tcm.clear_memory()
+
+        # Load flow curve
         tcm.load_flowcurve(
             csv_path=cough_machine_inputs["flow_curve_csv_path"],
             experiment_dir=output_dir if save_data else None,
         )
+        # Store the resolved flow curve path for metadata traceability.
+        cough_machine_inputs["flow_curve_csv_path"] = tcm.get_flowcurve_csv_path(
+        )
+
+        # Program the fixed pre-run wait into the cough machine controller
+        tcm.set_wait_us(wait_us=wait_before_run_us)
+
+        # Set tank pressure
         tcm.set_pressure(
             tank_inputs["pressure_bar"],
             timeout_s=tank_inputs["settling_time_s"],
@@ -231,17 +246,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             poll_interval_s=tank_inputs["poll_interval_s"],
             interm_press_diff_bar=tank_inputs["intermediate_diff_bar"],
             interm_press_time_s=tank_inputs["intermediate_time_s"],
-        )
-        # Program the fixed pre-run wait into the cough machine controller
-        tcm.set_wait_us(wait_us=wait_before_run_us)
-        tcm.load_flowcurve(
-            # Load the configured flow curve and optionally copy it into output_dir
-            csv_path=cough_machine_inputs["flow_curve_csv_path"],
-            tank_pressure_bar=tank_inputs["pressure_bar"],
-            experiment_dir=output_dir if save_data else None,
-        )
-        # Store the resolved flow curve path for metadata traceability.
-        cough_machine_inputs["flow_curve_csv_path"] = tcm.get_flowcurve_csv_path(
         )
 
         # In film mode, set up the camera and pump
@@ -260,7 +264,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                                syringe_inputs["syringe_gang"],
                                syringe_inputs["syringe_force_percent"])
 
-            set_active_pump(pump)
+            # set_active_pump(pump)
 
         # Optional SprayTec setup and geometry resolution
         if record_droplet_size:
@@ -380,30 +384,56 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     print("Aborted.")
                     exit(1)
 
+                # Ask for cleaning protocol
+                confirm_cleaning = prompt_yes_no(
+                    "Do you want the tubes to be cleaned y/n ?",
+                    default=False)
+                if confirm_cleaning:
+                    if pump is not None:
+                        pump.clean_tubes(volume_ml_layer=cleaning_tube_inputs["volume_ml_layer"],
+                                         rate_ml_min_layer=cleaning_tube_inputs["rate_ml_min_layer"],
+                                         volume_ml_repetition=cleaning_tube_inputs["volume_ml_repetition"],
+                                         rate_ml_min_repetition=cleaning_tube_inputs["rate_ml_min_repetition"],
+                                         repetitions=cleaning_tube_inputs["repetitions"])
+
+                    # Clean the channel afterwards
+                    tcm.clean(
+                        clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
+                        valve_open_duration_s=cleaning_inputs["valve_open_duration_s"],
+                        dry_pressure_bar=cleaning_inputs["dry_pressure_bar"],
+                        dry_duration_s=cleaning_inputs["dry_duration_s"],
+                        dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"],
+                        cycle_count=cleaning_inputs["cycle_count"],
+                    )
+
                 # Execute repeated runs
                 for run_idx in range(cough_inputs["nr_runs"]):
                     # Initial picture
                     background_path = take_snapshot(
-                        camera, tcm, filename=f"background_run{run_idx + 1}.png")
+                        camera, tcm, filename=f"run{run_idx + 1}_background")
                     if camera_output_dir is not None:
                         plate_height_px = determine_plate_height(
-                            background_path, camera_output_dir)
+                            background_path, camera_output_dir, camera_inputs["pixel_per_meter"], filename=f"run{run_idx + 1}_plate_height")
 
                     # Make a layer
                     if pump is not None:
                         pump.make_layer(infuse_volume_ml=layer_inputs["infuse_volume_ml"],
                                         infuse_rate_ml_min=layer_inputs["infuse_rate_ml_min"],
                                         withdraw_volume_ml=layer_inputs["withdraw_volume_ml"],
-                                        withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"])
+                                        withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"],
+                                        settling_time_s=layer_inputs["film_settling_time_s"])
                     # Wait for the layer to settle before imaging
-                    time.sleep(10)
+                    wait_with_progress(
+                        wait_s=layer_inputs["film_settling_time_s"],
+                        label="Waiting for layer to settle...",
+                    )
 
                     # Take a picture of the layer
                     thin_film_path = take_snapshot(
-                        camera, tcm, filename=f"thin_film_run{run_idx + 1}.png")
+                        camera, tcm, filename=f"run{run_idx + 1}_thin_film")
                     if camera_output_dir is not None:
                         film_height_px = determine_film_height(
-                            thin_film_path, plate_height_px, camera_output_dir)
+                            thin_film_path, plate_height_px, camera_output_dir, camera_inputs["pixel_per_meter"], filename=f"run{run_idx + 1}_film_height")
                         film_height_mm = film_height_px * \
                             camera_inputs["pixel_per_meter"] * 1000
                         print(f"Film height (mm): {film_height_mm:.3f}")
@@ -428,12 +458,46 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             ],
                         )
 
-                    # Produce a cough
-                    run_log_path = tcm.run(
-                        output_dir=output_dir,
-                        run_nr_start=(run_idx + 1),
-                        save_logs=save_data,
-                    )
+                    CONNECTION_IP_OPS = "192.168.1.50"
+                    PROFILE_PATH_OPS = Path(__file__).resolve(
+                    ).parent / "devices" / "ops3330" / "profiles" / "default_minimal.toml"
+                    if output_dir is None:
+                        raise ValueError(
+                            "Output directory is None, cannot save OPS data.")
+                    # Create a folder for OPS data in the output directory
+                    OUT_OPS_DIR = output_dir / "OPS_data"
+                    OUT_OPS_DIR.mkdir(exist_ok=True)
+
+                    OUT_CSV_OPS = OUT_OPS_DIR / \
+                        f"{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_OPS.csv"
+
+                    with OPSClient(ip=CONNECTION_IP_OPS) as client:
+                        ops = OPS(client)
+
+                        print("Model:", client.read_model_number())
+                        print("Status:", ops.read_status())
+
+                        ops.start_standard_recording(
+                            profile_toml_path=PROFILE_PATH_OPS,
+                            out_csv_path=OUT_CSV_OPS,
+                        )
+
+                        # Wait for the OPS to start recording before triggering the cough machine
+                        time.sleep(20)
+                        countdown_beep()
+
+                        run_log_path = tcm.run(
+                            output_dir=output_dir,
+                            run_nr_start=(run_idx + 1),
+                            save_logs=save_data,
+                        )
+
+                        # Keep the connection open until the background
+                        # recording thread has finished
+                        recorded_csv = ops.collect_recording()
+
+                    OPS_visualize_data(output_dir=OUT_OPS_DIR)
+                    print(f"Saved data to {recorded_csv}")
 
                     # Plot run log
                     if save_data and run_log_path is not None:
@@ -442,6 +506,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             experiment_dir=output_dir,
                             show=False,
                         )
+                        # Cache first run log for the summary plot in finalization
+                        if run_idx == 0:
+                            first_run_log_path = run_log_path
 
                     # Clean the channel
                     tcm.clean(
@@ -453,9 +520,19 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         cycle_count=cleaning_inputs["cycle_count"],
                     )
 
+                    tcm.clean(
+                        clean_pressure_bar=drying["clean_pressure_bar"],
+                        valve_open_duration_s=drying["valve_open_duration_s"],
+                        dry_pressure_bar=drying["dry_pressure_bar"],
+                        dry_duration_s=drying["dry_duration_s"],
+                        dry_valve_current_ma=drying["dry_valve_current_ma"],
+                        cycle_count=drying["cycle_count"],
+                    )
+
                     # Image the channel after cleaning
+                    # TODO: Put run number first
                     _ = take_snapshot(
-                        camera, tcm, filename=f"cleaned_run{run_idx + 1}.png")
+                        camera, tcm, filename=f"cleaned_run.png")
 
             case "piv":
                 # ------------------------------------------------------------------
@@ -472,7 +549,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     "Press ENTER to confirm that the PIV laser is turned on...")
 
                 # Fill the nebuliser tank
-                neb.set_nebuliser(True)
+                tcm.set_nebuliser(True)
                 wait_with_progress(
                     wait_s=nebuliser_fill_time_s,
                     label="Filling nebuliser tank...",
@@ -493,7 +570,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     # FROM SECOND RUN ONWARDS
                     if run_idx > 0:
                         # Before each run, fill the nebuliser tank again
-                        neb.set_nebuliser(True)
+                        tcm.set_nebuliser(True)
                         wait_with_progress(
                             wait_s=nebuliser_fill_time_s,
                             label="Filling nebuliser tank...",
@@ -514,7 +591,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     # Start seeding air flow
                     beep()
                     print("Turning on nebuliser air flow")
-                    neb.set_nebuliser_pressure(nebuliser_pressure_bar)
+                    tcm.set_nebuliser_pressure(nebuliser_pressure_bar)
                     pump_stopped = False
 
                     # If an error occurs, the nebuliser will always be turned off
@@ -522,29 +599,29 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     try:
 
                         # Optional pre-run pump lead-in time for stable nebulisation
-                        if pump_inputs["piv_pump_start_before_run_s"] > 0:
+                        if nebuliser_inputs["pre_run_start_s"] > 0:
                             print(
-                                f"Waiting {pump_inputs['piv_pump_start_before_run_s']} s before run {run_idx + 1}/{cough_inputs['nr_runs']}"
+                                f"Waiting {nebuliser_inputs['pre_run_start_s']} s before run {run_idx + 1}/{cough_inputs['nr_runs']}"
                             )
                             time.sleep(
-                                float(pump_inputs["piv_pump_start_before_run_s"]))
+                                float(nebuliser_inputs["pre_run_start_s"]))
 
                         # Start the run
                         tcm.start_run()
                         tcm.wait_for_run_finished()
 
                         # Optional post-run pump tail time after actuation finishes
-                        if pump_inputs["piv_pump_stop_after_run_s"] > 0:
+                        if nebuliser_inputs["post_run_finish_s"] > 0:
                             print(
-                                f"Waiting {pump_inputs['piv_pump_stop_after_run_s']} s after run {run_idx + 1}/{cough_inputs['nr_runs']}"
+                                f"Waiting {nebuliser_inputs['post_run_finish_s']} s after run {run_idx + 1}/{cough_inputs['nr_runs']}"
                             )
                             time.sleep(
-                                float(pump_inputs["piv_pump_stop_after_run_s"]))
+                                float(nebuliser_inputs["post_run_finish_s"]))
 
                         # Turn off nebuliser
-                        neb.set_nebuliser(False)
+                        tcm.set_nebuliser(False)
                         print("Turning off nebuliser air flow")
-                        neb.set_nebuliser_pressure(0.0)
+                        tcm.set_nebuliser_pressure(0.0)
                         pump_stopped = True
 
                         run_log_path = tcm.receive_run_log(
@@ -555,23 +632,23 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
                         # Plot run log
                         if save_data and run_log_path is not None:
-                        plot_run_log(
-                           run_log_path=run_log_path,
-                           experiment_dir=output_dir,
-                           show=False,
-                        )
+                            plot_run_log(
+                                run_log_path=run_log_path,
+                                experiment_dir=output_dir,
+                                show=False,
+                            )
 
                     finally:
                         # Always stop pump, even if the run or waits raise an error
                         if not pump_stopped:
-                            neb.set_nebuliser_pressure(0.0)
-                            neb.set_nebuliser(False)
+                            tcm.set_nebuliser_pressure(0.0)
+                            tcm.set_nebuliser(False)
 
                         # Flush nebuliser chamber before cleaning channel
-                        neb.set_nebuliser_pressure(0.3)
+                        tcm.set_nebuliser_pressure(0.3)
                         wait_with_progress(
-                            wait_s=10, label="Flushing nebuliser chamber...")
-                        neb.set_nebuliser_pressure(0.0)
+                            wait_s=5, label="Flushing nebuliser chamber...")
+                        tcm.set_nebuliser_pressure(0.0)
 
                         # Run cleaning routine every cycle
                         tcm.clean(clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
@@ -587,14 +664,14 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         if save_data:
             assert output_dir is not None
 
-            # Collect comments
-            comments = ask_user_for_comments(output_dir=output_dir)
-
             # Record temperature and humidity
             temperature_finish, humidity_finish = tcm.read_temperature_humidity(
                 show_reading=True,
             )
             time_finish = timestamp_str()
+
+            # Collect comments
+            comments = ask_user_for_comments(output_dir=output_dir)
 
             # Optional SprayTec post-processing.
             if record_droplet_size:
@@ -669,7 +746,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
     # Clear registered devices after a normal, successful run.
     set_active_tcm(None)
-    set_active_nebuliser(None)
     set_active_pump(None)
     set_active_output_dir(None)
 
