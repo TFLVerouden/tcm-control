@@ -180,6 +180,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     if save_data:
         assert series_directory is not None
         assert console_log is not None
+        assert experiment_name is not None
         if record_droplet_size:
             # Warn (but proceed) if SprayTec won't be able to display the full name
             warn_if_experiment_dir_name_too_long(time_start, experiment_name)
