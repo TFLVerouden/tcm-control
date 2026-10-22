@@ -37,6 +37,27 @@ EXPERIMENT_SPRAYTEC_SUBDIR = "spraytec"
 SPRAYTEC_APPEND_FILE = "SPRAYTEC_APPEND_FILE.txt"
 DEFAULT_APPEND_MAX_FILE_SIZE_BYTES = 500 * 1024 * 1024
 
+# SprayTec software cannot handle experiment directory names longer than this.
+SPRAYTEC_MAX_DIR_NAME_LENGTH = 31
+
+
+def warn_if_experiment_dir_name_too_long(
+        start_time: str,
+        experiment_name: str) -> None:
+    """Warn when the resulting folder name exceeds SprayTec's name limit."""
+    dir_name = f"{start_time}_{experiment_name}"
+    if len(dir_name) <= SPRAYTEC_MAX_DIR_NAME_LENGTH:
+        return
+
+    truncated_name = dir_name[:SPRAYTEC_MAX_DIR_NAME_LENGTH]
+    print(
+        f"WARNING: Experiment directory name '{dir_name}' is "
+        f"{len(dir_name)} characters long, exceeding the "
+        f"{SPRAYTEC_MAX_DIR_NAME_LENGTH}-character limit supported by the "
+        "SprayTec software. When entering the folder name in SprayTec, use "
+        f"this truncated version instead: '{truncated_name}'"
+    )
+
 
 class SprayTec:
     """Stateful SprayTec helper storing append parsing and export configuration."""

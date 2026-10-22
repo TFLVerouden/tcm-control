@@ -45,7 +45,8 @@ PLOT_COMBINED = True
 HEIGHT_WEIGHTS: dict[int, float] | None = None
 
 # Height labels associated with stacked subplots.
-HEIGHTS_MM = list(range(0, 11, 10))
+# Bottom subplot should be -80 mm; top subplot should be 50 mm.
+HEIGHTS_MM = list(range(0, 2, 1))
 
 PLOT_COLOR = "C0"
 PLOT_ALPHA = 0.18

@@ -1,0 +1,2 @@
+The idea is now to have the OPS measure the zero, a no spray and then the spray for 30 seconds. Holding the spray in a secure location is a bit of challenge :(
+Then, if after a few rounds of finding a certain distribution, we see how reproducible it is. 

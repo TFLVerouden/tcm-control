@@ -8,6 +8,7 @@ from tcm_utils.io_utils import prompt_yes_no
 
 # References to currently active devices, used by Ctrl+C cleanup.
 _ACTIVE_TCM: Any = None
+_ACTIVE_NEBULISER: Any = None
 _ACTIVE_PUMP: Any = None
 _ACTIVE_OUTPUT_DIR: Path | None = None
 _INTERRUPT_CLEANED_UP = False
@@ -67,6 +68,21 @@ def cleanup_on_interrupt(*, ask_before_delete_output_dir: bool = False) -> None:
             print("Cough machine returned to idle")
         except Exception as exc:
             print(f"Warning: Failed to quit cough machine: {exc}")
+
+    # TODO(merge nebuliser MCU): once both functions share one controller,
+    # remove the separate registration and fold these commands into the TCM
+    # shutdown sequence, avoiding duplicate commands to the same connection.
+    if _ACTIVE_NEBULISER is not None:
+        try:
+            _ACTIVE_NEBULISER.set_nebuliser(False)
+            print("Nebuliser turned off")
+        except Exception as exc:
+            print(f"Warning: Failed to turn off nebuliser: {exc}")
+        try:
+            _ACTIVE_NEBULISER.set_nebuliser_pressure(0.0)
+            print("Nebuliser pressure returned to 0")
+        except Exception as exc:
+            print(f"Warning: Failed to reset nebuliser pressure: {exc}")
 
     if _ACTIVE_OUTPUT_DIR is not None and _ACTIVE_OUTPUT_DIR.exists():
         output_dir_full = _ACTIVE_OUTPUT_DIR.resolve()

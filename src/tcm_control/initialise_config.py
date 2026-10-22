@@ -6,13 +6,20 @@ from pathlib import Path
 from typing import Any
 
 from tcm_utils.file_dialogs import ask_open_file
+from tcm_control.devices.cough_machine import (
+    DEFAULT_CLEAN_CYCLE_COUNT,
+    DEFAULT_CLEAN_DRY_DURATION_S,
+    DEFAULT_CLEAN_DRY_VALVE_CURRENT_MA,
+    DEFAULT_CLEAN_PRESSURE_BAR,
+    DEFAULT_CLEAN_VALVE_OPEN_DURATION_S,
+    MAX_PRESSURE_BAR,
+)
 
 import tomllib
 
 
 VALID_EXPERIMENT_MODES = {"droplet", "film", "piv"}
-PUMP_REQUIRED_MODES = {"droplet", "piv"}
-
+PUMP_REQUIRED_MODES = {"droplet", "film"}
 
 # -----------------------------------------------------------------------------
 # Generic value helpers
@@ -164,10 +171,12 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
         )
 
     series_directory = _normalize_optional_path_string(series_directory_raw)
-    save_data = True
     if series_directory is not None and series_directory.strip().lower() == "none":
         series_directory = None
+    if series_directory is None:
         save_data = False
+    else:
+        save_data = True
 
     # ------------------------------------------------------------------
     # Cough run controls
@@ -225,6 +234,61 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
                 default=0.0,
             )
         ),
+        "nr_droplets_to_skip_before_recording": _required_non_negative_int(
+            _nested_get(
+                raw,
+                "devices",
+                "pump",
+                "inputs",
+                "nr_droplets_to_skip_before_recording",
+            )
+        ),
+        "nebuliser": {
+            "fill_time_s": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "nebuliser",
+                    "fill_time_s",
+                    default=60.0,
+                )
+            ),
+            "pressure_bar": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "nebuliser",
+                    "pressure_bar",
+                    default=0.1,
+                )
+            ),
+            "pre_run_start_s": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "nebuliser",
+                    "pre_run_start_s",
+                    default=0.0,
+                )
+            ),
+            "post_run_finish_s": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "nebuliser",
+                    "post_run_finish_s",
+                    default=0.0,
+                )
+            ),
+        },
         "tank": {
             "pressure_bar": float(
                 _nested_get(
@@ -302,7 +366,197 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
                 )
             ),
         },
+        "cleaning": {
+            "clean_pressure_bar": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "cleaning",
+                    "clean_pressure_bar",
+                    default=DEFAULT_CLEAN_PRESSURE_BAR,
+                )
+            ),
+            "valve_open_duration_s": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "cleaning",
+                    "valve_open_duration_s",
+                    default=DEFAULT_CLEAN_VALVE_OPEN_DURATION_S,
+                )
+            ),
+            "dry_pressure_bar": _optional_float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "cleaning",
+                    "dry_pressure_bar",
+                )
+            ),
+            "dry_duration_s": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "cleaning",
+                    "dry_duration_s",
+                    default=DEFAULT_CLEAN_DRY_DURATION_S,
+                )
+            ),
+            "dry_valve_current_ma": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "cleaning",
+                    "dry_valve_current_ma",
+                    default=DEFAULT_CLEAN_DRY_VALVE_CURRENT_MA,
+                )
+            ),
+            "cycle_count": int(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "cleaning",
+                    "cycle_count",
+                    default=DEFAULT_CLEAN_CYCLE_COUNT,
+                )
+            ),
+        },
+        "drying": {
+            "clean_pressure_bar": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "drying",
+                    "clean_pressure_bar",
+                    default=DEFAULT_CLEAN_PRESSURE_BAR,
+                )
+            ),
+            "valve_open_duration_s": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "drying",
+                    "valve_open_duration_s",
+                    default=DEFAULT_CLEAN_VALVE_OPEN_DURATION_S,
+                )
+            ),
+            "dry_pressure_bar": _optional_float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "drying",
+                    "dry_pressure_bar",
+                )
+            ),
+            "dry_duration_s": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "drying",
+                    "dry_duration_s",
+                    default=DEFAULT_CLEAN_DRY_DURATION_S,
+                )
+            ),
+            "dry_valve_current_ma": float(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "drying",
+                    "dry_valve_current_ma",
+                    default=DEFAULT_CLEAN_DRY_VALVE_CURRENT_MA,
+                )
+            ),
+            "cycle_count": int(
+                _nested_get(
+                    raw,
+                    "devices",
+                    "cough_machine",
+                    "inputs",
+                    "drying",
+                    "cycle_count",
+                    default=DEFAULT_CLEAN_CYCLE_COUNT,
+                )
+            ),
+        },
     }
+
+    cleaning_inputs = cough_machine_inputs["cleaning"]
+    if cleaning_inputs["clean_pressure_bar"] < 0 or cleaning_inputs["clean_pressure_bar"] > MAX_PRESSURE_BAR:
+        raise ValueError(
+            f"Config [devices.cough_machine.inputs.cleaning].clean_pressure_bar must be between 0 and {MAX_PRESSURE_BAR} bar."
+        )
+    if cleaning_inputs["valve_open_duration_s"] <= 0:
+        raise ValueError(
+            "Config [devices.cough_machine.inputs.cleaning].valve_open_duration_s must be > 0."
+        )
+    if cleaning_inputs["dry_pressure_bar"] is not None and (
+        cleaning_inputs["dry_pressure_bar"] < 0 or cleaning_inputs["dry_pressure_bar"] > MAX_PRESSURE_BAR
+    ):
+        raise ValueError(
+            f"Config [devices.cough_machine.inputs.cleaning].dry_pressure_bar must be between 0 and {MAX_PRESSURE_BAR} bar."
+        )
+    if cleaning_inputs["dry_duration_s"] < 0:
+        raise ValueError(
+            "Config [devices.cough_machine.inputs.cleaning].dry_duration_s must be >= 0."
+        )
+    if cleaning_inputs["dry_valve_current_ma"] <= 0:
+        raise ValueError(
+            "Config [devices.cough_machine.inputs.cleaning].dry_valve_current_ma must be > 0."
+        )
+    if cleaning_inputs["cycle_count"] < 0:
+        raise ValueError(
+            "Config [devices.cough_machine.inputs.cleaning].cycle_count must be >= 0."
+        )
+
+    drying = cough_machine_inputs["drying"]
+    if drying["clean_pressure_bar"] < 0 or drying["clean_pressure_bar"] > MAX_PRESSURE_BAR:
+        raise ValueError(
+            f"Config [devices.cough_machine.inputs.drying].clean_pressure_bar must be between 0 and {MAX_PRESSURE_BAR} bar."
+        )
+    if drying["valve_open_duration_s"] <= 0:
+        raise ValueError(
+            "Config [devices.cough_machine.inputs.drying].valve_open_duration_s must be > 0."
+        )
+    if drying["dry_pressure_bar"] is not None and (
+        drying["dry_pressure_bar"] < 0 or drying["dry_pressure_bar"] > MAX_PRESSURE_BAR
+    ):
+        raise ValueError(
+            f"Config [devices.cough_machine.inputs.drying].dry_pressure_bar must be between 0 and {MAX_PRESSURE_BAR} bar."
+        )
+    if drying["dry_duration_s"] < 0:
+        raise ValueError(
+            "Config [devices.cough_machine.inputs.drying].dry_duration_s must be >= 0."
+        )
+    if drying["dry_valve_current_ma"] <= 0:
+        raise ValueError(
+            "Config [devices.cough_machine.inputs.drying].dry_valve_current_ma must be > 0."
+        )
+    if drying["cycle_count"] < 0:
+        raise ValueError(
+            "Config [devices.cough_machine.inputs.drying].cycle_count must be >= 0."
+        )
 
     has_intermediate_diff = (
         cough_machine_inputs["tank"]["intermediate_diff_bar"] is not None
@@ -316,6 +570,19 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             "intermediate_diff_bar and intermediate_time_s together."
         )
 
+    nebuliser_inputs = cough_machine_inputs["nebuliser"]
+    if experiment_mode == "piv":
+        if nebuliser_inputs["fill_time_s"] < 0:
+            raise ValueError(
+                "Config [devices.cough_machine.inputs.nebuliser].fill_time_s "
+                "must be >= 0."
+            )
+        if nebuliser_inputs["pressure_bar"] <= 0:
+            raise ValueError(
+                "Config [devices.cough_machine.inputs.nebuliser].pressure_bar "
+                "must be > 0."
+            )
+
     cough_machine_inputs["wait_before_run_us"] = int(
         cough_machine_inputs["wait_before_run_ms"] * 1000
     )
@@ -324,93 +591,166 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
     # Pump inputs (required in droplet/piv mode only)
     # ------------------------------------------------------------------
     pump_required = experiment_mode in PUMP_REQUIRED_MODES
-    pump_inputs = {
-        "syringe_volume_ml": _optional_float(
-            _nested_get(raw, "devices", "pump", "inputs", "syringe_volume_ml")
-        ),
-        "pump_rate_ml_per_min": _optional_float(
-            _nested_get(raw, "devices", "pump",
-                        "inputs", "pump_rate_ml_per_min")
-        ),
-        "nr_droplets_to_skip_before_recording": _required_non_negative_int(
-            _nested_get(
-                raw,
-                "devices",
-                "pump",
-                "inputs",
-                "nr_droplets_to_skip_before_recording",
-            )
-        ),
-        "piv_pump_start_before_run_s": float(
-            _nested_get(
-                raw,
-                "devices",
-                "pump",
-                "inputs",
-                "piv_pump_start_before_run_s",
-                default=0.0,
-            )
-        ),
-        "piv_pump_stop_after_run_s": float(
-            _nested_get(
-                raw,
-                "devices",
-                "pump",
-                "inputs",
-                "piv_pump_stop_after_run_s",
-                default=0.0,
-            )
-        ),
-        "piv_nebuliser_pressure_bar": float(
-            _nested_get(
-                raw,
-                "devices",
-                "pump",
-                "inputs",
-                "piv_nebuliser_pressure_bar",
-                default=0.5,
-            )
-        ),
-    }
-    if pump_required and pump_inputs["syringe_volume_ml"] is None:
-        raise ValueError(
-            "Config [devices.pump.inputs].syringe_volume_ml must be set "
-            "for droplet and piv modes."
-        )
+    if pump_required:
+        syringe_inputs = {
+            "syringe_vendor_code": str(
+                _nested_get(raw, "devices", "pump",
+                            "syringe", "syringe_vendor_code")
+            ),
+            "syringe_volume_mL": float(
+                _nested_get(raw, "devices", "pump",
+                            "syringe", "syringe_volume_mL")
+            ),
+            "syringe_diameter_mm": float(
+                _nested_get(raw, "devices", "pump",
+                            "syringe", "syringe_diameter_mm")
+            ),
+            "syringe_gang": int(
+                _nested_get(raw, "devices", "pump", "syringe", "syringe_gang")
+            ),
+            "syringe_force_percent": float(
+                _nested_get(raw, "devices", "pump", "syringe",
+                            "syringe_force_percent")
+            ),
+        }
 
-    if experiment_mode in {"droplet", "piv"}:
-        if pump_inputs["pump_rate_ml_per_min"] is None:
+        if syringe_inputs["syringe_vendor_code"] is None:
             raise ValueError(
-                "Config [devices.pump.inputs].pump_rate_ml_per_min "
-                "must be set for droplet and piv modes."
+                "Config [devices.pump.syringe].vendor_code must be a non-empty string."
             )
+        if syringe_inputs["syringe_volume_mL"] <= 0:
+            raise ValueError(
+                "Config [devices.pump.syringe].syringe_volume_mL must be > 0."
+            )
+        if syringe_inputs["syringe_diameter_mm"] <= 0:
+            raise ValueError(
+                "Config [devices.pump.syringe].syringe_diameter_mm must be > 0."
+            )
+        if syringe_inputs["syringe_gang"] <= 0 or not isinstance(syringe_inputs["syringe_gang"], int):
+            raise ValueError(
+                "Config [devices.pump.syringe].syringe_gang must be a positive integer."
+            )
+        if syringe_inputs["syringe_force_percent"] <= 0 or syringe_inputs["syringe_force_percent"] > 100 or syringe_inputs["syringe_force_percent"] % 10 != 0:
+            raise ValueError(
+                "Config [devices.pump.syringe].syringe_force_percent must be a percentage between 0 and 100."
+                " It must be a multiple of 10."
+            )
+    else:
+        syringe_inputs = None
+        layer_inputs = None
+        pump_clean_tube = None
+    if experiment_mode == "film":
+        layer_inputs = {
+            "film_settling_time_s": int(
+                _nested_get(raw, "devices", "pump",
+                            "layer", "film_settling_time_s")
+            ),
+            "infuse_volume_ml": float(
+                _nested_get(raw, "devices", "pump",
+                            "layer", "infuse_volume_ml")
+            ),
+            "infuse_rate_ml_min": float(
+                _nested_get(raw, "devices", "pump",
+                            "layer", "infuse_rate_ml_min")
+            ),
+            "withdraw_volume_ml": float(
+                _nested_get(raw, "devices", "pump",
+                            "layer", "withdraw_volume_ml")
+            ),
+            "withdraw_rate_ml_min": float(
+                _nested_get(raw, "devices", "pump",
+                            "layer", "withdraw_rate_ml_min")
+            ),
+        }
+
+        pump_clean_tube = {
+            "volume_ml_layer": _optional_float(
+                _nested_get(raw, "devices", "pump",
+                            "clean_tube", "volume_ml_layer")
+            ),
+            "rate_ml_min_layer": _optional_float(
+                _nested_get(raw, "devices", "pump",
+                            "clean_tube", "rate_ml_min_layer")
+            ),
+            "volume_ml_repetition": _optional_float(
+                _nested_get(raw, "devices", "pump",
+                            "clean_tube", "volume_ml_repetition")
+            ),
+            "rate_ml_min_repetition": _optional_float(
+                _nested_get(raw, "devices", "pump", "clean_tube",
+                            "rate_ml_min_repetition")
+            ),
+            "repetitions": _required_non_negative_int(
+                _nested_get(raw, "devices", "pump",
+                            "clean_tube", "repetitions"),
+                default=0,
+            ),
+        }
+
+        if pump_clean_tube["volume_ml_layer"] is not None and pump_clean_tube["volume_ml_layer"] < 0:
+            raise ValueError(
+                "Config [devices.pump.clean_tube].volume_ml_layer must be >= 0."
+            )
+        if pump_clean_tube["rate_ml_min_layer"] is not None and pump_clean_tube["rate_ml_min_layer"] <= 0:
+            raise ValueError(
+                "Config [devices.pump.clean_tube].rate_ml_min_layer must be > 0."
+            )
+        if pump_clean_tube["volume_ml_repetition"] is not None and pump_clean_tube["volume_ml_repetition"] < 0:
+            raise ValueError(
+                "Config [devices.pump.clean_tube].volume_ml_repetition must be >= 0."
+            )
+        if pump_clean_tube["rate_ml_min_repetition"] is not None and pump_clean_tube["rate_ml_min_repetition"] <= 0:
+            raise ValueError(
+                "Config [devices.pump.clean_tube].rate_ml_min_repetition must be > 0."
+            )
+
+    # if experiment_mode == "droplet":
+    #     if syringe_inputs["pump_rate_ml_per_min"] is None:
+    #         raise ValueError(
+    #             "Config [devices.pump.inputs].pump_rate_ml_per_min must be set "
+    #             "for droplet mode."
+    #         )
 
     if experiment_mode == "piv":
-        if pump_inputs["piv_pump_start_before_run_s"] < 0:
+        if nebuliser_inputs["pre_run_start_s"] < 0:
             raise ValueError(
-                "Config [devices.pump.inputs].piv_pump_start_before_run_s "
+                "Config [devices.cough_machine.inputs.nebuliser].pre_run_start_s"
                 "must be >= 0."
             )
-        if pump_inputs["piv_pump_stop_after_run_s"] < 0:
+        if nebuliser_inputs["post_run_finish_s"] < 0:
             raise ValueError(
-                "Config [devices.pump.inputs].piv_pump_stop_after_run_s "
+                "Config [devices.cough_machine.inputs.nebuliser].post_run_finish_s"
                 "must be >= 0."
             )
-        if pump_inputs["piv_nebuliser_pressure_bar"] <= 0:
+        if nebuliser_inputs["pressure_bar"] <= 0:
             raise ValueError(
-                "Config [devices.pump.inputs].piv_nebuliser_pressure_bar "
+                "Config [devices.cough_machine.inputs.nebuliser].pressure_bar "
                 "must be > 0."
             )
 
-    if not pump_required:
-        pump_inputs = {
-            "syringe_volume_ml": None,
-            "pump_rate_ml_per_min": None,
-            "nr_droplets_to_skip_before_recording": 0,
-            "piv_pump_start_before_run_s": 0.0,
-            "piv_pump_stop_after_run_s": 0.0,
-            "piv_nebuliser_pressure_bar": None,
-        }
+    # ------------------------------------------------------------------
+    # Camera inputs
+    # ------------------------------------------------------------------
+    camera_exposure_us = int(
+        _nested_get(
+            raw,
+            "devices",
+            "camera",
+            "inputs",
+            "camera_exposure_us",
+            default=4000,
+        )
+    )
+    if camera_exposure_us <= 0:
+        raise ValueError(
+            "Config [devices.camera.inputs].camera_exposure_us must be > 0."
+        )
+    camera_inputs = {
+        "camera_exposure_us": camera_exposure_us,
+        "pixel_per_meter": _optional_float(
+            _nested_get(raw, "devices", "camera", "inputs", "pixel_per_meter")
+        ),
+    }
 
     record_droplet_size = bool(cough_inputs["record_droplet_size"])
 
@@ -631,7 +971,12 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             },
             "pump": {
                 "required": pump_required,
-                "inputs": pump_inputs,
+                "syringe": syringe_inputs,
+                "layer": layer_inputs,
+                "clean_tube": pump_clean_tube,
+            },
+            "camera": {
+                "inputs": camera_inputs,
             },
             "vertical_stage": {
                 "inputs": vertical_stage_inputs,
