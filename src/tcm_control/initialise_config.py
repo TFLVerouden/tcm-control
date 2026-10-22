@@ -154,16 +154,6 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
     experiment_mode = _nested_get(raw, "experiment", "mode")
     series_directory_raw = _nested_get(raw, "experiment", "series_directory")
 
-    if experiment_name_raw is None:
-        raise ValueError(
-            "Config [experiment].name must be a string (can be empty to prompt)."
-        )
-    experiment_name = _normalize_optional_string(experiment_name_raw)
-    if experiment_name_raw is not None and not isinstance(experiment_name_raw, str):
-        raise ValueError(
-            "Config [experiment].name must be a string (can be empty to prompt)."
-        )
-
     if not isinstance(experiment_mode, str) or experiment_mode not in VALID_EXPERIMENT_MODES:
         raise ValueError(
             "Config [experiment].mode must be one of: "
@@ -177,6 +167,16 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
         save_data = False
     else:
         save_data = True
+
+    if experiment_name_raw is not None and not isinstance(experiment_name_raw, str):
+        raise ValueError(
+            "Config [experiment].name must be a string (can be empty to prompt)."
+        )
+    experiment_name = _normalize_optional_string(experiment_name_raw)
+    if save_data and experiment_name_raw is None:
+        raise ValueError(
+            "Config [experiment].name must be a string (can be empty to prompt)."
+        )
 
     # ------------------------------------------------------------------
     # Cough run controls

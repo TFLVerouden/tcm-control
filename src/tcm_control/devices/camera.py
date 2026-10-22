@@ -6,8 +6,8 @@ import time
 
 import cv2
 from ximea import xiapi
-from tcm_control.devices.light import LightSwitchController
-
+from tcm_control.devices import CoughMachine
+from tcm_utils.file_dialogs import find_repo_root
 
 class Camera:
     """Class-based snapshot camera interface."""
@@ -16,9 +16,13 @@ class Camera:
     MAX_EXPOSURE_US = 5000
 
     def __init__(self, exposure_us: int = 1000, output_dir: Optional[str | Path] = None):
-        self.script_dir = Path(__file__).parent.resolve()
-        self.output_dir = Path(
-            output_dir) if output_dir is not None else self.script_dir
+
+        repo_root = find_repo_root(Path(__file__))
+        self.output_dir = (
+            Path(output_dir).expanduser().resolve()
+            if output_dir is not None
+            else repo_root / ".temp" / "camera"
+        )
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self._cam = xiapi.Camera()
@@ -104,13 +108,13 @@ class Camera:
 
 if __name__ == "__main__":
     camera = Camera(exposure_us=4000)
-    light = LightSwitchController()
+    tcm = CoughMachine()
 
     try:
-        light.toggle_light()
+        tcm.set_light(1.0)
         saved = camera.snapshot()
         print(f"Snapshot saved: {saved}")
-        light.toggle_light()
+        tcm.set_light(0.0)
     finally:
         camera.close()
-        light.close()
+        tcm.close()

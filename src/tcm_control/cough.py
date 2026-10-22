@@ -160,20 +160,20 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 f"(latest in series: {latest_experiment_name}): "
             )
     else:
-        # If data is not being saved, we don't need a series directory
+        # If data is not being saved, we don't need a series directory or name
         series_directory = None
-        experiment_prompt = "Enter experiment name: "
-        # Keep a clear runtime message when the run is intentionally non-persistent
-        # TODO: Empty string for directory should prompt rather than set to none
+        experiment_prompt = ""
         print("Data saving disabled via config setting series_directory='None'.")
 
-    # Ensure the experiment name is never empty because it is used in
-    # folder naming and prints
-    experiment_name = ensure_non_empty_text(
-        exp_conf["name"],
-        prompt=experiment_prompt,
-        empty_error="Experiment name cannot be empty.",
-    )
+    if save_data:
+        # The name is used for folder naming, so it is required when saving.
+        experiment_name = ensure_non_empty_text(
+            exp_conf["name"],
+            prompt=experiment_prompt,
+            empty_error="Experiment name cannot be empty.",
+        )
+    else:
+        experiment_name = None
 
     # Capture run start timestamp once and reuse it across artifacts and metadata
     time_start = timestamp_str()
@@ -182,6 +182,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     if save_data:
         assert series_directory is not None
         assert console_log is not None
+        assert experiment_name is not None
         if record_droplet_size:
             # Warn (but proceed) if SprayTec won't be able to display the full name
             warn_if_experiment_dir_name_too_long(time_start, experiment_name)
