@@ -604,12 +604,11 @@ class CoughMachine(PoFSerialDevice):
     def set_fan_speed(self, speed, *, echo: Optional[bool] = None) -> str:
         """Set fan speed using `F <val>`.
 
-        Hardware implementation is not yet finalised (likely PWM on pin 3).
-        The firmware currently accepts the command and replies `FAN_SPEED_SET`
-        without driving any output.
+        `speed` must be in [0.0, 1.0]. The MCU replies with
+        `SET_FAN <level> DUTY <0-255>`.
         """
         reply, _lines = self._query_and_drain(
-            f"F {speed}", expected="FAN_SPEED_SET", echo=echo
+            f"F {speed}", expected_prefix="SET_FAN", echo=echo
         )
         return reply or ""
 
