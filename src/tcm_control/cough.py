@@ -457,46 +457,46 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             ],
                         )
 
-                    CONNECTION_IP_OPS = "192.168.1.50"
-                    PROFILE_PATH_OPS = Path(__file__).resolve(
-                    ).parent / "devices" / "ops3330" / "profiles" / "default_minimal.toml"
-                    if output_dir is None:
-                        raise ValueError(
-                            "Output directory is None, cannot save OPS data.")
-                    # Create a folder for OPS data in the output directory
-                    OUT_OPS_DIR = output_dir / "OPS_data"
-                    OUT_OPS_DIR.mkdir(exist_ok=True)
+                    # CONNECTION_IP_OPS = "192.168.1.50"
+                    # PROFILE_PATH_OPS = Path(__file__).resolve(
+                    # ).parent / "devices" / "ops3330" / "profiles" / "default_minimal.toml"
+                    # if output_dir is None:
+                    #     raise ValueError(
+                    #         "Output directory is None, cannot save OPS data.")
+                    # # Create a folder for OPS data in the output directory
+                    # OUT_OPS_DIR = output_dir / "OPS_data"
+                    # OUT_OPS_DIR.mkdir(exist_ok=True)
 
-                    OUT_CSV_OPS = OUT_OPS_DIR / \
-                        f"{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_OPS.csv"
+                    # OUT_CSV_OPS = OUT_OPS_DIR / \
+                    #     f"{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_OPS.csv"
 
-                    with OPSClient(ip=CONNECTION_IP_OPS) as client:
-                        ops = OPS(client)
+                    # with OPSClient(ip=CONNECTION_IP_OPS) as client:
+                    #     ops = OPS(client)
 
-                        print("Model:", client.read_model_number())
-                        print("Status:", ops.read_status())
+                    #     print("Model:", client.read_model_number())
+                    #     print("Status:", ops.read_status())
 
-                        ops.start_standard_recording(
-                            profile_toml_path=PROFILE_PATH_OPS,
-                            out_csv_path=OUT_CSV_OPS,
-                        )
+                    #     ops.start_standard_recording(
+                    #         profile_toml_path=PROFILE_PATH_OPS,
+                    #         out_csv_path=OUT_CSV_OPS,
+                    #     )
 
-                        # Wait for the OPS to start recording before triggering the cough machine
-                        time.sleep(20)
-                        countdown_beep()
+                    #     # Wait for the OPS to start recording before triggering the cough machine
+                    #     time.sleep(20)
+                    countdown_beep()
 
-                        run_log_path = tcm.run(
-                            output_dir=output_dir,
-                            run_nr_start=(run_idx + 1),
-                            save_logs=save_data,
-                        )
+                    run_log_path = tcm.run(
+                        output_dir=output_dir,
+                        run_nr_start=(run_idx + 1),
+                        save_logs=save_data,
+                    )
 
-                        # Keep the connection open until the background
-                        # recording thread has finished
-                        recorded_csv = ops.collect_recording()
+                    # Keep the connection open until the background
+                    # recording thread has finished
+                    #     recorded_csv = ops.collect_recording()
 
-                    OPS_visualize_data(output_dir=OUT_OPS_DIR)
-                    print(f"Saved data to {recorded_csv}")
+                    # OPS_visualize_data(output_dir=OUT_OPS_DIR)
+                    # print(f"Saved data to {recorded_csv}")
 
                     # Plot run log
                     if save_data and run_log_path is not None:
