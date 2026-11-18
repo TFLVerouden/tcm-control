@@ -30,7 +30,10 @@ SETPOINTS_BAR = [
     0.0, 0.3, 0.6, 0.9, 1.0, 1.25, 1.5, 1.75, 2.0,
     2.25, 2.5, 2.75, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0,
 ]
-# SETPOINTS_BAR = [0.1, 0.2, 0.3]
+# SETPOINTS_BAR = [
+#     0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 1.0, 1.5, 2.0,
+#     2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0,
+# ]
 REPO_ROOT = find_repo_root(Path(__file__))
 CALIBRATION_DIR = REPO_ROOT / "calibration"
 RAW_DATA_DIR = CALIBRATION_DIR / "raw_data"
