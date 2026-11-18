@@ -17,6 +17,25 @@ This project uses two separate version numbers:
 
 The protocol should be a single integer: host and MCU protocol versions must match exactly. The version number is increased when communication changes in a breaking way.
 
+## Pressure sensor calibration
+
+Run `src/tcm_control/calibration/pressure_calibration.py` in VS Code with the
+cough machine and an external pressure gauge connected. Configure the settings
+at the top of the file: choose `P` for the tank or `M` for the nebuliser, and
+adjust the setpoints, settling time and output directories if needed.
+
+The script connects in debug mode and waits after each setting. Enter the gauge
+pressure at the prompt; the matching sensor current is read when you submit it.
+The sensor's reported pressure is not yet calibrated. Readings are saved
+incrementally in the raw-data directory, then fitted and plotted in the
+calibration directory. After completing the readings, the selected pressure
+setting is returned to 0 bar. An interrupted or failed run leaves the last
+setting in place.
+
+To analyze existing measurements instead, set `INPUT_FILE` to their path.
+Input files contain gauge pressure in bar and sensor current in mA, in that
+order; select the appropriate `PRESSURE_COMMAND` for the output filenames.
+
 ## Config and metadata extension guide
 
 Use this checklist when adding a new configuration value and writing it to run metadata.
