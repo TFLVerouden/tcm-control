@@ -9,6 +9,7 @@ from ximea import xiapi
 from tcm_control.devices import CoughMachine
 from tcm_utils.file_dialogs import find_repo_root
 
+
 class Camera:
     """Class-based snapshot camera interface."""
 
@@ -41,6 +42,9 @@ class Camera:
             return
         self._cam.open_device()
         self._is_open = True
+        name = self._cam.get_device_name().decode()
+        serial = self._cam.get_device_sn().decode()
+        print(f"Connected to camera {name} (SN {serial})")
         self.set_exposure(self._exposure_us)
 
     def start(self) -> None:
@@ -107,7 +111,7 @@ class Camera:
 
 
 if __name__ == "__main__":
-    camera = Camera(exposure_us=4000)
+    camera = Camera(exposure_us=300)
     tcm = CoughMachine()
 
     try:
