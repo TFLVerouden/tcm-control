@@ -222,7 +222,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         #     # Register pump so interrupt cleanup can call stop() on it
         #     set_active_pump(pump)
 
-        # Clear memory before starting the experiment
+        # Clear memory before starting the experiment; turn off fan
+        tcm.set_fan_speed(CoughMachine.FAN_SPEED_OFF)
         tcm.clear_memory()
 
         # Load flow curve
@@ -661,6 +662,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         # ------------------------------------------------------------------
         # 6) Finalize run and write (meta)data
         # ------------------------------------------------------------------
+        tcm.set_fan_speed(CoughMachine.FAN_SPEED_MAX)
         if save_data:
             assert output_dir is not None
 
@@ -733,6 +735,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             print("Exiting.")
     finally:
         # TODO: Check whether this try-finally clause is still needed
+        tcm.set_fan_speed(CoughMachine.FAN_SPEED_DEFAULT)
         if console_log is not None:
             console_log.close()
 
