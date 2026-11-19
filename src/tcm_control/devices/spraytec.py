@@ -10,8 +10,10 @@ This module handles four main tasks:
     optionally copy them into an experiment folder.
 """
 
+import argparse
 import csv
 import shutil
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from tcm_utils.io_utils import (
@@ -38,7 +40,7 @@ SPRAYTEC_APPEND_FILE = "SPRAYTEC_APPEND_FILE.txt"
 DEFAULT_APPEND_MAX_FILE_SIZE_BYTES = 500 * 1024 * 1024
 
 # SprayTec software cannot handle experiment directory names longer than this.
-SPRAYTEC_MAX_DIR_NAME_LENGTH = 31
+SPRAYTEC_MAX_DIR_NAME_LENGTH = 24
 
 
 def warn_if_experiment_dir_name_too_long(
@@ -749,3 +751,33 @@ def _build_blocks(append_path: Path) -> tuple[list[str], list[SpraytecBlock]]:
         raise ValueError("Could not find SprayTec header row in append file.")
 
     return top_header, blocks
+
+
+if __name__ == "__main__":
+    # Manual test of save_data(): run on a copy of the append file in a temp
+    # folder so the real audit file and redundancy folder are left untouched.
+    parser = argparse.ArgumentParser(
+        description="Run SprayTec.save_data() on a copy of an append file in a temp folder."
+    )
+    parser.add_argument(
+        "append_file",
+        nargs="?",
+        default=None,
+        help="Path to SprayTec append file. If omitted, file dialog opens.",
+    )
+    args = parser.parse_args()
+
+    spraytec = SprayTec()
+    source_path = spraytec.resolve_append_file_path(args.append_file)
+
+    temp_dir = Path(tempfile.mkdtemp(prefix="spraytec_save_data_test_"))
+    temp_append_path = temp_dir / source_path.name
+    shutil.copy2(source_path, temp_append_path)
+
+    audit_path = spraytec.save_data(
+        append_file_path=temp_append_path,
+        experiment_dir=temp_dir / "experiment",
+        offer_archive_if_large=False,
+    )
+    print(f"Test output folder: {temp_dir}")
+    print(f"Audit file: {audit_path}")
