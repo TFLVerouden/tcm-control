@@ -10,10 +10,14 @@ if TYPE_CHECKING:
     from tcm_control.devices.vertical_stage import VerticalStage
 
 
-def ask_start_confirmation(experiment_name: str) -> None:
+def ask_start_confirmation(experiment_name: Optional[str]) -> None:
     """Ask the user to confirm experiment start."""
+    if experiment_name:
+        prompt = f"Press ENTER to start experiment \"{experiment_name}\"..."
+    else:
+        prompt = "Press ENTER to start experiment..."
     result = prompt_yes_no(
-        f"Press ENTER to start experiment \"{experiment_name}\"...", default=True
+        prompt, default=True
     )
 
     if not result:

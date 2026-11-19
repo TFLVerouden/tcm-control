@@ -1,0 +1,18 @@
+{
+  "timestamp": "261118_140908",
+  "timestamp_source": "file_creation_time",
+  "analysis_run_time": "261118_141942",
+  "input_file_original": "calibration\\raw_data\\nebuliser_R_click_261118_140907_977733_raw.csv",
+  "output_files": {
+    "plot_pdf": "calibration\\nebuliser_R_click_261118_140907_977733_raw_261118_140908_plot.pdf",
+    "calibration_csv": "calibration\\nebuliser_R_click_261118_140907_977733_raw_261118_140908_calibration.csv"
+  },
+  "fit": {
+    "slope_bar_per_mA": 0.620261308248462,
+    "intercept_bar": -2.4945591853511235,
+    "r_value": 0.9999606406627457,
+    "p_value": 3.3666331896330634e-32,
+    "std_err": 0.0014209564512409516,
+    "r_squared": 0.9999212828746489
+  }
+}

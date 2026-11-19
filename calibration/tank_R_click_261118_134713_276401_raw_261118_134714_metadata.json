@@ -1,0 +1,18 @@
+{
+  "timestamp": "261118_134714",
+  "timestamp_source": "file_creation_time",
+  "analysis_run_time": "261118_135630",
+  "input_file_original": "calibration\\raw_data\\tank_R_click_261118_134713_276401_raw.csv",
+  "output_files": {
+    "plot_pdf": "calibration\\tank_R_click_261118_134713_276401_raw_261118_134714_plot.pdf",
+    "calibration_csv": "calibration\\tank_R_click_261118_134713_276401_raw_261118_134714_calibration.csv"
+  },
+  "fit": {
+    "slope_bar_per_mA": 0.623412010370172,
+    "intercept_bar": -2.5107257081374943,
+    "r_value": 0.9999608270545902,
+    "p_value": 2.7872470967602476e-34,
+    "std_err": 0.0013795455506632392,
+    "r_squared": 0.9999216556437001
+  }
+}

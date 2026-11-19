@@ -29,6 +29,11 @@ DEFAULT_SUPPORTED_PROTOCOL_VERSION = 8
 
 
 class CoughMachine(PoFSerialDevice):
+    # Fan PWM duty, normalized to [0.0, 1.0] (see `set_fan_speed`).
+    FAN_SPEED_OFF = 0.0
+    FAN_SPEED_MAX = 1.0
+    FAN_SPEED_DEFAULT = 0.5
+
     def __init__(
         self,
         name: str = "CoughMachine_MCU",
@@ -69,9 +74,13 @@ class CoughMachine(PoFSerialDevice):
         self._target_pressure_bar: Optional[float] = None
         self._dataset_loaded = False
         self._flowcurve_csv_path: Optional[Path] = None
+        self._fan_speed: float = self.FAN_SPEED_DEFAULT
 
         # Set debug mode on device if requested
         self._set_debug(debug)
+
+        # Reset the fan to its default in case it was changed since the MCU last ran.
+        self.set_fan_speed(self.FAN_SPEED_DEFAULT, echo=echo)
 
     # ------------------------------------------------------------------
     # Manual mode
@@ -428,6 +437,9 @@ class CoughMachine(PoFSerialDevice):
             original_setpoint_bar = self.read_pressure(echo=False)
         restore_original_setpoint = original_setpoint_bar is not None
 
+        previous_fan_speed = self._fan_speed
+        self.set_fan_speed(self.FAN_SPEED_MAX, echo=echo)
+
         try:
             for cycle_idx in range(1, cycle_count + 1):
                 self.set_pressure(
@@ -508,6 +520,7 @@ class CoughMachine(PoFSerialDevice):
                 finally:
                     self.set_valve_current(12, echo=echo)
         finally:
+            self.set_fan_speed(previous_fan_speed, echo=echo)
             if restore_original_setpoint:
                 self.set_pressure(
                     original_setpoint_bar,
@@ -601,15 +614,16 @@ class CoughMachine(PoFSerialDevice):
             cmd, expected=expected, echo=echo)
         return reply or ""
 
-    def set_fan_speed(self, speed, *, echo: Optional[bool] = None) -> str:
-        """Set fan speed using `F <val>`.
-
-        `speed` must be in [0.0, 1.0]. The MCU replies with
+    def set_fan_speed(self, speed: float, *, echo: Optional[bool] = None) -> str:
+        """Set fan PWM duty using `F <val>`, with `speed` in [0.0, 1.0].
+        
+        The MCU replies with
         `SET_FAN <level> DUTY <0-255>`.
         """
         reply, _lines = self._query_and_drain(
             f"F {speed}", expected_prefix="SET_FAN", echo=echo
         )
+        self._fan_speed = float(speed)
         return reply or ""
 
     # READ OUT SENSORS

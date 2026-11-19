@@ -68,3 +68,9 @@ Thumbs.db
 
 # Default run log output
 .logs/
+
+# Raw calibration data
+.calibration\raw_data
+
+# Temporary files
+.temp
