@@ -616,8 +616,9 @@ class CoughMachine(PoFSerialDevice):
 
     def set_fan_speed(self, speed: float, *, echo: Optional[bool] = None) -> str:
         """Set fan PWM duty using `F <val>`, with `speed` in [0.0, 1.0].
-
-        Expects a reply beginning with `SET_FAN`.
+        
+        The MCU replies with
+        `SET_FAN <level> DUTY <0-255>`.
         """
         reply, _lines = self._query_and_drain(
             f"F {speed}", expected_prefix="SET_FAN", echo=echo

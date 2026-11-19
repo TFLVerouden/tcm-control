@@ -42,7 +42,7 @@ def take_snapshot(
 
 if __name__ == "__main__":
 
-    specs_path = Path("src/tcm_control/config/config_layer.toml")
+    specs_path = Path("src/tcm_control/config/config_spraytec.toml")
     config: dict = {}
     if specs_path.exists():
         config = tomllib.load(specs_path.open("rb"))
@@ -57,11 +57,11 @@ if __name__ == "__main__":
                        syringe_inputs["syringe_gang"],
                        syringe_inputs["syringe_force_percent"])
 
-    # pump.make_layer(infuse_volume_ml=layer["infuse_volume_ml"],
-    #                 infuse_rate_ml_min=layer["infuse_rate_ml_min"],
-    #                 withdraw_volume_ml=layer["withdraw_volume_ml"],
-    #                 withdraw_rate_ml_min=layer["withdraw_rate_ml_min"],
-    #                 settling_time_s=layer["film_settling_time_s"])
+    # # pump.make_layer(infuse_volume_ml=layer["infuse_volume_ml"],
+    # #                 infuse_rate_ml_min=layer["infuse_rate_ml_min"],
+    # #                 withdraw_volume_ml=layer["withdraw_volume_ml"],
+    # #                 withdraw_rate_ml_min=layer["withdraw_rate_ml_min"],
+    # #                 settling_time_s=layer["film_settling_time_s"])
 
     pump.clean_tubes(volume_ml_layer=clean_tube["volume_ml_layer"],
                      rate_ml_min_layer=clean_tube["rate_ml_min_layer"],
@@ -69,10 +69,7 @@ if __name__ == "__main__":
                      rate_ml_min_repetition=clean_tube["rate_ml_min_repetition"],
                      repetitions=clean_tube["repetitions"])
 
-    # Clean channel
-    # tcm = CoughMachine()
-    # tcm.clean(clean_pressure_bar=5, valve_open_duration_s=1, cycle_count=1)
-
+    # # Take a snapshot
     # camera = Camera()
     # tcm = CoughMachine()
 
