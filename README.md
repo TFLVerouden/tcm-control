@@ -51,6 +51,14 @@ Rule of thumb:
 - Put values in `run_context` when they describe the run as a whole (timing, mode, ambient readings, comments).
 - Put values in `device_context` when they belong to one hardware subsystem or its resolved settings.
 
+### Camera ROI
+
+Set `[devices.camera.inputs].roi` to `[y_start, y_end, x_start, x_end]` in
+pixels. End coordinates are exclusive; `0` means the full extent, and negative
+coordinates count from the image edge. The default `[0, 0, 0, 0]` saves the
+full frame. The image is cropped after capture, and the configured ROI is saved
+in the run metadata under `devices.camera.inputs.roi`.
+
 
 ## VS Code workspace settings
 This repository tracks only `.vscode/settings.json` for shared Python run/interpreter behavior.

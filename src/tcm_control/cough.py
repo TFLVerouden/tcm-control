@@ -256,7 +256,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             if camera_output_dir is not None:
                 camera_output_dir.mkdir(exist_ok=True)
             camera = Camera(exposure_us=camera_inputs["camera_exposure_us"],
-                            output_dir=camera_output_dir)
+                            output_dir=camera_output_dir,
+                            roi=camera_inputs["roi"])
 
             # TODO: Set up pump in droplet mode
             pump = SyringePump(syringe_inputs["syringe_vendor_code"],

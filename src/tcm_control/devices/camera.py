@@ -7,23 +7,35 @@ import time
 import cv2
 from ximea import xiapi
 from tcm_control.devices import CoughMachine
-from tcm_utils.file_dialogs import find_repo_root
+from tcm_utils.file_dialogs import ask_directory
+
+
+def validate_roi(roi: object) -> tuple[int, int, int, int]:
+    """Validate an ROI in (y_start, y_end, x_start, x_end) order."""
+    if (not isinstance(roi, (tuple, list)) or len(roi) != 4
+            or any(not isinstance(value, int) or isinstance(value, bool) for value in roi)):
+        raise ValueError("ROI must contain four integers (y_start, y_end, x_start, x_end).")
+    return roi[0], roi[1], roi[2], roi[3]
 
 
 class Camera:
     """Class-based snapshot camera interface."""
 
     MIN_EXPOSURE_US = 0
-    MAX_EXPOSURE_US = 5000
+    MAX_EXPOSURE_US = 10000
 
-    def __init__(self, exposure_us: int = 1000, output_dir: Optional[str | Path] = None):
+    def __init__(self, exposure_us: int = 1000, output_dir: Optional[str | Path] = None,
+                 roi: tuple[int, int, int, int] = (0, 0, 0, 0)):
 
-        repo_root = find_repo_root(Path(__file__))
+        self.roi = validate_roi(roi)
         self.output_dir = (
             Path(output_dir).expanduser().resolve()
             if output_dir is not None
-            else repo_root / ".temp" / "camera"
+            else ask_directory(key="tcm_camera_output_dir", title="Select output directory for camera snapshot")
         )
+        if self.output_dir is None:
+            raise RuntimeError(
+                "No output directory selected for camera snapshot.")
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self._cam = xiapi.Camera()
@@ -74,6 +86,16 @@ class Camera:
         if frame is None:
             raise RuntimeError("Camera returned an empty frame.")
 
+        height, width = frame.shape[:2]
+        y_start, y_end, x_start, x_end = self.roi
+        y_start = height + y_start if y_start < 0 else y_start
+        x_start = width + x_start if x_start < 0 else x_start
+        y_end = height if y_end == 0 else height + y_end if y_end < 0 else y_end
+        x_end = width if x_end == 0 else width + x_end if x_end < 0 else x_end
+        if not (0 <= y_start < y_end <= height and 0 <= x_start < x_end <= width):
+            raise ValueError(f"ROI {self.roi} is empty or out of bounds for image size {height}x{width}.")
+        frame = frame[y_start:y_end, x_start:x_end]
+
         if output_path is None:
             # Use timestamped filename containing only the time
             timestamp = time.strftime("%H%M%S")
@@ -111,7 +133,7 @@ class Camera:
 
 
 if __name__ == "__main__":
-    camera = Camera(exposure_us=300)
+    camera = Camera(exposure_us=10000)
     tcm = CoughMachine()
 
     try:
