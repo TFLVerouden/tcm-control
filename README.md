@@ -59,6 +59,13 @@ coordinates count from the image edge. The default `[0, 0, 0, 0]` saves the
 full frame. The image is cropped after capture, and the configured ROI is saved
 in the run metadata under `devices.camera.inputs.roi`.
 
+Set `[devices.camera.inputs].flip` to `"vertical"`, `"horizontal"`, or `"both"`
+to flip the image after cropping. Leave it empty (or omit it) for no flip. The
+selected setting is also saved in run metadata.
+
+Camera snapshots are saved as TIFF files. Explicit `output_path` values must
+end in `.tif` or `.tiff`.
+
 
 ## VS Code workspace settings
 This repository tracks only `.vscode/settings.json` for shared Python run/interpreter behavior.

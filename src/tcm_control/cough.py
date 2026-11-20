@@ -257,7 +257,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 camera_output_dir.mkdir(exist_ok=True)
             camera = Camera(exposure_us=camera_inputs["camera_exposure_us"],
                             output_dir=camera_output_dir,
-                            roi=camera_inputs["roi"])
+                            roi=camera_inputs["roi"],
+                            flip=camera_inputs["flip"])
 
             # TODO: Set up pump in droplet mode
             pump = SyringePump(syringe_inputs["syringe_vendor_code"],
@@ -534,7 +535,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     # Image the channel after cleaning
                     # TODO: Put run number first
                     _ = take_snapshot(
-                        camera, tcm, filename=f"cleaned_run.png")
+                        camera, tcm, filename="cleaned_run")
 
             case "piv":
                 # ------------------------------------------------------------------

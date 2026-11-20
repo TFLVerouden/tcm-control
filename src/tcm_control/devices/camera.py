@@ -2,20 +2,30 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional
-import time
 
-import cv2
+import numpy as np
+import tifffile
 from ximea import xiapi
 from tcm_control.devices import CoughMachine
 from tcm_utils.file_dialogs import ask_directory
+from tcm_utils.time_utils import timestamp_str
 
 
 def validate_roi(roi: object) -> tuple[int, int, int, int]:
     """Validate an ROI in (y_start, y_end, x_start, x_end) order."""
     if (not isinstance(roi, (tuple, list)) or len(roi) != 4
             or any(not isinstance(value, int) or isinstance(value, bool) for value in roi)):
-        raise ValueError("ROI must contain four integers (y_start, y_end, x_start, x_end).")
+        raise ValueError(
+            "ROI must contain four integers (y_start, y_end, x_start, x_end).")
     return roi[0], roi[1], roi[2], roi[3]
+
+
+def validate_flip(flip: object) -> str | None:
+    if flip is None:
+        return None
+    if isinstance(flip, str) and flip in ("vertical", "horizontal", "both"):
+        return flip
+    raise ValueError("flip must be 'vertical', 'horizontal', 'both', or None")
 
 
 class Camera:
@@ -25,9 +35,11 @@ class Camera:
     MAX_EXPOSURE_US = 10000
 
     def __init__(self, exposure_us: int = 1000, output_dir: Optional[str | Path] = None,
-                 roi: tuple[int, int, int, int] = (0, 0, 0, 0)):
+                 roi: tuple[int, int, int, int] = (0, 0, 0, 0),
+                 flip: str | None = None):
 
         self.roi = validate_roi(roi)
+        self.flip = validate_flip(flip)
         self.output_dir = (
             Path(output_dir).expanduser().resolve()
             if output_dir is not None
@@ -77,7 +89,10 @@ class Camera:
         return self._exposure_us
 
     def snapshot(self, output_path: Optional[str | Path] = None, filename: Optional[str] = None) -> Path:
-        """Capture one frame and save it to disk, returning the saved path."""
+        """Capture one frame as TIFF, returning the saved path."""
+        if output_path is not None and Path(output_path).suffix.lower() not in (".tif", ".tiff"):
+            raise ValueError(
+                "Camera output_path must have a .tif or .tiff extension.")
         self.start()
 
         self._cam.get_image(self._img)
@@ -93,13 +108,20 @@ class Camera:
         y_end = height if y_end == 0 else height + y_end if y_end < 0 else y_end
         x_end = width if x_end == 0 else width + x_end if x_end < 0 else x_end
         if not (0 <= y_start < y_end <= height and 0 <= x_start < x_end <= width):
-            raise ValueError(f"ROI {self.roi} is empty or out of bounds for image size {height}x{width}.")
+            raise ValueError(
+                f"ROI {self.roi} is empty or out of bounds for image size {height}x{width}.")
         frame = frame[y_start:y_end, x_start:x_end]
+        if self.flip == "vertical":
+            frame = np.flip(frame, axis=0)
+        elif self.flip == "horizontal":
+            frame = np.flip(frame, axis=1)
+        elif self.flip == "both":
+            frame = np.flip(frame, axis=(0, 1))
 
         if output_path is None:
-            # Use timestamped filename containing only the time
-            timestamp = time.strftime("%H%M%S")
-            save_path = self.output_dir / f"{filename}_{timestamp}.png"
+            timestamp = timestamp_str()
+            name = f"{filename}_{timestamp}" if filename else timestamp
+            save_path = self.output_dir / f"{name}.tif"
         else:
             save_path = Path(output_path)
             if not save_path.is_absolute():
@@ -107,8 +129,7 @@ class Camera:
 
         save_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if not cv2.imwrite(str(save_path), frame):
-            raise RuntimeError(f"Failed to save image to: {save_path}")
+        tifffile.imwrite(save_path, frame)
 
         return save_path
 
@@ -133,12 +154,13 @@ class Camera:
 
 
 if __name__ == "__main__":
-    camera = Camera(exposure_us=10000)
+    camera = Camera(exposure_us=20000, flip="vertical",
+                    output_dir=r"C:\Users\local2\Documents\GitHub\twente-cough-machine\control\src\tcm_control\devices\calibration")
     tcm = CoughMachine()
 
     try:
         tcm.set_light(1.0)
-        saved = camera.snapshot()
+        saved = camera.snapshot(filename="calibration_500um-grid")
         print(f"Snapshot saved: {saved}")
         tcm.set_light(0.0)
     finally:
