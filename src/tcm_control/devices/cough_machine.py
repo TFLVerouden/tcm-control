@@ -464,9 +464,9 @@ class CoughMachine(PoFSerialDevice):
                 clear_tail = max(0, pressure_msg_len - len(opening_msg))
                 print(f"\r{opening_msg}{' ' * clear_tail}", end="", flush=True)
 
-                self.set_valve_current(20, echo=echo)
+                countdown_beep()
                 try:
-                    countdown_beep()
+                    self.set_valve_current(20, echo=echo)
                     self.open_solenoid(echo=echo)
                     time.sleep(valve_open_duration_s)
                     self.close_solenoid(echo=echo)
