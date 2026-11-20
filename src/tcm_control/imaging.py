@@ -1,4 +1,4 @@
-"""Thin film layer creation and tube cleaning protocol."""
+"""Camera and light control."""
 
 from pathlib import Path
 import time

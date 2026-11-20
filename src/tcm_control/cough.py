@@ -17,8 +17,8 @@ from tcm_control.interrupt_handling import (
     set_active_tcm,
 )
 from tcm_control.processing.run_log_processing import plot_run_log
-from tcm_control.thin_film import take_snapshot
-from tcm_control.film_height import determine_film_height, determine_plate_height
+from tcm_control.imaging import take_snapshot
+from tcm_control.processing.determine_film_height import determine_film_height, determine_plate_height
 from tcm_control.user_input import (
     ask_start_confirmation,
     ask_user_for_comments,
