@@ -59,7 +59,7 @@ camera_exposure_us = 4000
 # camera_gain_db = 0.0 # omit to leave the camera's gain unchanged
 roi = [0, 0, 0, 0] # y_start, y_end, x_start, x_end; end 0 = full extent
 flip = "" # empty, vertical, horizontal, or both
-pixel_per_meter = 0.015678e-3
+scale_mm_per_px = 0.01614443137990558
 
 [devices.pump.clean_tube]
 volume_ml_layer = 3

@@ -417,7 +417,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         camera, tcm, filename=f"run{run_idx + 1}_background")
                     if camera_output_dir is not None:
                         plate_height_px = determine_plate_height(
-                            background_path, camera_output_dir, camera_inputs["pixel_per_meter"], filename=f"run{run_idx + 1}_plate_height")
+                            background_path, camera_output_dir, filename=f"run{run_idx + 1}_plate_height")
 
                     # Make a layer
                     if pump is not None:
@@ -437,9 +437,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         camera, tcm, filename=f"run{run_idx + 1}_thin_film")
                     if camera_output_dir is not None:
                         film_height_px = determine_film_height(
-                            thin_film_path, plate_height_px, camera_output_dir, camera_inputs["pixel_per_meter"], filename=f"run{run_idx + 1}_film_height")
-                        film_height_mm = film_height_px * \
-                            camera_inputs["pixel_per_meter"] * 1000
+                            thin_film_path, plate_height_px, camera_output_dir, camera_inputs["scale_mm_per_px"], filename=f"run{run_idx + 1}_film_height")
+                        film_height_mm = film_height_px * camera_inputs["scale_mm_per_px"]
                         print(f"Film height (mm): {film_height_mm:.3f}")
 
                     # Wait between coughs if needed

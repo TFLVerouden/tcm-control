@@ -758,8 +758,8 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             _nested_get(raw, "devices", "camera", "inputs", "roi", default=[0, 0, 0, 0])
         ),
         "flip": validate_flip(camera_flip),
-        "pixel_per_meter": _optional_float(
-            _nested_get(raw, "devices", "camera", "inputs", "pixel_per_meter")
+        "scale_mm_per_px": _optional_float(
+            _nested_get(raw, "devices", "camera", "inputs", "scale_mm_per_px")
         ),
     }
 

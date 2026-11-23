@@ -92,7 +92,7 @@ def determine_film_height(
     image_path: Path,
     plate_height: float,
     output_dir: Path,
-    pixel_per_meter: float | None = None,
+    scale_mm_per_px: float | None = None,
     filename: str | None = None
 ) -> float:
     """Determine mean film height in pixels.
@@ -135,8 +135,8 @@ def determine_film_height(
     plt.scatter(rim_x, rim_y, s=1, color='blue')
     plt.axhline(y=plate_height, xmin=float(min_x)/image_width, xmax=float(
                 max_x), color='green')
-    if pixel_per_meter is not None:
-        plt.title(f"Film Height: {thickness * pixel_per_meter * 1000:.2f} mm")
+    if scale_mm_per_px is not None:
+        plt.title(f"Film Height: {thickness * scale_mm_per_px:.2f} mm")
     else:
         plt.title(f"Film Height: {thickness:.2f} px")
     if filename:
@@ -153,7 +153,6 @@ def determine_film_height(
 def determine_plate_height(
     background_path: Path,
     output_dir: Path,
-    pixel_per_meter: float | None = None,
     filename: str | None = None,
 ) -> float:
     """Determine the plate height in pixels from a background image.
@@ -164,7 +163,6 @@ def determine_plate_height(
     Args:
         background_path: Path to the background image file.
         output_dir: Directory to save diagnostic visualization.
-        pixel_per_meter: Number of pixels per meter in the image.
         filename: Name of the output file (optional).
 
     Returns:
