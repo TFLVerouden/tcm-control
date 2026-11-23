@@ -18,7 +18,10 @@ from tcm_control.interrupt_handling import (
 )
 from tcm_control.processing.run_log_processing import plot_run_log
 from tcm_control.imaging import take_snapshot
-from tcm_control.processing.determine_film_height import determine_film_height, determine_plate_height
+from tcm_control.processing.determine_film_height import (
+    measure_film_properties,
+    measure_plate_height,
+)
 from tcm_control.user_input import (
     ask_start_confirmation,
     ask_user_for_comments,
@@ -416,8 +419,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     background_path = take_snapshot(
                         camera, tcm, filename=f"run{run_idx + 1}_background")
                     if camera_output_dir is not None:
-                        plate_height_px = determine_plate_height(
-                            background_path, camera_output_dir, filename=f"run{run_idx + 1}_plate_height")
+                        plate_measurement = measure_plate_height(background_path)
 
                     # Make a layer
                     if pump is not None:
@@ -436,10 +438,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     thin_film_path = take_snapshot(
                         camera, tcm, filename=f"run{run_idx + 1}_thin_film")
                     if camera_output_dir is not None:
-                        film_height_px = determine_film_height(
-                            thin_film_path, plate_height_px, camera_output_dir, camera_inputs["scale_mm_per_px"], filename=f"run{run_idx + 1}_film_height")
-                        film_height_mm = film_height_px * camera_inputs["scale_mm_per_px"]
-                        print(f"Film height (mm): {film_height_mm:.3f}")
+                        film_height_mm, film_error_mm, contact_angle_deg = measure_film_properties(
+                            thin_film_path, plate_measurement,
+                            camera_inputs["scale_mm_per_px"], camera_output_dir)
+                        print(f"Film height (mm): {film_height_mm:.3f} +/- {film_error_mm:.3f}")
+                        print(f"Contact angle (deg): {contact_angle_deg:.2f}")
 
                     # Wait between coughs if needed
                     if run_idx == 0:

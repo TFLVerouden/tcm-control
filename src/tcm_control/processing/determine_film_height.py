@@ -1,237 +1,260 @@
 """Film height measurement from camera images."""
 
 from pathlib import Path
-from typing import Tuple
 
 import cv2
 import numpy as np
-import matplotlib.pyplot as plt
 
-# Constants for film height detection
-MINIMUM_THICKNESS_PIXELS = 10
-IMAGE_CROP_LEFT = 2
+# Film-height detection settings. Adjust these values to match the camera image.
+IMAGE_CROP_LEFT = 120  # Ignore left-edge artifacts when measuring plate height.
+CANNY_THR1 = 0  # Lower threshold for Canny edge detection.
+CANNY_THR2 = 255  # Upper threshold for Canny edge detection.
+PLATE_HEIGHT_CROSSING_TOLERANCE_PX = 1  # Allowed vertical distance from plate.
+FILM_HEIGHT_RIGHTMOST_WIDTH_PX = 256  # Width used to average film height.
+CONTACT_ANGLE_FIT_WIDTH_PX = 6  # Fit window extends this far right of contact.
+REFERENCE_LINE_DASH_LENGTH_PX = 10
+REFERENCE_LINE_GAP_LENGTH_PX = 5
 
 
 def detect_film_rim(
     edge_x: np.ndarray,
     edge_y: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Detect top/bottom rim coordinates from edge pixels.
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return the highest detected rim pixel at each x-coordinate.
 
-    Edge detection usually gives multiple edge pixels for each x-coordinate. 
-    Find the outermost edge pixels for each x-coordinate, which correspond to
-    the film rim. This is done by sorting the edge pixels by x-coordinate and
-    then finding the minimum and maximum y-values for each unique x-value.
-
-    Args:
-        edge_x: X-coordinates of detected edge pixels.
-        edge_y: Y-coordinates of detected edge pixels.
-
-    Returns:
-        Tuple of (x_coordinates, y_coordinates) for the detected film rim.
+    The image is vertically flipped before detection, so higher y-values
+    correspond to higher points in the original image.
     """
-    x_current = edge_x[0]
-    x_range = max(edge_x) - min(edge_x)
+    # Store one y-coordinate per image column; -1 marks columns with no edge.
+    rim_y_by_x = np.full(int(np.max(edge_x)) + 1, -1, dtype=np.int32)
 
-    # Pre-allocate arrays with buffer space for rim coordinates
-    y_rim = np.zeros(x_range * 5)
-    x_rim = np.zeros(x_range * 5)
+    # Keep the largest y-coordinate in each column, which is the upper rim
+    # because callers flip the image so y increases upward.
+    np.maximum.at(rim_y_by_x, edge_x, edge_y)
 
-    # Sort edge pixels by x-coordinate (primary) and y-coordinate (secondary)
-    sorted_indices = np.lexsort((edge_y, edge_x))
-    edge_x_sorted = edge_x[sorted_indices]
-    edge_y_sorted = edge_y[sorted_indices]
-
-    # Extract rim coordinates by finding extreme y-values for each x-value
-    rim_index = 0
-    for i in range(len(edge_x_sorted)):
-        if x_current != edge_x_sorted[i]:
-            # New x-coordinate found: store the rim point(s)
-            rim_index += 2
-
-            # Store top rim point (current maximum y)
-            x_rim[rim_index] = edge_x_sorted[i]
-            y_rim[rim_index] = edge_y_sorted[i - 1]
-
-        x_current = edge_x_sorted[i]
-
-    # Return only the valid portion of the arrays
-    return x_rim[:2 * rim_index], y_rim[:2 * rim_index]
+    # Return only columns where an edge was detected.
+    rim_x = np.flatnonzero(rim_y_by_x >= 0)
+    return rim_x, rim_y_by_x[rim_x]
 
 
-def filter_film_rim_by_x_range(
-    rim_x: np.ndarray,
-    rim_y: np.ndarray,
-    x_min: float,
-    x_max: float,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Filter rim coordinates to a specific x-range.
-
-    Only keep the rim coordinates between x_min and x_max. This way, we keep 
-    the rim points within the constant height range, not close to the 
-    contact line. 
-
-    Args:
-        rim_x: X-coordinates of rim points.
-        rim_y: Y-coordinates of rim points.
-        x_min: Minimum x-coordinate to keep.
-        x_max: Maximum x-coordinate to keep.
-
-    Returns:
-        Tuple of (filtered_x, filtered_y) coordinates within the specified range.
-    """
-    mask_right = x_min < rim_x
-    rim_x_filtered = rim_x[mask_right]
-    rim_y_filtered = rim_y[mask_right]
-
-    mask_left = rim_x_filtered < x_max
-    return rim_x_filtered[mask_left], rim_y_filtered[mask_left]
-
-
-def determine_film_height(
+def measure_film_properties(
     image_path: Path,
-    plate_height: float,
+    plate_measurement: tuple[float, float, np.ndarray, np.ndarray, tuple[int, int]],
+    scale_mm_per_px: float | None,
     output_dir: Path,
-    scale_mm_per_px: float | None = None,
-    filename: str | None = None
-) -> float:
-    """Determine mean film height in pixels.
+) -> tuple[float, float, float]:
+    """Determine film thickness, its plate-derived error, and contact angle.
 
     Args:
         image_path: Path to the camera image file.
-        plate_height: Plate height in pixels (determined from the background image).
+        plate_measurement: Plate height, standard deviation, rim coordinates,
+            and image dimensions returned by measure_plate_height.
+        scale_mm_per_px: Camera calibration in millimetres per pixel.
         output_dir: Directory to save visualization.
 
     Returns:
-        Film thickness in pixels (mean rim height minus plate height).
+        Film thickness and plate-derived standard deviation in mm, and the
+        acute contact angle in degrees.
     """
-    # Load and flip image (image coordinate system vs. plot coordinate system)
-    image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
-    if image is None:
-        raise FileNotFoundError(f"Image not found at path: {image_path}")
-    image = image[::-1, :]  # Flip vertically for correct coordinate system
+    if (
+        scale_mm_per_px is None
+        or not np.isfinite(scale_mm_per_px)
+        or scale_mm_per_px <= 0
+    ):
+        raise ValueError("Camera scale_mm_per_px must be a positive finite value")
+    plate_height, plate_std, plate_x, plate_y, plate_shape = plate_measurement
 
-    # Detect edges using Canny edge detection
-    edge_map = cv2.Canny(image, 50, 150)
+    # Keep the original image for the PNG and flip it for upward-positive y.
+    original_image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+    if original_image is None:
+        raise FileNotFoundError(f"Image not found at path: {image_path}")
+    if original_image.shape != plate_shape:
+        raise ValueError(
+            f"Film image shape {original_image.shape} does not match "
+            f"plate image shape {plate_shape}"
+        )
+    image = original_image[::-1, :]
+
+    # Detect the upper film rim from the Canny edges.
+    edge_map = cv2.Canny(image, CANNY_THR1, CANNY_THR2)
     edge_y, edge_x = np.where(edge_map != 0)
     if edge_x.size == 0:
         raise ValueError("No film-height edge pixels detected")
-
-    # Detect film rim from edges
     rim_x, rim_y = detect_film_rim(edge_x, edge_y)
 
-    # Filter to right half of image
+    # Find the rightmost rim point within the plate-height tolerance.
     _, image_width = image.shape
-    min_x = image_width // 2
-    max_x = image_width - 2  # Crop right edge
-    rim_x, rim_y = filter_film_rim_by_x_range(rim_x, rim_y, min_x, max_x)
+    crossing_indices = np.flatnonzero(
+        np.abs(rim_y - plate_height) <= PLATE_HEIGHT_CROSSING_TOLERANCE_PX
+    )
+    if crossing_indices.size == 0:
+        raise ValueError("Film contour does not cross the plate height")
+    contact_index = int(crossing_indices[-1])
+    contact_x = int(rim_x[contact_index])
 
-    # Calculate film thickness
-    thickness = float(np.mean(rim_y) - plate_height)
+    # Average the detected rim points in the rightmost configured columns.
+    height_start_x = image_width - FILM_HEIGHT_RIGHTMOST_WIDTH_PX
+    height_mask = rim_x >= height_start_x
+    if not np.any(height_mask):
+        raise ValueError("No contour points in the configured film-height range")
+    film_height_px = float(np.mean(rim_y[height_mask]))
+    thickness_mm = (film_height_px - plate_height) * scale_mm_per_px
+    thickness_error_mm = plate_std * scale_mm_per_px
 
-    # Save visualization
-    plt.figure()
-    plt.imshow(image, cmap='gray', origin='lower')
-    plt.scatter(rim_x, rim_y, s=1, color='blue')
-    plt.axhline(y=plate_height, xmin=float(min_x)/image_width, xmax=float(
-                max_x), color='green')
-    if scale_mm_per_px is not None:
-        plt.title(f"Film Height: {thickness * scale_mm_per_px:.2f} mm")
-    else:
-        plt.title(f"Film Height: {thickness:.2f} px")
-    if filename:
-        # Save both a png and a pdf
-        plt.savefig(output_dir / f"{filename}.png")
-        plt.savefig(output_dir / f"{filename}.pdf")
-    else:
-        plt.savefig(output_dir / "film_height.png")
-        plt.savefig(output_dir / "film_height.pdf")
-    plt.close()
-    return thickness
+    # Fit the contour to the right of contact and convert its slope to an
+    # acute angle relative to the horizontal plate.
+    fit_mask = (
+        (rim_x >= contact_x)
+        & (rim_x <= contact_x + CONTACT_ANGLE_FIT_WIDTH_PX)
+    )
+    fit_x = rim_x[fit_mask]
+    fit_y = rim_y[fit_mask]
+    if fit_x.size < 2:
+        raise ValueError("Not enough contour points to determine contact angle")
+    slope, intercept = np.polyfit(fit_x, fit_y, 1)
+    contact_angle_deg = float(np.degrees(np.arctan(abs(slope))))
+
+    # Draw annotations on the unflipped source image so the output has the
+    # same orientation and pixel dimensions as the camera image.
+    visualization = cv2.cvtColor(original_image, cv2.COLOR_GRAY2BGR)
+
+    # Draw the full film rim in blue and the measured plate rim in green.
+    rim_points = np.column_stack(
+        (rim_x, image.shape[0] - 1 - rim_y)
+    ).astype(np.int32).reshape((-1, 1, 2))
+    cv2.polylines(
+        visualization, [rim_points], False, (255, 0, 0), 1, cv2.LINE_8
+    )
+    plate_points = np.column_stack(
+        (plate_x, image.shape[0] - 1 - plate_y)
+    ).astype(np.int32).reshape((-1, 1, 2))
+    cv2.polylines(
+        visualization, [plate_points], False, (0, 255, 0), 1, cv2.LINE_8
+    )
+
+    # Draw dashed white lines at the mean plate and film levels.
+    plate_level_y = image.shape[0] - 1 - int(round(plate_height))
+    film_level_y = image.shape[0] - 1 - int(round(film_height_px))
+    for level_y, start_x in (
+        (plate_level_y, 0),
+        (film_level_y, max(0, height_start_x)),
+    ):
+        for x in range(
+            start_x, image_width,
+            REFERENCE_LINE_DASH_LENGTH_PX + REFERENCE_LINE_GAP_LENGTH_PX,
+        ):
+            cv2.line(
+                visualization, (x, level_y),
+                (min(x + REFERENCE_LINE_DASH_LENGTH_PX - 1, image_width - 1), level_y),
+                (255, 255, 255), 1, cv2.LINE_8,
+            )
+
+    # Extend the fitted contact-angle line to the image boundaries. OpenCV
+    # clips its endpoints where the line intersects the top or bottom edge.
+    fit_y_left = image.shape[0] - 1 - int(round(intercept))
+    fit_y_right = image.shape[0] - 1 - int(
+        round(slope * (image_width - 1) + intercept)
+    )
+    cv2.line(
+        visualization, (0, fit_y_left), (image_width - 1, fit_y_right),
+        (0, 0, 255), 1, cv2.LINE_8,
+    )
+
+    # Show pixel levels, the plate's standard deviation, thickness in mm and
+    # the contact angle. The error represents only variation in the plate rim.
+    labels = (
+        f"Plate: {plate_height:.2f} +/- {plate_std:.2f} px",
+        f"Film level: {film_height_px:.2f} px",
+        f"Film thickness: {thickness_mm:.3f} +/- {thickness_error_mm:.3f} mm",
+        f"Contact angle: {contact_angle_deg:.1f} deg",
+    )
+    for line, label in enumerate(labels):
+        cv2.putText(
+            visualization, label, (10, 25 + line * 25),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 1, cv2.LINE_8,
+        )
+
+    # Save all measurements on one original-resolution film image.
+    visualization_path = output_dir / f"{image_path.stem}_processed.png"
+    if not cv2.imwrite(str(visualization_path), visualization):
+        raise OSError(f"Failed to save visualization to: {visualization_path}")
+
+    return thickness_mm, thickness_error_mm, contact_angle_deg
 
 
-def determine_plate_height(
+
+def measure_plate_height(
     background_path: Path,
-    output_dir: Path,
-    filename: str | None = None,
-) -> float:
+) -> tuple[float, float, np.ndarray, np.ndarray, tuple[int, int]]:
     """Determine the plate height in pixels from a background image.
 
-    Analyzes a background image (typically captured without the film layer)
+    Analyzes a background image (captured without the liquid film)
     to determine the baseline plate height position.
 
     Args:
         background_path: Path to the background image file.
-        output_dir: Directory to save diagnostic visualization.
-        filename: Name of the output file (optional).
 
     Returns:
-        Plate height in pixels (mean y-coordinate of detected rim).
+        Mean height and standard deviation in pixels, rim x/y coordinates,
+        and image shape for overlaying the rim on the film image.
     """
-    # Load and flip image (image coordinate system vs. plot coordinate system)
-    background = cv2.imread(str(background_path), cv2.IMREAD_GRAYSCALE)
-    if background is None:
+    # Retain the source image for its visualization while using a flipped copy
+    # to make higher points have larger y-coordinates during detection.
+    original_background = cv2.imread(
+        str(background_path), cv2.IMREAD_GRAYSCALE
+    )
+    if original_background is None:
         raise RuntimeError(
             f"Failed to read captured image from: {background_path}"
         )
-    # Flip vertically for correct coordinate system
-    background = background[::-1, :]
+    background = original_background[::-1, :]
 
-    # Detect edges using Canny edge detection
-    edge_map = cv2.Canny(background, 50, 150)
+    # Detect edges and reduce them to one upper-rim point per image column.
+    edge_map = cv2.Canny(background, CANNY_THR1, CANNY_THR2)
     edge_y, edge_x = np.where(edge_map != 0)
 
     if edge_x.size == 0:
         raise ValueError("No film-height edge pixels detected")
 
-    # Detect rim from edges
     top_x, top_y = detect_film_rim(edge_x, edge_y)
 
-    # Filter to right half of image (avoid boundary artifacts)
-    _, image_width = background.shape
-    min_x = image_width // 2
-    max_x = image_width - 2  # Crop right edge
-    top_x, top_y = filter_film_rim_by_x_range(top_x, top_y, min_x, max_x)
-
-    # Calculate mean plate height
-    plate_height = float(np.mean(top_y))
-    if not plate_height:
+    # Exclude only the configured left-edge artifact region; use the rest of
+    # the image width to calculate the baseline plate height.
+    image_height, image_width = background.shape
+    included = (top_x >= IMAGE_CROP_LEFT) & (top_x < image_width)
+    top_x, top_y = top_x[included], top_y[included]
+    if top_y.size == 0:
         raise ValueError("No valid plate height values found")
 
-    # Save diagnostic visualization
-    plt.figure()
-    plt.imshow(background, cmap='gray', origin='lower')
-    plt.scatter(top_x, top_y, s=1, color='green')
-    plt.title(f"Plate Height: {plate_height:.1f} px")
-    if filename:
-        # Save both a png and a pdf
-        plt.savefig(output_dir / f"{filename}.png")
-        plt.savefig(output_dir / f"{filename}.pdf")
-    else:
-        plt.savefig(output_dir / "background_plate_height.png")
-        plt.savefig(output_dir / "background_plate_height.pdf")
-    plt.close()
+    # Use the standard deviation of the detected plate rim as the error in
+    # plate height; this does not include uncertainty in the film or scale.
+    plate_height = float(np.mean(top_y))
+    plate_std = float(np.std(top_y))
 
-    return plate_height
+    return plate_height, plate_std, top_x, top_y, (image_height, image_width)
 
 
 if __name__ == "__main__":
     # Example usage: measure film height from captured images
     output_dir = Path(
-        r"C:\CoughMachineData\260622_test_film_cough\260622_152201_VijfdeLaagje\camera"
+        r"/Users/tommieverouden/Developer/twente-cough-machine/control/temp"
     )
 
     # Step 1: Determine baseline plate height from background image
     background_path = Path(
-        r"C:\CoughMachineData\260622_test_film_cough\260622_152201_VijfdeLaagje\camera\capture_20260622_152241.png"
+        r"/Users/tommieverouden/Developer/twente-cough-machine/control/temp/empty_261123_154407.tif"
     )
-    plate_height_px = determine_plate_height(background_path, output_dir)
-    print(f"Determined plate height: {plate_height_px:.1f} px")
+    plate_measurement = measure_plate_height(background_path)
+    plate_height_px, plate_std_px, _, _, _ = plate_measurement
+    print(f"Determined plate height: {plate_height_px:.1f} +/- {plate_std_px:.1f} px")
 
     # Step 2: Measure film height from image with film layer
     image_path = Path(
-        r"C:\CoughMachineData\260622_test_film_cough\260622_152201_VijfdeLaagje\camera\capture_20260622_152426.png"
+        r"/Users/tommieverouden/Developer/twente-cough-machine/control/temp/infuse_4mL.tif"
     )
-    film_height_px = determine_film_height(
-        image_path, plate_height_px, output_dir)
-    print(f"Determined film height: {film_height_px:.2f} px")
+    # Use the same camera calibration as the experiment configuration.
+    scale_mm_per_px = 0.01614443137990558
+    film_height_mm, film_error_mm, contact_angle_deg = measure_film_properties(
+        image_path, plate_measurement, scale_mm_per_px, output_dir)
+    print(f"Determined film height: {film_height_mm:.3f} +/- {film_error_mm:.3f} mm")
+    print(f"Determined contact angle: {contact_angle_deg:.2f} deg")
