@@ -47,12 +47,13 @@ if __name__ == "__main__":
         r"C:\Users\local2\Documents\GitHub\twente-cough-machine\control\temp")
 
     take_snapshot(
-        camera=Camera(exposure_us=12000, flip="vertical",
-                      output_dir=output_path),
+        camera=Camera(exposure_us=1000, flip="vertical",
+                      output_dir=output_path,
+                      roi=(512, 0, 0, 0)),
         # camera=Camera(exposure_us=12000, flip="vertical", gain_db=0.0,
         #   output_dir=output_path),
         tcm=CoughMachine(),
-        filename="withdraw_5",
+        filename="withdraw_40s",
         brightness=1.0
     )
 
