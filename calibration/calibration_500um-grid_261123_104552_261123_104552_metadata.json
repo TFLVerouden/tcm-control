@@ -1,0 +1,37 @@
+{
+  "timestamp": "261123_104552",
+  "timestamp_source": "file_creation_time",
+  "analysis_run_time": "261123_110410",
+  "input_file_original": "C:\\Users\\local2\\Documents\\GitHub\\twente-cough-machine\\control\\src\\tcm_control\\devices\\calibration\\calibration_500um-grid_261123_104552.tif",
+  "input_file_used": "C:\\Users\\local2\\Documents\\GitHub\\twente-cough-machine\\control\\src\\tcm_control\\devices\\calibration\\calibration_500um-grid_261123_104552.tif",
+  "raw_data_path": "C:\\Users\\local2\\Documents\\GitHub\\twente-cough-machine\\control\\calibration\\raw_data\\calibration_500um-grid_261123_104552.tif",
+  "output_files": {
+    "plot_pdf": "C:\\Users\\local2\\Documents\\GitHub\\twente-cough-machine\\control\\calibration\\calibration_500um-grid_261123_104552_261123_104552_calibration_plot.pdf",
+    "calibration_csv": "C:\\Users\\local2\\Documents\\GitHub\\twente-cough-machine\\control\\calibration\\calibration_500um-grid_261123_104552_261123_104552_calibration.csv"
+  },
+  "calibration": {
+    "rows": 17,
+    "cols": 38,
+    "grid_rotation_deg": 0.036391369966466414,
+    "roi": {
+      "x": 84,
+      "y": 20,
+      "width": 1184,
+      "height": 534
+    },
+    "spacing_px": 30.970431118579555,
+    "scale_mm_per_px": 0.01614443137990558,
+    "scale_m_per_px": 1.614443137990558e-05,
+    "scale_px_per_mm": 61.9408622371591,
+    "scale_px_per_m": 61940.862237159105,
+    "distance_mm_input": 0.5,
+    "image_size_px": {
+      "width": 1280,
+      "height": 1024
+    },
+    "image_size_m": {
+      "width": 0.020664872166279144,
+      "height": 0.016531897733023312
+    }
+  }
+}
