@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from tcm_utils.file_dialogs import ask_open_file
-from tcm_control.devices.camera import validate_flip, validate_roi
+from tcm_control.devices.camera import validate_flip, validate_gain, validate_roi
 from tcm_control.devices.cough_machine import (
     DEFAULT_CLEAN_CYCLE_COUNT,
     DEFAULT_CLEAN_DRY_DURATION_S,
@@ -751,6 +751,9 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
         camera_flip = None
     camera_inputs = {
         "camera_exposure_us": camera_exposure_us,
+        "camera_gain_db": validate_gain(
+            _nested_get(raw, "devices", "camera", "inputs", "camera_gain_db")
+        ),
         "roi": validate_roi(
             _nested_get(raw, "devices", "camera", "inputs", "roi", default=[0, 0, 0, 0])
         ),

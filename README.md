@@ -53,6 +53,11 @@ Rule of thumb:
 
 ### Camera ROI
 
+Set `[devices.camera.inputs].camera_gain_db` to a number to configure gain in
+dB, or omit it to leave the camera's gain unchanged. The configured value is
+included in run metadata. For direct use, pass `gain_db=...` to `Camera` or
+call `camera.set_gain(...)`. Supported gain limits depend on the camera.
+
 Set `[devices.camera.inputs].roi` to `[y_start, y_end, x_start, x_end]` in
 pixels. End coordinates are exclusive; `0` means the full extent, and negative
 coordinates count from the image edge. The default `[0, 0, 0, 0]` saves the

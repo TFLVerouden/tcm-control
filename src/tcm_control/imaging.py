@@ -22,6 +22,7 @@ def take_snapshot(
     Args:
         camera: Camera device to use for snapshot.
         tcm: Cough machine instance for light control.
+        filename: Optional filename for the saved image.
         brightness: Brightness level (default: 1.0). Currently unused.
 
     Returns:
@@ -42,38 +43,51 @@ def take_snapshot(
 
 if __name__ == "__main__":
 
-    specs_path = Path("src/tcm_control/config/config_layer.toml")
-    config: dict = {}
-    if specs_path.exists():
-        config = tomllib.load(specs_path.open("rb"))
+    output_path = Path(
+        r"C:\Users\local2\Documents\GitHub\twente-cough-machine\control\temp")
 
-    syringe_inputs = config["devices"]["pump"]["syringe"]
-    layer = config["devices"]["pump"]["layer"]
-    clean_tube = config["devices"]["pump"]["clean_tube"]
+    take_snapshot(
+        # camera=Camera(exposure_us=20000, flip="vertical", roi=(512, 0, 96, 0),
+        #               output_dir=output_path),
+        camera=Camera(exposure_us=12000, flip="vertical", gain_db=0.0,
+                      output_dir=output_path),
+        tcm=CoughMachine(),
+        filename="calibration_500um-grid",
+        brightness=1.0
+    )
 
-    pump = SyringePump(syringe_inputs["syringe_vendor_code"],
-                       syringe_inputs["syringe_volume_mL"],
-                       syringe_inputs["syringe_diameter_mm"],
-                       syringe_inputs["syringe_gang"],
-                       syringe_inputs["syringe_force_percent"])
+    # specs_path = Path("src/tcm_control/config/config_layer.toml")
+    # config: dict = {}
+    # if specs_path.exists():
+    #     config = tomllib.load(specs_path.open("rb"))
 
-    # pump.make_layer(infuse_volume_ml=layer["infuse_volume_ml"],
-    #                 infuse_rate_ml_min=layer["infuse_rate_ml_min"],
-    #                 withdraw_volume_ml=layer["withdraw_volume_ml"],
-    #                 withdraw_rate_ml_min=layer["withdraw_rate_ml_min"],
-    #                 settling_time_s=layer["film_settling_time_s"])
+    # syringe_inputs = config["devices"]["pump"]["syringe"]
+    # layer = config["devices"]["pump"]["layer"]
+    # clean_tube = config["devices"]["pump"]["clean_tube"]
 
-    pump.clean_tubes(volume_ml_layer=clean_tube["volume_ml_layer"],
-                     rate_ml_min_layer=clean_tube["rate_ml_min_layer"],
-                     volume_ml_repetition=clean_tube["volume_ml_repetition"],
-                     rate_ml_min_repetition=clean_tube["rate_ml_min_repetition"],
-                     repetitions=clean_tube["repetitions"])
+    # pump = SyringePump(syringe_inputs["syringe_vendor_code"],
+    #                    syringe_inputs["syringe_volume_mL"],
+    #                    syringe_inputs["syringe_diameter_mm"],
+    #                    syringe_inputs["syringe_gang"],
+    #                    syringe_inputs["syringe_force_percent"])
 
-    # Clean channel
-    # tcm = CoughMachine()
-    # tcm.clean(clean_pressure_bar=5, valve_open_duration_s=1, cycle_count=1)
+    # # pump.make_layer(infuse_volume_ml=layer["infuse_volume_ml"],
+    # #                 infuse_rate_ml_min=layer["infuse_rate_ml_min"],
+    # #                 withdraw_volume_ml=layer["withdraw_volume_ml"],
+    # #                 withdraw_rate_ml_min=layer["withdraw_rate_ml_min"],
+    # #                 settling_time_s=layer["film_settling_time_s"])
 
-    # camera = Camera()
-    # tcm = CoughMachine()
+    # pump.clean_tubes(volume_ml_layer=clean_tube["volume_ml_layer"],
+    #                  rate_ml_min_layer=clean_tube["rate_ml_min_layer"],
+    #                  volume_ml_repetition=clean_tube["volume_ml_repetition"],
+    #                  rate_ml_min_repetition=clean_tube["rate_ml_min_repetition"],
+    #                  repetitions=clean_tube["repetitions"])
 
-    # take_snapshot(camera, tcm, filename="test_snapshot.png", brightness=1.0)
+    # # Clean channel
+    # # tcm = CoughMachine()
+    # # tcm.clean(clean_pressure_bar=5, valve_open_duration_s=1, cycle_count=1)
+
+    # # camera = Camera()
+    # # tcm = CoughMachine()
+
+    # # take_snapshot(camera, tcm, filename="test_snapshot.png", brightness=1.0)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Optional
 
@@ -28,18 +29,42 @@ def validate_flip(flip: object) -> str | None:
     raise ValueError("flip must be 'vertical', 'horizontal', 'both', or None")
 
 
+def validate_gain(gain_db: object) -> float | None:
+    if gain_db is None:
+        return None
+    if isinstance(gain_db, bool) or not isinstance(gain_db, (int, float)):
+        raise ValueError("Camera gain must be a finite number in dB.")
+    gain = float(gain_db)
+    if not math.isfinite(gain):
+        raise ValueError("Camera gain must be a finite number in dB.")
+    return gain
+
+
 class Camera:
     """Class-based snapshot camera interface."""
 
     MIN_EXPOSURE_US = 0
-    MAX_EXPOSURE_US = 10000
+    MAX_EXPOSURE_US = 100000
+    MAX_GAIN_DB = 20.0
 
     def __init__(self, exposure_us: int = 1000, output_dir: Optional[str | Path] = None,
                  roi: tuple[int, int, int, int] = (0, 0, 0, 0),
-                 flip: str | None = None):
+                 flip: str | None = None, gain_db: float | None = None):
+        """"Initialize the Camera instance.
 
+        Args:
+            exposure_us: Exposure time in microseconds.
+            output_dir: Directory to save camera snapshots.
+            roi: Region of interest as (y_start, y_end, x_start, x_end).
+                If y_end or x_end is negative, they are interpreted as an offset
+                from the end of the image. If y_end or x_end is zero, it is
+                interpreted as the full extent in that direction.
+            flip: Image flip direction.
+            gain_db: Camera gain in dB, or None to leave it unchanged.
+        """
         self.roi = validate_roi(roi)
         self.flip = validate_flip(flip)
+        self._gain_db = validate_gain(gain_db)
         self.output_dir = (
             Path(output_dir).expanduser().resolve()
             if output_dir is not None
@@ -56,10 +81,22 @@ class Camera:
         self._is_acquiring = False
 
         self._exposure_us = self._clamp_exposure(exposure_us)
+        self._gain_db = self._clamp_gain(
+            gain_db) if gain_db is not None else None
 
     @staticmethod
     def _clamp_exposure(exposure_us: int) -> int:
+        if exposure_us < Camera.MIN_EXPOSURE_US or exposure_us > Camera.MAX_EXPOSURE_US:
+            print(
+                f"Warning: Exposure {exposure_us} us is out of bounds. Clamping to valid range.")
         return max(Camera.MIN_EXPOSURE_US, min(Camera.MAX_EXPOSURE_US, int(exposure_us)))
+
+    @staticmethod
+    def _clamp_gain(gain_db: float) -> float:
+        if gain_db < 0.0 or gain_db > Camera.MAX_GAIN_DB:
+            print(
+                f"Warning: Gain {gain_db} dB is out of bounds. Clamping to valid range.")
+        return max(0.0, min(Camera.MAX_GAIN_DB, float(gain_db)))
 
     def open(self) -> None:
         if self._is_open:
@@ -69,7 +106,13 @@ class Camera:
         name = self._cam.get_device_name().decode()
         serial = self._cam.get_device_sn().decode()
         print(f"Connected to camera {name} (SN {serial})")
-        self.set_exposure(self._exposure_us)
+        try:
+            self.set_exposure(self._exposure_us)
+            if self._gain_db is not None:
+                self.set_gain(self._gain_db)
+        except Exception:
+            self.close()
+            raise
 
     def start(self) -> None:
         if not self._is_open:
@@ -88,6 +131,18 @@ class Camera:
     def exposure_us(self) -> int:
         return self._exposure_us
 
+    def set_gain(self, gain_db: float) -> None:
+        gain = validate_gain(gain_db)
+        if gain is None:
+            raise ValueError("Camera gain must be a finite number in dB.")
+        if self._is_open:
+            self._cam.set_gain(gain)
+        self._gain_db = gain
+
+    @property
+    def gain_db(self) -> float | None:
+        return self._gain_db
+
     def snapshot(self, output_path: Optional[str | Path] = None, filename: Optional[str] = None) -> Path:
         """Capture one frame as TIFF, returning the saved path."""
         if output_path is not None and Path(output_path).suffix.lower() not in (".tif", ".tiff"):
@@ -101,6 +156,15 @@ class Camera:
         if frame is None:
             raise RuntimeError("Camera returned an empty frame.")
 
+        # Flip image
+        if self.flip == "vertical":
+            frame = np.flip(frame, axis=0)
+        elif self.flip == "horizontal":
+            frame = np.flip(frame, axis=1)
+        elif self.flip == "both":
+            frame = np.flip(frame, axis=(0, 1))
+
+        # Crop image to ROI
         height, width = frame.shape[:2]
         y_start, y_end, x_start, x_end = self.roi
         y_start = height + y_start if y_start < 0 else y_start
@@ -111,13 +175,8 @@ class Camera:
             raise ValueError(
                 f"ROI {self.roi} is empty or out of bounds for image size {height}x{width}.")
         frame = frame[y_start:y_end, x_start:x_end]
-        if self.flip == "vertical":
-            frame = np.flip(frame, axis=0)
-        elif self.flip == "horizontal":
-            frame = np.flip(frame, axis=1)
-        elif self.flip == "both":
-            frame = np.flip(frame, axis=(0, 1))
 
+        # Save image
         if output_path is None:
             timestamp = timestamp_str()
             name = f"{filename}_{timestamp}" if filename else timestamp

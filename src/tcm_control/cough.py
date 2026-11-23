@@ -258,7 +258,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             camera = Camera(exposure_us=camera_inputs["camera_exposure_us"],
                             output_dir=camera_output_dir,
                             roi=camera_inputs["roi"],
-                            flip=camera_inputs["flip"])
+                            flip=camera_inputs["flip"],
+                            gain_db=camera_inputs["camera_gain_db"])
 
             # TODO: Set up pump in droplet mode
             pump = SyringePump(syringe_inputs["syringe_vendor_code"],
