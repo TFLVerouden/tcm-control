@@ -124,6 +124,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     spraytec_audit_path = None
     spraytec_laser_intensity = None
     film_height_mm = None
+    film_measurements: list[dict[str, int | float]] = []
 
     # --------------------------------------------------------------------------
     # 2) Make connections to external devices
@@ -438,9 +439,19 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     thin_film_path = take_snapshot(
                         camera, tcm, filename=f"run{run_idx + 1}_thin_film")
                     if camera_output_dir is not None:
-                        film_height_mm, film_error_mm, contact_angle_deg = measure_film_properties(
+                        film_height_mm, film_error_mm, contact_angle_deg, film_level_px = measure_film_properties(
                             thin_film_path, plate_measurement,
                             camera_inputs["scale_mm_per_px"], camera_output_dir)
+                        plate_height_px, plate_std_px, _, _, _ = plate_measurement
+                        film_measurements.append({
+                            "run_nr": run_idx + 1,
+                            "plate_height_px": plate_height_px,
+                            "plate_height_std_px": plate_std_px,
+                            "film_level_px": film_level_px,
+                            "film_height_mm": film_height_mm,
+                            "film_height_error_mm": film_error_mm,
+                            "contact_angle_deg": contact_angle_deg,
+                        })
                         print(f"Film height (mm): {film_height_mm:.3f} +/- {film_error_mm:.3f}")
                         print(f"Contact angle (deg): {contact_angle_deg:.2f}")
 
@@ -707,6 +718,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 temperature_finish=temperature_finish,
                 humidity_finish=humidity_finish,
                 film_height_mm=film_height_mm,
+                film_measurements=film_measurements,
                 comments=comments,
                 tcm=tcm,
                 cough_machine_inputs=cough_machine_inputs,

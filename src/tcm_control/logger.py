@@ -383,6 +383,7 @@ def build_run_metadata(config, **meta) -> dict[str, Any]:
                     "finish": meta["humidity_finish"],
                 },
                 "film_height_mm": meta["film_height_mm"],
+                "film_measurements": meta["film_measurements"], # TODO: this is temporary!
             },
             "comments": meta["comments"],
             "debug_mode": debug_mode,

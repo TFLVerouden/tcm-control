@@ -42,7 +42,7 @@ def measure_film_properties(
     plate_measurement: tuple[float, float, np.ndarray, np.ndarray, tuple[int, int]],
     scale_mm_per_px: float | None,
     output_dir: Path,
-) -> tuple[float, float, float]:
+) -> tuple[float, float, float, float]:
     """Determine film thickness, its plate-derived error, and contact angle.
 
     Args:
@@ -53,8 +53,8 @@ def measure_film_properties(
         output_dir: Directory to save visualization.
 
     Returns:
-        Film thickness and plate-derived standard deviation in mm, and the
-        acute contact angle in degrees.
+        Film thickness and plate-derived standard deviation in mm, acute
+        contact angle in degrees, and mean film level in pixels.
     """
     if (
         scale_mm_per_px is None
@@ -179,7 +179,7 @@ def measure_film_properties(
     if not cv2.imwrite(str(visualization_path), visualization):
         raise OSError(f"Failed to save visualization to: {visualization_path}")
 
-    return thickness_mm, thickness_error_mm, contact_angle_deg
+    return thickness_mm, thickness_error_mm, contact_angle_deg, film_height_px
 
 
 
@@ -254,7 +254,8 @@ if __name__ == "__main__":
     )
     # Use the same camera calibration as the experiment configuration.
     scale_mm_per_px = 0.01614443137990558
-    film_height_mm, film_error_mm, contact_angle_deg = measure_film_properties(
+    film_height_mm, film_error_mm, contact_angle_deg, film_level_px = measure_film_properties(
         image_path, plate_measurement, scale_mm_per_px, output_dir)
+    print(f"Determined film level: {film_level_px:.2f} px")
     print(f"Determined film height: {film_height_mm:.3f} +/- {film_error_mm:.3f} mm")
     print(f"Determined contact angle: {contact_angle_deg:.2f} deg")
