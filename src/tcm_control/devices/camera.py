@@ -143,11 +143,8 @@ class Camera:
     def gain_db(self) -> float | None:
         return self._gain_db
 
-    def snapshot(self, output_path: Optional[str | Path] = None, filename: Optional[str] = None) -> Path:
-        """Capture one frame as TIFF, returning the saved path."""
-        if output_path is not None and Path(output_path).suffix.lower() not in (".tif", ".tiff"):
-            raise ValueError(
-                "Camera output_path must have a .tif or .tiff extension.")
+    def capture_frame(self) -> np.ndarray:
+        """Capture a frame with the configured flip and ROI."""
         self.start()
 
         self._cam.get_image(self._img)
@@ -174,7 +171,14 @@ class Camera:
         if not (0 <= y_start < y_end <= height and 0 <= x_start < x_end <= width):
             raise ValueError(
                 f"ROI {self.roi} is empty or out of bounds for image size {height}x{width}.")
-        frame = frame[y_start:y_end, x_start:x_end]
+        return frame[y_start:y_end, x_start:x_end].copy()
+
+    def snapshot(self, output_path: Optional[str | Path] = None, filename: Optional[str] = None) -> Path:
+        """Capture one frame as TIFF, returning the saved path."""
+        if output_path is not None and Path(output_path).suffix.lower() not in (".tif", ".tiff"):
+            raise ValueError(
+                "Camera output_path must have a .tif or .tiff extension.")
+        frame = self.capture_frame()
 
         # Save image
         if output_path is None:

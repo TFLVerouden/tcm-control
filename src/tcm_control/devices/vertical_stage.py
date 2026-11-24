@@ -1,7 +1,7 @@
 import time
 from typing import Optional
 
-from .base import PoFSerialDevice
+from .base_serial import PoFSerialDevice
 
 
 class VerticalStage(PoFSerialDevice):

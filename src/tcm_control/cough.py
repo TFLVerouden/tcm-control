@@ -17,7 +17,7 @@ from tcm_control.interrupt_handling import (
     set_active_tcm,
 )
 from tcm_control.processing.run_log_processing import plot_run_log
-from tcm_control.imaging import take_snapshot
+from tcm_control.imaging import layer_preview, take_snapshot, wait_with_preview
 from tcm_control.processing.determine_film_height import (
     measure_film_properties,
     measure_plate_height,
@@ -423,21 +423,43 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     # Initial picture
                     background_path = take_snapshot(
                         camera, tcm, filename=f"run{run_idx + 1}_background")
-                    if camera_output_dir is not None:
+                    live_preview = camera_inputs.get("live_preview", False)
+                    if camera_output_dir is not None or live_preview:
                         plate_measurement = measure_plate_height(background_path)
 
                     # Make a layer
-                    if pump is not None:
-                        pump.make_layer(infuse_volume_ml=layer_inputs["infuse_volume_ml"],
-                                        infuse_rate_ml_min=layer_inputs["infuse_rate_ml_min"],
-                                        withdraw_volume_ml=layer_inputs["withdraw_volume_ml"],
-                                        withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"],
-                                        settling_time_s=layer_inputs["film_settling_time_s"])
-                    # Wait for the layer to settle before imaging
-                    wait_with_progress(
-                        wait_s=layer_inputs["film_settling_time_s"],
-                        label="Waiting for layer to settle...",
-                    )
+                    if live_preview and pump is not None:
+                        with layer_preview(camera, tcm, plate_measurement,
+                                           camera_inputs["scale_mm_per_px"]) as preview:
+                            try:
+                                pump.make_layer(
+                                    infuse_volume_ml=layer_inputs["infuse_volume_ml"],
+                                    infuse_rate_ml_min=layer_inputs["infuse_rate_ml_min"],
+                                    withdraw_volume_ml=layer_inputs["withdraw_volume_ml"],
+                                    withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"],
+                                    settling_time_s=layer_inputs["film_settling_time_s"],
+                                    update=preview.update,
+                                )
+                            except BaseException:
+                                try:
+                                    pump.stop()
+                                except Exception as exc:
+                                    print(f"Warning: Failed to stop syringe pump: {exc}")
+                                raise
+                            wait_with_preview(layer_inputs["film_settling_time_s"], preview)
+                    else:
+                        if pump is not None:
+                            pump.make_layer(
+                                infuse_volume_ml=layer_inputs["infuse_volume_ml"],
+                                infuse_rate_ml_min=layer_inputs["infuse_rate_ml_min"],
+                                withdraw_volume_ml=layer_inputs["withdraw_volume_ml"],
+                                withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"],
+                                settling_time_s=layer_inputs["film_settling_time_s"],
+                            )
+                        wait_with_progress(
+                            wait_s=layer_inputs["film_settling_time_s"],
+                            label="Waiting for layer to settle...",
+                        )
 
                     # Take a picture of the layer
                     thin_film_path = take_snapshot(

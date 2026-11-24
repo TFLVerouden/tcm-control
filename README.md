@@ -91,6 +91,14 @@ selected setting is also saved in run metadata.
 Camera snapshots are saved as TIFF files. Explicit `output_path` values must
 end in `.tif` or `.tiff`.
 
+Set `[devices.camera.inputs].live_preview = true` to open a local window during
+film infusion, withdrawal and settling. The light stays on while the window is
+open. Close the window or press `q` to continue without the preview. The
+background and final snapshots and saved final measurement are unchanged.
+Live thickness and contact angle use the background plate and camera scale;
+they are provisional and may be unavailable or inaccurate while the contour
+is forming. Preview frames are not saved. A desktop display is required.
+
 
 ## VS Code workspace settings
 This repository tracks only `.vscode/settings.json` for shared Python run/interpreter behavior.

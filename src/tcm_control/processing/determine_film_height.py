@@ -56,6 +56,23 @@ def measure_film_properties(
         Film thickness and plate-derived standard deviation in mm, acute
         contact angle in degrees, and mean film level in pixels.
     """
+    original_image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+    if original_image is None:
+        raise FileNotFoundError(f"Image not found at path: {image_path}")
+    measurement, visualization = measure_film_frame(
+        original_image, plate_measurement, scale_mm_per_px)
+    visualization_path = output_dir / f"{image_path.stem}_processed.png"
+    if not cv2.imwrite(str(visualization_path), visualization):
+        raise OSError(f"Failed to save visualization to: {visualization_path}")
+    return measurement
+
+
+def measure_film_frame(
+    original_image: np.ndarray,
+    plate_measurement: tuple[float, float, np.ndarray, np.ndarray, tuple[int, int]],
+    scale_mm_per_px: float | None,
+) -> tuple[tuple[float, float, float, float], np.ndarray]:
+    """Measure and annotate an 8-bit grayscale frame without saving it."""
     if (
         scale_mm_per_px is None
         or not np.isfinite(scale_mm_per_px)
@@ -63,11 +80,6 @@ def measure_film_properties(
     ):
         raise ValueError("Camera scale_mm_per_px must be a positive finite value")
     plate_height, plate_std, plate_x, plate_y, plate_shape = plate_measurement
-
-    # Keep the original image for the PNG and flip it for upward-positive y.
-    original_image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
-    if original_image is None:
-        raise FileNotFoundError(f"Image not found at path: {image_path}")
     if original_image.shape != plate_shape:
         raise ValueError(
             f"Film image shape {original_image.shape} does not match "
@@ -174,12 +186,7 @@ def measure_film_properties(
             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 1, cv2.LINE_8,
         )
 
-    # Save all measurements on one original-resolution film image.
-    visualization_path = output_dir / f"{image_path.stem}_processed.png"
-    if not cv2.imwrite(str(visualization_path), visualization):
-        raise OSError(f"Failed to save visualization to: {visualization_path}")
-
-    return thickness_mm, thickness_error_mm, contact_angle_deg, film_height_px
+    return (thickness_mm, thickness_error_mm, contact_angle_deg, film_height_px), visualization
 
 
 

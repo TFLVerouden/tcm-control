@@ -749,6 +749,9 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
     camera_flip = _nested_get(raw, "devices", "camera", "inputs", "flip")
     if camera_flip == "":
         camera_flip = None
+    live_preview = _nested_get(raw, "devices", "camera", "inputs", "live_preview", default=False)
+    if not isinstance(live_preview, bool):
+        raise ValueError("Config [devices.camera.inputs].live_preview must be a boolean.")
     camera_inputs = {
         "camera_exposure_us": camera_exposure_us,
         "camera_gain_db": validate_gain(
@@ -758,6 +761,7 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             _nested_get(raw, "devices", "camera", "inputs", "roi", default=[0, 0, 0, 0])
         ),
         "flip": validate_flip(camera_flip),
+        "live_preview": live_preview,
         "scale_mm_per_px": _optional_float(
             _nested_get(raw, "devices", "camera", "inputs", "scale_mm_per_px")
         ),

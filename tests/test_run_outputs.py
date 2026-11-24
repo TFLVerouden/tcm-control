@@ -63,9 +63,13 @@ class RunOutputTests(unittest.TestCase):
                 machine.read_temperature_humidity(save_csv=Path(tmp) / "missing" / "reading.csv")
 
     def test_film_and_piv_outputs(self):
-        for mode, count, save, fail_fan in (("film", 1, True, False), ("film", 2, True, False),
-                ("piv", 1, True, False), ("piv", 2, True, False), ("piv", 2, False, False),
-                ("piv", 1, True, True)):
+        for mode, count, save, fail_fan, live, fail_preview in (
+                ("film", 1, True, False, False, False),
+                ("film", 2, True, False, False, False),
+                ("film", 1, True, False, True, False),
+                ("film", 1, True, False, True, True),
+                ("piv", 1, True, False, False, False), ("piv", 2, True, False, False, False),
+                ("piv", 2, False, False, False, False), ("piv", 1, True, True, False, False)):
             with self.subTest(mode=mode, count=count, save=save, fail_fan=fail_fan), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp).resolve()
                 events = []
@@ -152,6 +156,28 @@ class RunOutputTests(unittest.TestCase):
                     path.write_text("image")
                     return path
 
+                @contextmanager
+                def preview(*_args):
+                    events.append("preview-open")
+                    def update():
+                        events.append("preview-frame")
+                        if fail_preview:
+                            raise RuntimeError("preview failure")
+                    try:
+                        yield fake_module(update=update)
+                    finally:
+                        events.append("preview-close")
+
+                def make_layer(**kwargs):
+                    if "update" in kwargs:
+                        kwargs["update"]()
+
+                def preview_wait(*_args):
+                    events.append("preview-settle")
+
+                pump = MagicMock()
+                pump.make_layer.side_effect = make_layer
+
                 def plot(run_log_path, experiment_dir, **_kwargs):
                     target = experiment_dir / "processed"
                     target.mkdir()
@@ -180,7 +206,8 @@ class RunOutputTests(unittest.TestCase):
                                 "withdraw_volume_ml", "withdraw_rate_ml_min", "film_settling_time_s"), 0),
                             "clean_tube": {}},
                         "camera": {"inputs": {"camera_exposure_us": 1, "roi": [], "flip": None,
-                                               "camera_gain_db": 0, "scale_mm_per_px": 1}},
+                                               "camera_gain_db": 0, "scale_mm_per_px": 1,
+                                               "live_preview": live}},
                         "vertical_stage": {"inputs": {}}, "spraytec": {"inputs": {}},
                     },
                 }
@@ -198,13 +225,15 @@ class RunOutputTests(unittest.TestCase):
                 modules = {
                     "tcm_control": fake_module(logger=logger),
                     "tcm_control.devices": fake_module(CoughMachine=Machine, Camera=Camera,
-                        SyringePump=MagicMock(), VerticalStage=MagicMock(), SprayTec=MagicMock()),
+                        SyringePump=MagicMock(return_value=pump),
+                        VerticalStage=MagicMock(), SprayTec=MagicMock()),
                     "tcm_control.devices.spraytec": fake_module(warn_if_experiment_dir_name_too_long=noop),
                     "tcm_control.initialise_config": fake_module(load_experiment_config=lambda _p: config),
                     "tcm_control.interrupt_handling": fake_module(**dict.fromkeys(
                         ("reset_interrupt_cleanup_state", "set_active_output_dir", "set_active_pump", "set_active_tcm"), noop)),
                     "tcm_control.processing.run_log_processing": fake_module(plot_run_log=plot),
-                    "tcm_control.imaging": fake_module(take_snapshot=snapshot),
+                    "tcm_control.imaging": fake_module(take_snapshot=snapshot,
+                        layer_preview=preview, wait_with_preview=preview_wait),
                     "tcm_control.processing.determine_film_height": fake_module(
                         measure_plate_height=lambda _p: (10, 1, None, None, None),
                         measure_film_properties=lambda *_a: (2, 0.1, 45, 12)),
@@ -235,14 +264,23 @@ class RunOutputTests(unittest.TestCase):
                         "tcm_control.devices.cough_machine", "src/tcm_control/devices/cough_machine.py")
                     runner = load_module("_test_cough", "src/tcm_control/cough.py")
                     setattr(runner, "time", fake_module(sleep=noop))
-                    if fail_fan:
+                    if fail_preview:
+                        with self.assertRaisesRegex(RuntimeError, "preview failure"):
+                            runner.cough()
+                        pump.stop.assert_called_once()
+                    elif fail_fan:
                         with self.assertRaisesRegex(RuntimeError, "fan reset failed"):
                             runner.cough()
                         logger.ConsoleLogCapture.return_value.close.assert_called_once()
                     else:
                         self.assertEqual(runner.cough(), output if save else None)
+                if fail_preview:
+                    self.assertEqual(events, ["preview-open", "preview-frame", "preview-close"])
+                    continue
                 self.assertIn("WARNING: Temperature or humidity", out.getvalue())
-                self.assertEqual(events, ["reading"] + ["reading", "start"] * count
+                self.assertEqual(events, (["preview-open", "preview-frame", "preview-settle",
+                                           "preview-close"] if live else [])
+                                 + ["reading"] + ["reading", "start"] * count
                                  + (["reading"] if save else []))
                 if not save:
                     self.assertFalse(output.exists())

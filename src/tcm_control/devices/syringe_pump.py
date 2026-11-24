@@ -1,6 +1,7 @@
 import re
 import time
 import importlib
+from collections.abc import Callable
 from pathlib import Path
 
 try:
@@ -307,6 +308,7 @@ class SyringePump:
         run_cmd: str,
         expected_prompt: str,
         wait_for_completion: bool,
+        update: Callable[[], None] | None = None,
     ) -> bool:
         if wait_for_completion:
             self._log_info(
@@ -327,7 +329,7 @@ class SyringePump:
         if not self._start_phase_with_recovery(phase_setup_cmds, run_cmd, expected_prompt, phase_name):
             return False
         if wait_for_completion:
-            return self._wait_until_phase_complete(phase_name)
+            return self._wait_until_phase_complete(phase_name, update=update)
         return True
 
     def clear_previous_command_state(self) -> None:
@@ -346,7 +348,7 @@ class SyringePump:
         self._send(f"{self.cmd_set_gang} {self.syringe_gang}")
         self._send(f"{self.cmd_set_force} {self.syringe_force_percent:g}")
 
-    def _wait_until_phase_complete(self, phase_name: str) -> bool:
+    def _wait_until_phase_complete(self, phase_name: str, update: Callable[[], None] | None = None) -> bool:
         started = time.time()
 
         while True:
@@ -378,7 +380,19 @@ class SyringePump:
                 self._log_error(f"Safety timeout reached during {phase_name}")
                 return False
 
-            time.sleep(self.status_poll_s)
+            self._wait_with_updates(self.status_poll_s, update)
+
+    @staticmethod
+    def _wait_with_updates(duration_s: float, update: Callable[[], None] | None) -> None:
+        if update is None:
+            time.sleep(duration_s)
+            return
+        end = time.monotonic() + duration_s
+        while time.monotonic() < end:
+            update()
+            remaining = end - time.monotonic()
+            if remaining > 0:
+                time.sleep(min(0.1, remaining))
 
     def _verify_motion_started(self, expected_prompt: str, phase_name: str) -> tuple[bool, str]:
         """Check that phase actually started running right after irun/wrun."""
@@ -428,7 +442,7 @@ class SyringePump:
             f"{phase_name} did not start. Last status: {sentence_retry or sentence}")
         return False
 
-    def infuse(self, volume_ml: float, rate_ml_min: float, wait_for_completion: bool = True) -> bool:
+    def infuse(self, volume_ml: float, rate_ml_min: float, wait_for_completion: bool = True, *, update: Callable[[], None] | None = None) -> bool:
         return self._run_phase(
             action_verb="infusing",
             phase_name="infusion",
@@ -438,9 +452,10 @@ class SyringePump:
             run_cmd=self.cmd_irun,
             expected_prompt=">",
             wait_for_completion=wait_for_completion,
+            update=update,
         )
 
-    def withdraw(self, volume_ml: float, rate_ml_min: float, wait_for_completion: bool = True) -> bool:
+    def withdraw(self, volume_ml: float, rate_ml_min: float, wait_for_completion: bool = True, *, update: Callable[[], None] | None = None) -> bool:
         return self._run_phase(
             action_verb="withdrawing",
             phase_name="withdraw",
@@ -450,6 +465,7 @@ class SyringePump:
             run_cmd=self.cmd_wrun,
             expected_prompt="<",
             wait_for_completion=wait_for_completion,
+            update=update,
         )
 
     def run_protocol(self, steps: list[dict]) -> None:
@@ -480,23 +496,25 @@ class SyringePump:
             if settle_s > 0:
                 time.sleep(settle_s)
 
-    def make_layer(self, infuse_volume_ml: float, infuse_rate_ml_min: float, withdraw_volume_ml: float, withdraw_rate_ml_min: float, settling_time_s: float) -> None:
+    def make_layer(self, infuse_volume_ml: float, infuse_rate_ml_min: float, withdraw_volume_ml: float, withdraw_rate_ml_min: float, settling_time_s: float, *, update: Callable[[], None] | None = None) -> None:
         """Create a thin film layer using the syringe pump."""
         try:
             # Infuse fluid to create the layer
 
             self.infuse(
                 volume_ml=infuse_volume_ml,
-                rate_ml_min=infuse_rate_ml_min
+                rate_ml_min=infuse_rate_ml_min,
+                update=update,
             )
 
             # Allow the pump system and fluid to relax
-            time.sleep(settling_time_s)
+            self._wait_with_updates(settling_time_s, update)
 
             # Partially withdraw to create a thin film layer
             self.withdraw(
                 volume_ml=withdraw_volume_ml,
-                rate_ml_min=withdraw_rate_ml_min
+                rate_ml_min=withdraw_rate_ml_min,
+                update=update,
             )
         except Exception as exc:
             self._log_error(str(exc))

@@ -11,7 +11,7 @@ except ImportError:
 from tcm_utils.file_dialogs import ask_open_file, find_repo_root
 from tcm_utils.io_utils import countdown_beep, make_minimal_progress_bar, beep
 
-from .base import PoFSerialDevice
+from .base_serial import PoFSerialDevice
 from ..logger import copy_flow_curve, create_labeled_csv_filename
 
 DEFAULT_FLOWCURVE_DIR = Path(__file__).resolve().parent.parent / "flow_curves"

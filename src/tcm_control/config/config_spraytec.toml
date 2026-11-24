@@ -60,6 +60,7 @@ camera_exposure_us = 4000
 roi = [0, 0, 0, 0] # y_start, y_end, x_start, x_end; end 0 = full extent
 flip = "" # empty, vertical, horizontal, or both
 scale_mm_per_px = 0.01614443137990558
+live_preview = false # show an optional local preview while making the layer
 
 [devices.pump.clean_tube]
 volume_ml_layer = 3
