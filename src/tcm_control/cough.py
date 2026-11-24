@@ -37,6 +37,7 @@ from tcm_utils.io_utils import (
 from tcm_utils.time_utils import timestamp_str
 from tcm_utils.io_utils import countdown_beep
 
+
 def cough(config_path: Path | str | None = None) -> Optional[Path]:
     """Run a full experiment using a TOML configuration.
 
@@ -80,7 +81,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     record_droplet_size_spraytec = config["devices"]["spraytec"]["enabled"]
     record_droplet_size_ops = config["devices"]["ops"]["enabled"]
     if record_droplet_size_ops and experiment_mode == "film" and not save_data:
-        raise ValueError("OPS recording requires an experiment output directory.")
+        raise ValueError(
+            "OPS recording requires an experiment output directory.")
 
     # --------------------------------------------------------------------------
     # 2) Make connections to external devices
@@ -417,11 +419,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     # Clean the channel afterwards
                     tcm.clean(
                         clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
-                        valve_open_duration_s=cleaning_inputs["valve_open_duration_s"],
+                        clean_valve_open_duration_s=cleaning_inputs["valve_open_duration_s"],
                         dry_pressure_bar=cleaning_inputs["dry_pressure_bar"],
                         dry_duration_s=cleaning_inputs["dry_duration_s"],
                         dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"],
-                        cycle_count=cleaning_inputs["cycle_count"],
+                        clean_cycle_count=cleaning_inputs["cycle_count"],
                     )
 
                 # Execute repeated runs
@@ -439,7 +441,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         camera, tcm, filename=f"run{run_idx + 1}_background")
                     live_preview = camera_inputs.get("live_preview", False)
                     if camera_output_dir is not None or live_preview:
-                        plate_measurement = measure_plate_height(background_path)
+                        plate_measurement = measure_plate_height(
+                            background_path)
 
                     # Make a layer
                     if live_preview and pump is not None:
@@ -458,9 +461,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                                 try:
                                     pump.stop()
                                 except Exception as exc:
-                                    print(f"Warning: Failed to stop syringe pump: {exc}")
+                                    print(
+                                        f"Warning: Failed to stop syringe pump: {exc}")
                                 raise
-                            wait_with_preview(layer_inputs["film_settling_time_s"], preview)
+                            wait_with_preview(
+                                layer_inputs["film_settling_time_s"], preview)
                     else:
                         if pump is not None:
                             pump.make_layer(
@@ -494,8 +499,10 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         }
                         # Save the individual measurement alongside the images
                         assert run_dir is not None
-                        logger.write_film_measurement(run_dir, film_measurement)
-                        print(f"Film height (mm): {film_height_mm:.3f} +/- {film_error_mm:.3f}")
+                        logger.write_film_measurement(
+                            run_dir, film_measurement)
+                        print(
+                            f"Film height (mm): {film_height_mm:.3f} +/- {film_error_mm:.3f}")
                         print(f"Contact angle (deg): {contact_angle_deg:.2f}")
 
                     # Wait between coughs if needed
@@ -569,21 +576,21 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     # Clean the channel
                     tcm.clean(
                         clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
-                        valve_open_duration_s=cleaning_inputs["valve_open_duration_s"],
+                        clean_valve_open_duration_s=cleaning_inputs["valve_open_duration_s"],
                         dry_pressure_bar=cleaning_inputs["dry_pressure_bar"],
                         dry_duration_s=cleaning_inputs["dry_duration_s"],
                         dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"],
-                        cycle_count=cleaning_inputs["cycle_count"],
+                        clean_cycle_count=cleaning_inputs["cycle_count"],
                     )
 
                     drying = cough_machine_inputs["drying"]
                     tcm.clean(
                         clean_pressure_bar=drying["clean_pressure_bar"],
-                        valve_open_duration_s=drying["valve_open_duration_s"],
+                        clean_valve_open_duration_s=drying["valve_open_duration_s"],
                         dry_pressure_bar=drying["dry_pressure_bar"],
                         dry_duration_s=drying["dry_duration_s"],
                         dry_valve_current_ma=drying["dry_valve_current_ma"],
-                        cycle_count=drying["cycle_count"],
+                        clean_cycle_count=drying["cycle_count"],
                     )
 
                     # Image the channel after cleaning
@@ -721,11 +728,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
                         # Run cleaning routine every cycle
                         tcm.clean(clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
-                                  valve_open_duration_s=cleaning_inputs["valve_open_duration_s"],
+                                  clean_valve_open_duration_s=cleaning_inputs["valve_open_duration_s"],
                                   dry_pressure_bar=cleaning_inputs["dry_pressure_bar"],
                                   dry_duration_s=cleaning_inputs["dry_duration_s"],
                                   dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"],
-                                  cycle_count=cleaning_inputs["cycle_count"])
+                                  clean_cycle_count=cleaning_inputs["cycle_count"])
 
         # ------------------------------------------------------------------
         # 6) Finalize run and write (meta)data
@@ -787,7 +794,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
             # Reset the fan to original speed
             tcm.set_fan_speed(CoughMachine.FAN_SPEED_DEFAULT)
-
 
             print("Experiment completed, all data saved to ", output_dir)
             print("Exiting.")

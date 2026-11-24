@@ -16,8 +16,8 @@ if __name__ == "__main__":
     tcm = CoughMachine(debug=False)
     print("Starting channel cleaning routine...")
     tcm.clean(clean_pressure_bar=PRESSURE_BAR,
-              valve_open_duration_s=OPEN_DURATION_S,
-              cycle_count=REPEATS,
+              clean_valve_open_duration_s=OPEN_DURATION_S,
+              clean_cycle_count=REPEATS,
               dry_pressure_bar=DRY_PRESSURE_BAR,
               dry_duration_s=DRY_DURATION_S,
               dry_valve_current_ma=DRY_VALVE_CURRENT_MA)

@@ -24,6 +24,10 @@ DEFAULT_CLEAN_VALVE_OPEN_DURATION_S = 2.5
 DEFAULT_CLEAN_DRY_DURATION_S = 0.0
 DEFAULT_CLEAN_DRY_VALVE_CURRENT_MA = 14.0
 DEFAULT_CLEAN_CYCLE_COUNT = 0
+DEFAULT_SETTLE_TIMEOUT_S = 120.0
+DEFAULT_SETTLE_AVG_WINDOW_S = 5.0
+DEFAULT_SETTLE_TOLERANCE_BAR = 0.05
+DEFAULT_SETTLE_POLL_INTERVAL_S = 0.2
 # Keep protocol version as a single integer. Bump only for breaking serial changes.
 DEFAULT_SUPPORTED_PROTOCOL_VERSION = 8
 
@@ -210,10 +214,10 @@ class CoughMachine(PoFSerialDevice):
         self,
         pressure_bar: float,
         *,
-        timeout_s: float = 120.0,
-        avg_window_s: float = 5.0,
-        tolerance_bar: float = 0.05,
-        poll_interval_s: float = 0.2,
+        timeout_s: float = DEFAULT_SETTLE_TIMEOUT_S,
+        avg_window_s: float = DEFAULT_SETTLE_AVG_WINDOW_S,
+        tolerance_bar: float = DEFAULT_SETTLE_TOLERANCE_BAR,
+        poll_interval_s: float = DEFAULT_SETTLE_POLL_INTERVAL_S,
         interm_press_diff_bar: Optional[float] = None,
         interm_press_time_s: Optional[float] = None,
         status_prefix: Optional[str] = None,
@@ -379,16 +383,16 @@ class CoughMachine(PoFSerialDevice):
     def clean(
         self,
         *,
-        clean_pressure_bar: float = 4.0,
-        valve_open_duration_s: float = 2.5,
-        cycle_count: int = DEFAULT_CLEAN_CYCLE_COUNT,
+        clean_pressure_bar: float = DEFAULT_CLEAN_PRESSURE_BAR,
+        clean_valve_open_duration_s: float = DEFAULT_CLEAN_VALVE_OPEN_DURATION_S,
+        clean_cycle_count: int = DEFAULT_CLEAN_CYCLE_COUNT,
         dry_pressure_bar: float | None = None,
-        dry_duration_s: float = 0.0,
-        dry_valve_current_ma: float = 14.0,
-        settle_timeout_s: float = 120.0,
-        settle_avg_window_s: float = 5.0,
-        settle_tolerance_bar: float = 0.05,
-        settle_poll_interval_s: float = 0.2,
+        dry_duration_s: float = DEFAULT_CLEAN_DRY_DURATION_S,
+        dry_valve_current_ma: float = DEFAULT_CLEAN_DRY_VALVE_CURRENT_MA,
+        settle_timeout_s: float = DEFAULT_SETTLE_TIMEOUT_S,
+        settle_avg_window_s: float = DEFAULT_SETTLE_AVG_WINDOW_S,
+        settle_tolerance_bar: float = DEFAULT_SETTLE_TOLERANCE_BAR,
+        settle_poll_interval_s: float = DEFAULT_SETTLE_POLL_INTERVAL_S,
         echo: Optional[bool] = None,
     ) -> None:
         """Run a tank/valve cleaning routine and restore prior pressure setpoint.
@@ -414,11 +418,11 @@ class CoughMachine(PoFSerialDevice):
         if clean_pressure_bar < 0 or clean_pressure_bar > MAX_PRESSURE_BAR:
             raise ValueError(
                 f"pressure_bar must be between 0 and {MAX_PRESSURE_BAR} bar")
-        if valve_open_duration_s <= 0:
+        if clean_valve_open_duration_s <= 0:
             raise ValueError("valve_open_duration_s must be > 0")
         if dry_duration_s < 0:
             raise ValueError("dry_duration_s must be >= 0")
-        if cycle_count < 0:
+        if clean_cycle_count < 0:
             raise ValueError("cycle_count must be >= 0")
         if dry_pressure_bar is None:
             dry_pressure_bar = clean_pressure_bar
@@ -427,7 +431,7 @@ class CoughMachine(PoFSerialDevice):
                 f"dry_pressure_bar must be between 0 and {MAX_PRESSURE_BAR} bar")
 
         # Nothing to do: no cleaning cycles requested and no drying duration set.
-        if cycle_count == 0 and dry_duration_s == 0:
+        if clean_cycle_count == 0 and dry_duration_s == 0:
             return
 
         original_setpoint_bar = self._target_pressure_bar
@@ -441,7 +445,7 @@ class CoughMachine(PoFSerialDevice):
         self.set_fan_speed(self.FAN_SPEED_MAX, echo=echo)
 
         try:
-            for cycle_idx in range(1, cycle_count + 1):
+            for cycle_idx in range(1, clean_cycle_count + 1):
                 self.set_pressure(
                     clean_pressure_bar,
                     timeout_s=settle_timeout_s,
@@ -449,16 +453,16 @@ class CoughMachine(PoFSerialDevice):
                     tolerance_bar=settle_tolerance_bar,
                     poll_interval_s=settle_poll_interval_s,
                     status_prefix=(
-                        f"{self.name} cleaning cycle {cycle_idx}/{cycle_count} "
+                        f"{self.name} cleaning cycle {cycle_idx}/{clean_cycle_count} "
                         "(pressure"
                     ),
                     status_suffix=")",
                     echo=echo,
                 )
 
-                opening_msg = f"{self.name} cleaning cycle {cycle_idx}/{cycle_count} (opening valves)"
+                opening_msg = f"{self.name} cleaning cycle {cycle_idx}/{clean_cycle_count} (opening valves)"
                 pressure_msg_len = len(
-                    f"{self.name} cleaning cycle {cycle_idx}/{cycle_count} "
+                    f"{self.name} cleaning cycle {cycle_idx}/{clean_cycle_count} "
                     f"(pressure -.--/{clean_pressure_bar:.2f} bar)"
                 )
                 clear_tail = max(0, pressure_msg_len - len(opening_msg))
@@ -468,7 +472,7 @@ class CoughMachine(PoFSerialDevice):
                 try:
                     self.set_valve_current(20, echo=echo)
                     self.open_solenoid(echo=echo)
-                    time.sleep(valve_open_duration_s)
+                    time.sleep(clean_valve_open_duration_s)
                     self.close_solenoid(echo=echo)
                 finally:
                     self.set_valve_current(12, echo=echo)
@@ -671,7 +675,8 @@ class CoughMachine(PoFSerialDevice):
         if save_csv is not None:
             with Path(save_csv).open("w", newline="", encoding="utf-8") as file:
                 writer = csv.writer(file)
-                writer.writerow(["temperature_degC", "relative_humidity_percent"])
+                writer.writerow(
+                    ["temperature_degC", "relative_humidity_percent"])
                 writer.writerow([temp, hum])
 
         return temp, hum
