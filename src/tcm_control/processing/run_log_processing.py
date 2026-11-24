@@ -120,6 +120,7 @@ def plot_run_log(
     plot_path: Path | None = None
 
     # Export to pdf in experiment directory/processed
+    # TODO: Check whether we still want a separate processed subdir
     if experiment_dir is not None:
         processed_dir = get_processed_dir(Path(experiment_dir))
         plot_path = processed_dir / f"pressure_valve_timing_run{run_nr}.pdf"

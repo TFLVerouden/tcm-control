@@ -36,6 +36,24 @@ To analyze existing measurements instead, set `INPUT_FILE` to their path.
 Input files contain gauge pressure in bar and sensor current in mA, in that
 order; select the appropriate `PRESSURE_COMMAND` for the output filenames.
 
+## Film and PIV output
+
+Each saved experiment contains `run` for one run, or `run1`, `run2`, etc. for
+multiple runs. Experiment-wide metadata, the config copy, flow curve, comments,
+and console log remain in the experiment folder. Each run folder contains its
+run log and plot, and `temperature_humidity.csv` with the reading taken just
+before the cough. An unavailable sensor value is left empty and a warning is
+printed; the experiment start and finish readings remain in `metadata.json`.
+For direct device use, `read_temperature_humidity(save_csv=path)` saves the
+reading in the same CSV format; omit `save_csv` to read without saving.
+
+Film runs also contain camera images, `film_measurement.csv`, and their OPS
+data and plots. Film measurements are no longer duplicated in the experiment
+metadata. SprayTec measurements are exported after the experiment and matched
+chronologically to run folders only if the counts agree and the timestamps
+are unambiguous. Otherwise, new measurements are saved in
+`spraytec_unmatched` in the experiment folder and a warning is printed.
+
 ## Config and metadata extension guide
 
 Use this checklist when adding a new configuration value and writing it to run metadata.
@@ -43,13 +61,15 @@ Use this checklist when adding a new configuration value and writing it to run m
 1. Add or update the value in the experiment TOML.
 2. Ensure it is normalized in `load_experiment_config(...)` in `src/tcm_control/initialise_config.py`.
 3. Read the value in `src/tcm_control/cough.py` from the appropriate config block (`cough_inputs`, `cough_machine_inputs` including `tank_inputs`, `pump_inputs`, `spraytec_inputs`).
-4. Add the value to either `run_context` (run-level fields) or `device_context` (device/config fields) in `cough.py` where metadata is assembled.
-5. Map it into the output schema in `build_run_metadata(...)` in `src/tcm_control/logger.py`.
-6. Run one experiment and inspect `metadata.json` in the output directory.
+4. If the value belongs to a config block already included in metadata, check
+   that the normalized block is passed to `build_run_metadata(...)` in
+   `src/tcm_control/cough.py`. Otherwise, pass the value there and add it to
+   the output schema in `build_run_metadata(...)` in `src/tcm_control/logger.py`.
+5. Run one experiment and inspect `metadata.json` in the output directory.
 
 Rule of thumb:
-- Put values in `run_context` when they describe the run as a whole (timing, mode, ambient readings, comments).
-- Put values in `device_context` when they belong to one hardware subsystem or its resolved settings.
+- Use `experiment` metadata for experiment-wide timing, ambient readings and comments.
+- Use `devices` metadata for a hardware subsystem and its resolved settings.
 
 ### Camera ROI
 

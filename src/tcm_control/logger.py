@@ -1,6 +1,7 @@
 """File and metadata logging utilities for experiment runs."""
 
 from contextlib import contextmanager
+import csv
 from datetime import datetime
 import io
 from pathlib import Path
@@ -44,6 +45,29 @@ def create_experiment_dir(
 
     # Return path
     return experiment_dir
+
+
+def create_run_dir(
+    experiment_dir: Path | None, run_number: int, nr_runs: int
+) -> Path | None:
+    """Create the run directory, or return None when saving is disabled."""
+    if experiment_dir is None:
+        return None
+
+    # Use a simple name for a single run and numbered names for multiple runs
+    run_name = "run" if nr_runs == 1 else f"run{run_number}"
+    run_dir = experiment_dir / run_name
+    run_dir.mkdir()
+    return run_dir
+
+
+def write_film_measurement(run_dir: Path, measurement: dict[str, int | float]) -> None:
+    """Save a single film measurement in its run directory."""
+    # Keep column names and values together in the run's CSV
+    with (run_dir / "film_measurement.csv").open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=measurement.keys())
+        writer.writeheader()
+        writer.writerow(measurement)
 
 
 def latest_experiment_display_name(series_directory: Path) -> str | None:
@@ -382,8 +406,6 @@ def build_run_metadata(config, **meta) -> dict[str, Any]:
                     "start": meta["humidity_start"],
                     "finish": meta["humidity_finish"],
                 },
-                "film_height_mm": meta["film_height_mm"],
-                "film_measurements": meta["film_measurements"], # TODO: this is temporary!
             },
             "comments": meta["comments"],
             "debug_mode": debug_mode,

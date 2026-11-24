@@ -123,8 +123,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     spraytec_z_mm = None
     spraytec_audit_path = None
     spraytec_laser_intensity = None
-    film_height_mm = None
-    film_measurements: list[dict[str, int | float]] = []
+    run_dirs: list[Path] = []
 
     # --------------------------------------------------------------------------
     # 2) Make connections to external devices
@@ -208,7 +207,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         # No output directory exists in non-saving mode
         set_active_output_dir(None)
 
-    # TODO: Check whether this try-finally clause is still needed
     try:
 
         # --------------------------------------------------------------
@@ -255,17 +253,15 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
         # In film mode, set up the camera and pump
         if experiment_mode == "film":
-            # Make a subfolder in output dir for camera outputs
-            camera_output_dir = output_dir / "camera" if output_dir is not None else None
-            if camera_output_dir is not None:
-                camera_output_dir.mkdir(exist_ok=True)
+            # The camera output directory is changed to the current run below
+            camera_output_dir = output_dir
             camera = Camera(exposure_us=camera_inputs["camera_exposure_us"],
                             output_dir=camera_output_dir,
                             roi=camera_inputs["roi"],
                             flip=camera_inputs["flip"],
                             gain_db=camera_inputs["camera_gain_db"])
 
-            # TODO: Set up pump in droplet mode
+            # TODO: Set up pump in droplet mode too
             pump = SyringePump(syringe_inputs["syringe_vendor_code"],
                                syringe_inputs["syringe_volume_mL"],
                                syringe_inputs["syringe_diameter_mm"],
@@ -416,6 +412,14 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
                 # Execute repeated runs
                 for run_idx in range(cough_inputs["nr_runs"]):
+                    # Create the folder for this run and direct its images there
+                    run_dir = logger.create_run_dir(
+                        output_dir, run_idx + 1, cough_inputs["nr_runs"])
+                    if run_dir is not None:
+                        run_dirs.append(run_dir)
+                        camera_output_dir = run_dir / "camera"
+                        camera.output_dir = camera_output_dir
+
                     # Initial picture
                     background_path = take_snapshot(
                         camera, tcm, filename=f"run{run_idx + 1}_background")
@@ -443,7 +447,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             thin_film_path, plate_measurement,
                             camera_inputs["scale_mm_per_px"], camera_output_dir)
                         plate_height_px, plate_std_px, _, _, _ = plate_measurement
-                        film_measurements.append({
+                        film_measurement = {
                             "run_nr": run_idx + 1,
                             "plate_height_px": plate_height_px,
                             "plate_height_std_px": plate_std_px,
@@ -451,7 +455,10 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             "film_height_mm": film_height_mm,
                             "film_height_error_mm": film_error_mm,
                             "contact_angle_deg": contact_angle_deg,
-                        })
+                        }
+                        # Save the individual measurement alongside the images
+                        assert run_dir is not None
+                        logger.write_film_measurement(run_dir, film_measurement)
                         print(f"Film height (mm): {film_height_mm:.3f} +/- {film_error_mm:.3f}")
                         print(f"Contact angle (deg): {contact_angle_deg:.2f}")
 
@@ -482,7 +489,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         raise ValueError(
                             "Output directory is None, cannot save OPS data.")
                     # Create a folder for OPS data in the output directory
-                    OUT_OPS_DIR = output_dir / "OPS_data"
+                    assert run_dir is not None
+                    OUT_OPS_DIR = run_dir / "OPS_data"
                     OUT_OPS_DIR.mkdir(exist_ok=True)
 
                     OUT_CSV_OPS = OUT_OPS_DIR / \
@@ -503,8 +511,14 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         time.sleep(20)
                         countdown_beep()
 
+                        # Record the ambient conditions immediately before the cough
+                        tcm.read_temperature_humidity(
+                            show_reading=True,
+                            save_csv=run_dir / "temperature_humidity.csv",
+                        )
+
                         run_log_path = tcm.run(
-                            output_dir=output_dir,
+                            output_dir=run_dir,
                             run_nr_start=(run_idx + 1),
                             save_logs=save_data,
                         )
@@ -520,12 +534,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     if save_data and run_log_path is not None:
                         plot_run_log(
                             run_log_path=run_log_path,
-                            experiment_dir=output_dir,
+                            experiment_dir=run_dir,
                             show=False,
                         )
-                        # Cache first run log for the summary plot in finalization
-                        if run_idx == 0:
-                            first_run_log_path = run_log_path
 
                     # Clean the channel
                     tcm.clean(
@@ -583,6 +594,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
                 # Execute configured number of PIV runs with pump start/stop timing
                 for run_idx in range(cough_inputs["nr_runs"]):
+                    # Create a separate folder for each run when saving is enabled
+                    run_dir = logger.create_run_dir(
+                        output_dir, run_idx + 1, cough_inputs["nr_runs"])
+                    if run_dir is not None:
+                        run_dirs.append(run_dir)
 
                     # FROM SECOND RUN ONWARDS
                     if run_idx > 0:
@@ -623,6 +639,12 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             time.sleep(
                                 float(nebuliser_inputs["pre_run_start_s"]))
 
+                        # Record the ambient conditions immediately before the cough
+                        tcm.read_temperature_humidity(
+                            show_reading=True,
+                            save_csv=run_dir / "temperature_humidity.csv" if run_dir is not None else None,
+                        )
+
                         # Start the run
                         tcm.start_run()
                         tcm.wait_for_run_finished()
@@ -642,7 +664,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         pump_stopped = True
 
                         run_log_path = tcm.receive_run_log(
-                            output_dir=output_dir,
+                            output_dir=run_dir,
                             run_nr_start=(run_idx + 1),
                             save_logs=save_data,
                         )
@@ -651,7 +673,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         if save_data and run_log_path is not None:
                             plot_run_log(
                                 run_log_path=run_log_path,
-                                experiment_dir=output_dir,
+                                experiment_dir=run_dir,
                                 show=False,
                             )
 
@@ -703,6 +725,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                                                          start_time=time_start,
                                                          debug=cough_inputs["debug_mode"],
                                                          offer_archive_if_large=True,
+                                                         run_dirs=run_dirs,
                                                          )
 
             metadata = logger.build_run_metadata(
@@ -717,8 +740,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 humidity_start=humidity_start,
                 temperature_finish=temperature_finish,
                 humidity_finish=humidity_finish,
-                film_height_mm=film_height_mm,
-                film_measurements=film_measurements,
                 comments=comments,
                 tcm=tcm,
                 cough_machine_inputs=cough_machine_inputs,
@@ -743,6 +764,10 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             logger.write_run_metadata(
                 experiment_dir=output_dir, meta=metadata)
 
+            # Reset the fan to original speed
+            tcm.set_fan_speed(CoughMachine.FAN_SPEED_DEFAULT)
+
+
             print("Experiment completed, all data saved to ", output_dir)
             print("Exiting.")
         else:
@@ -751,10 +776,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 print("No data was saved (series_directory='None').")
             print("Exiting.")
     finally:
-        # TODO: Check whether this try-finally clause is still needed
-        tcm.set_fan_speed(CoughMachine.FAN_SPEED_DEFAULT)
-        if console_log is not None:
-            console_log.close()
+        # Close console capture even if resetting the fan fails
+        console_log.close()
 
     # ------------------------------------------------------------------
     # 7) Clear interrupt-handling references and return

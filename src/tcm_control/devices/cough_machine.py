@@ -638,27 +638,43 @@ class CoughMachine(PoFSerialDevice):
             return None
 
     def read_temperature_humidity(
-        self, *, echo: Optional[bool] = None, show_reading: bool = False
+        self, *, echo: Optional[bool] = None, show_reading: bool = False,
+        save_csv: str | Path | None = None,
     ) -> tuple[Optional[float], Optional[float]]:
         """Read temperature and humidity using `T?`.
 
         Parses replies formatted like `T<degC> H<%RH>` and returns `(temp, hum)`.
-        When `show_reading` is True, also prints the parsed values.
+        When `show_reading` is True, prints the values or a warning if unavailable.
+        When `save_csv` is provided, saves the values to that CSV path.
         """
+        # Query and parse the sensor without treating an invalid reply as a reading
         reply, _lines = self._query_and_drain(
             "T?", expected_prefix="T", echo=echo)
-        if reply is None:
-            return None, None
+        temp, hum = None, None
         try:
-            parts = reply.split()
-            temp = float(parts[0][1:])
-            hum = float(parts[1][1:])
-            if show_reading:
+            if reply is not None:
+                parts = reply.split()
+                temp = float(parts[0][1:])
+                hum = float(parts[1][1:])
+        except (IndexError, ValueError):
+            temp, hum = None, None
+
+        # Report unavailable readings as well as successful measurements
+        if show_reading:
+            if temp is None or hum is None:
+                print("WARNING: Temperature or humidity reading unavailable.")
+            else:
                 print(
                     f"{self.name} temperature: {temp:.1f} °C, rel. humidity: {hum:.1f}%")
-            return temp, hum
-        except (IndexError, ValueError):
-            return None, None
+
+        # Save an empty CSV field for each unavailable reading
+        if save_csv is not None:
+            with Path(save_csv).open("w", newline="", encoding="utf-8") as file:
+                writer = csv.writer(file)
+                writer.writerow(["temperature_degC", "relative_humidity_percent"])
+                writer.writerow([temp, hum])
+
+        return temp, hum
 
     # CONFIGURATION
     def set_wait_us(self, wait_us: int, *, echo: Optional[bool] = None) -> str:

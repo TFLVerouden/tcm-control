@@ -173,6 +173,7 @@ class SprayTec:
         offer_archive_if_large: bool | None = None,
         ask_retry_on_permission_error: bool = True,
         min_rows_per_block: int = 1,
+        run_dirs: list[Path] | None = None,
     ) -> Path:
         """Extract new measurements and update stored audit state.
 
@@ -180,6 +181,9 @@ class SprayTec:
         ``PermissionError`` (for example when the SprayTec append file is still
         locked by the exporter), prompts the user to retry, and loops until
         success or user cancellation.
+
+        If run_dirs is provided, match new measurements chronologically to the
+        runs only when their counts agree; otherwise save them as unmatched.
         """
         # Step 1: Resolve effective append file and update per-call overrides.
         resolved_append_path = self.resolve_append_file_path(append_file_path)
@@ -225,8 +229,39 @@ class SprayTec:
                     if self.experiment_dir is not None
                     else None
                 )
-                if experiment_path is not None:
+                if experiment_path is not None and run_dirs is None:
                     experiment_path.mkdir(parents=True, exist_ok=True)
+
+                # Assign a complete batch by measurement time, never by file order
+                # TODO: Check whether this works, otherwise simplify to match file order
+                run_paths_by_block: dict[str, Path] = {}
+                if run_dirs is not None:
+                    if self.experiment_dir is None:
+                        raise ValueError("An experiment directory is required to assign SprayTec runs.")
+                    eligible = [
+                        block for block in blocks
+                        if start_dt is None or (
+                            block.timestamp_dt is not None and block.timestamp_dt > start_dt
+                        )
+                    ]
+                    previously_copied = any(
+                        previous_rows.get(block.block_id, {}).get("copied_to_experiment") == "1"
+                        for block in eligible
+                    )
+                    times = [block.timestamp_dt for block in eligible]
+                    if (len(eligible) == len(run_dirs) and not previously_copied
+                            and None not in times and len(set(times)) == len(times)):
+                        ordered = sorted(eligible, key=lambda block: block.timestamp_dt or datetime.min)
+                        run_paths_by_block = {
+                            block.block_id: Path(run_dir).resolve() / EXPERIMENT_SPRAYTEC_SUBDIR
+                            for block, run_dir in zip(ordered, run_dirs)
+                        }
+                    else:
+                        print(
+                            f"WARNING: Cannot match {len(eligible)} SprayTec measurement(s) "
+                            f"to {len(run_dirs)} run(s) unambiguously; new measurements "
+                            "will be saved in spraytec_unmatched."
+                        )
 
                 # 2c) Initialize counters/state for per-block processing.
                 audit_rows: list[dict[str, str]] = []
@@ -282,15 +317,24 @@ class SprayTec:
                             row["cached_saved"] = "1"
                             row["cached_csv"] = str(local_path)
 
-                            should_copy_to_experiment = experiment_path is not None
+                            # Use the matched run folder or a single unmatched folder
+                            target_path = experiment_path
+                            if run_dirs is not None:
+                                assert self.experiment_dir is not None
+                                target_path = run_paths_by_block.get(
+                                    block.block_id, self.experiment_dir / "spraytec_unmatched"
+                                )
+                            should_copy_to_experiment = target_path is not None
                             if should_copy_to_experiment:
-                                assert experiment_path is not None
+                                assert target_path is not None
+                                target_path.mkdir(parents=True, exist_ok=True)
                                 next_copy_index = copied_count + 1
 
                                 # If this becomes a multi-file batch, rename first copied file to
                                 # label 1 so copied files are consistently numbered 1..N.
                                 if (
                                     next_copy_index == 2
+                                    and run_dirs is None
                                     and first_experiment_csv is not None
                                     and first_experiment_timestamp is not None
                                     and first_experiment_row is not None
@@ -301,7 +345,7 @@ class SprayTec:
                                         timestamp=first_experiment_timestamp,
                                     )
                                     first_labeled_path = _next_available_path(
-                                        experiment_path / first_labeled_filename
+                                        target_path / first_labeled_filename
                                     )
                                     first_experiment_csv.rename(
                                         first_labeled_path)
@@ -310,20 +354,20 @@ class SprayTec:
                                         first_labeled_path
                                     )
 
-                                label = next_copy_index if next_copy_index > 1 else None
+                                label = next_copy_index if run_dirs is None and next_copy_index > 1 else None
                                 experiment_filename = create_labeled_csv_filename(
                                     prefix="spraytec",
                                     label=label,
                                     timestamp=timestamp_label,
                                 )
                                 experiment_csv = _next_available_path(
-                                    experiment_path / experiment_filename
+                                    target_path / experiment_filename
                                 )
                                 shutil.copy2(local_path, experiment_csv)
                                 copied_count += 1
 
                                 row["copied_to_experiment"] = "1"
-                                row["experiment_dir"] = str(experiment_path)
+                                row["experiment_dir"] = str(target_path)
                                 row["experiment_csv"] = str(experiment_csv)
                                 row["copied_at"] = datetime.now().isoformat(
                                     timespec="seconds"
@@ -355,10 +399,15 @@ class SprayTec:
                         print(
                             f"SprayTec: extracted {extracted_count} file(s) to {redundancy_dir}."
                         )
-                    else:
+                    elif run_dirs is None:
                         print(
                             f"SprayTec: extracted {extracted_count} file(s) to {redundancy_dir}; "
                             f"copied {copied_count} to {experiment_path}."
+                        )
+                    else:
+                        print(
+                            f"SprayTec: extracted {extracted_count} file(s) to {redundancy_dir}; "
+                            f"copied {copied_count} to run or unmatched folders."
                         )
                 else:
                     print(
