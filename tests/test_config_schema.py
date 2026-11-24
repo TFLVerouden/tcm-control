@@ -1,5 +1,6 @@
 """Configuration-only checks; no device connections are made."""
 
+import inspect
 import json
 import runpy
 import tempfile
@@ -17,7 +18,11 @@ from tcm_control.initialise_config import (
     resolve_tube_cleaning,
 )
 from tcm_control.devices.camera import DEFAULT_SCALE_MM_PER_PX
+from tcm_control.devices.vertical_stage import (
+    DEFAULT_POLL_INTERVAL_S, DEFAULT_TIMEOUT_S, DEFAULT_TOLERANCE_MM, VerticalStage,
+)
 from tcm_control.logger import write_run_metadata
+from tcm_control.user_input import set_spraytec_pos
 
 
 class ConfigSchemaTests(unittest.TestCase):
@@ -32,24 +37,23 @@ class ConfigSchemaTests(unittest.TestCase):
 [experiment]
 mode = "piv"
 series_directory = "None"
-[devices.cough_machine.inputs.tank]
+[run.tank]
 pressure_bar = 2.5
 [devices.spraytec]
 enabled = true
 [devices.ops]
 enabled = true
-[devices.ops.inputs]
 pre_run_s = "unused"
 """)
         self.assertFalse(config["experiment"]["save_data"])
-        self.assertFalse(config["inputs"]["cough"]["debug_mode"])
+        self.assertFalse(config["run"]["debug_mode"])
         self.assertFalse(config["devices"]["ops"]["enabled"])
         self.assertFalse(config["devices"]["spraytec"]["enabled"])
-        camera = config["devices"]["camera"]["inputs"]
+        camera = config["devices"]["camera"]
         self.assertEqual(camera["flip"], "vertical")
         self.assertTrue(camera["live_preview"])
         self.assertEqual(camera["scale_mm_per_px"], DEFAULT_SCALE_MM_PER_PX)
-        tank = config["devices"]["cough_machine"]["inputs"]["tank"]
+        tank = config["run"]["tank"]
         self.assertEqual((tank["pressure_bar"], tank["settling_time_s"]), (2.5, 60.0))
 
     def test_missing_pressure_is_prompted_and_validated(self):
@@ -57,10 +61,10 @@ pre_run_s = "unused"
         with patch("tcm_control.initialise_config.prompt_input", side_effect=["8", "2.5"]) as prompt:
             config = self.load(text)
         self.assertEqual(prompt.call_count, 2)
-        self.assertEqual(config["devices"]["cough_machine"]["inputs"]["tank"]["pressure_bar"], 2.5)
+        self.assertEqual(config["run"]["tank"]["pressure_bar"], 2.5)
 
     def test_missing_series_directory_is_selected(self):
-        text = '[experiment]\nmode = "piv"\n[devices.cough_machine.inputs.tank]\npressure_bar = 2\n'
+        text = '[experiment]\nmode = "piv"\n[run.tank]\npressure_bar = 2\n'
         with patch("tcm_control.initialise_config.ensure_directory_path", return_value=Path("/selected")) as picker:
             config = self.load(text)
         picker.assert_called_once()
@@ -72,15 +76,15 @@ pre_run_s = "unused"
 [experiment]
 mode = "film"
 series_directory = "None"
-[devices.cough_machine.inputs.tank]
+[run.tank]
 pressure_bar = 2.5
-[devices.pump.syringe]
+[devices.syringe_pump]
 syringe_vendor_code = "hm2"
 syringe_volume_mL = 100
 syringe_diameter_mm = 32
 syringe_gang = 1
 syringe_force_percent = 100
-[devices.pump.layer]
+[film.layer]
 film_settling_time_s = 30
 infuse_volume_ml = 3.5
 infuse_rate_ml_min = 15
@@ -107,15 +111,15 @@ withdraw_rate_ml_min = 5
 
     def test_invalid_ops_fields_and_unknown_settings_are_rejected(self):
         with self.assertRaises(ValidationError):
-            ExperimentConfig.model_validate({"devices": {"ops": {"inputs": {"pre_run_s": 50, "post_run_s": 10}}}})
+            ExperimentConfig.model_validate({"devices": {"ops": {"pre_run_s": 50, "post_run_s": 10}}})
         with self.assertRaises(ValidationError):
-            ExperimentConfig.model_validate({"devices": {"ops": {"inputs": {"alarm_threshold": 10001}}}})
+            ExperimentConfig.model_validate({"devices": {"ops": {"alarm_threshold": 10001}}})
         with self.assertRaises(ValidationError):
-            ExperimentConfig.model_validate({"devices": {"ops": {"inputs": {"bin_boundaries_um": [0.3] * 17}}}})
+            ExperimentConfig.model_validate({"devices": {"ops": {"bin_boundaries_um": [0.3] * 17}}})
         with self.assertRaises(ValidationError):
-            ExperimentConfig.model_validate({"devices": {"ops": {"inputs": {"position": 123}}}})
+            ExperimentConfig.model_validate({"geometry": {"ops": {"position": 123}}})
         with self.assertRaises(ValidationError):
-            ExperimentConfig.model_validate({"inputs": {"cough": {"unknown": 1}}})
+            ExperimentConfig.model_validate({"run": {"unknown": 1}})
 
     def test_device_flags_are_independent(self):
         for ops in (False, True):
@@ -133,7 +137,7 @@ withdraw_rate_ml_min = 5
             with patch("tcm_control.initialise_config.prompt_input", side_effect=["50", "10", "9"]) as prompt:
                 config = self.load(source)
         self.assertEqual(prompt.call_count, 3)
-        ops = config["devices"]["ops"]["inputs"]
+        ops = config["devices"]["ops"]
         self.assertEqual((ops["pre_run_s"], ops["post_run_s"]), (50, 9))
 
     def test_generated_template_is_current_and_valid_toml(self):
@@ -143,7 +147,10 @@ withdraw_rate_ml_min = 5
         parsed = tomllib.loads(generated)
         self.assertFalse(parsed["devices"]["ops"]["enabled"])
         self.assertFalse(parsed["devices"]["spraytec"]["enabled"])
-        self.assertNotIn("pressure_bar", parsed["devices"]["cough_machine"]["inputs"]["tank"])
+        self.assertNotIn("pressure_bar", parsed["run"]["tank"])
+        self.assertNotIn("drying", parsed["run"])
+        self.assertNotIn("vertical_stage", parsed["devices"])
+        self.assertLess(generated.index("cycle_count ="), generated.index("# dry_pressure_bar"))
 
     def test_template_indentation_matches_section_depth(self):
         generated = render_config_template()
@@ -157,6 +164,25 @@ withdraw_rate_ml_min = 5
             self.assertEqual(len(line) - len(text), depth * 4, line)
         unindented = "\n".join(line.lstrip() for line in generated.splitlines())
         self.assertEqual(tomllib.loads(generated), tomllib.loads(unindented))
+
+    def test_template_includes_parent_sections_with_descriptions(self):
+        generated = render_config_template()
+        for section, description in (
+            ("film", "Settings used in film mode."),
+            ("piv", "Settings used in PIV mode."),
+            ("devices", "Device configuration."),
+            ("geometry", "Measurement geometry and positions."),
+        ):
+            self.assertIn(f"[{section}]\n# {description}", generated)
+        self.assertIn("[film.layer]", generated)
+        self.assertIn("[piv.nebuliser]", generated)
+
+    def test_vertical_stage_defaults_are_shared_by_call_chain(self):
+        expected = {"tolerance_mm": DEFAULT_TOLERANCE_MM, "timeout_s": DEFAULT_TIMEOUT_S,
+                    "poll_interval_s": DEFAULT_POLL_INTERVAL_S}
+        for function in (set_spraytec_pos, VerticalStage.set_spraytec_height, VerticalStage.set_lift_height):
+            parameters = inspect.signature(function).parameters
+            self.assertEqual({name: parameters[name].default for name in expected}, expected)
 
     def test_template_documents_all_defaults(self):
         generated = render_config_template()
@@ -172,9 +198,23 @@ withdraw_rate_ml_min = 5
     def test_active_config_is_valid_toml_and_uses_camera_default(self):
         path = Path("src/tcm_control/config/config_spraytec.toml")
         parsed = tomllib.loads(path.read_text(encoding="utf-8"))
-        self.assertNotIn("scale_mm_per_px", parsed["devices"]["camera"]["inputs"])
+        self.assertNotIn("scale_mm_per_px", parsed["devices"]["camera"])
         config = ExperimentConfig.model_validate(parsed)
-        self.assertEqual(config.devices.camera.inputs.scale_mm_per_px, DEFAULT_SCALE_MM_PER_PX)
+        self.assertEqual(config.devices.camera.scale_mm_per_px, DEFAULT_SCALE_MM_PER_PX)
+
+    def test_active_film_config_retains_device_and_geometry_settings(self):
+        source = Path("src/tcm_control/config/config_spraytec.toml").read_text(encoding="utf-8")
+        raw = tomllib.loads(source)
+        with patch("tcm_control.initialise_config.ensure_directory_path", return_value=Path("/selected")):
+            with patch("tcm_control.initialise_config.prompt_input") as prompt:
+                config = self.load(source)
+        prompt.assert_not_called()
+        self.assertTrue(config["devices"]["ops"]["enabled"])
+        self.assertTrue(config["devices"]["spraytec"]["enabled"])
+        self.assertEqual(config["geometry"], raw["geometry"])
+        self.assertEqual(config["film"]["layer"], raw["film"]["layer"])
+        self.assertEqual(config["devices"]["syringe_pump"], raw["devices"]["syringe_pump"])
+        self.assertEqual(config["run"]["cleaning"], raw["run"]["cleaning"])
 
     def test_regeneration_script_replaces_only_its_template(self):
         source = Path("src/tcm_control/config/regenerate_template.py").read_text(encoding="utf-8")

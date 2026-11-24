@@ -152,9 +152,9 @@ if __name__ == "__main__":
     # if specs_path.exists():
     #     config = tomllib.load(specs_path.open("rb"))
 
-    # syringe_inputs = config["devices"]["pump"]["syringe"]
-    # layer = config["devices"]["pump"]["layer"]
-    # clean_tube = config["devices"]["pump"]["clean_tube"]
+    # syringe_inputs = config["devices"]["syringe_pump"]
+    # layer = config["film"]["layer"]
+    # clean_tube = config["film"]["clean_tube"]
 
     # pump = SyringePump(syringe_inputs["syringe_vendor_code"],
     #                    syringe_inputs["syringe_volume_mL"],

@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
 from tcm_control import logger
+from tcm_control.devices.vertical_stage import DEFAULT_POLL_INTERVAL_S, DEFAULT_TIMEOUT_S, DEFAULT_TOLERANCE_MM
 from tcm_utils.io_utils import prompt_input, prompt_yes_no, wait_with_progress
 
 if TYPE_CHECKING:
@@ -55,9 +56,9 @@ def set_spraytec_pos(
     spraytec_target_z_mm: Optional[float] = None,
     stage_pos_x_mm: Optional[float] = None,
     stage_pos_y_mm: Optional[float] = None,
-    tolerance_mm: float = 0.3,
-    timeout_s: float = 30.0,
-    poll_interval_s: float = 0.2,
+    tolerance_mm: float = DEFAULT_TOLERANCE_MM,
+    timeout_s: float = DEFAULT_TIMEOUT_S,
+    poll_interval_s: float = DEFAULT_POLL_INTERVAL_S,
 ) -> tuple[float, float, float, float, float, float, float]:
     """Return SprayTec x/y/z from known geometry and requested stage position.
 

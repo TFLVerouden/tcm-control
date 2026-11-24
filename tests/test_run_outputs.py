@@ -260,28 +260,29 @@ class RunOutputTests(unittest.TestCase):
                 config = {
                     "experiment": {"mode": mode, "save_data": save, "series_directory": str(root),
                                    "name": "test", "config_file_path": root / "config.toml"},
-                    "inputs": {"cough": {"debug_mode": False, "nr_runs": count,
-                                          "multi_run_interval_s": 0,
-                                          "confirm_before_starting_next_run": False}},
-                    "devices": {
-                        "cough_machine": {"inputs": {"tank": dict.fromkeys(
-                            ("pressure_bar", "settling_time_s", "avg_window_s", "tolerance_bar",
-                             "poll_interval_s", "intermediate_diff_bar", "intermediate_time_s"), 0),
-                            "cleaning": cleaning, "drying": cleaning, "wait_before_run_us": 0,
-                            "flow_curve_csv_path": "curve.csv",
-                            "nebuliser": {"pressure_bar": 0, "fill_time_s": 0,
-                                          "pre_run_start_s": 0, "post_run_finish_s": 0}}},
-                        "pump": {"syringe": dict.fromkeys(("syringe_vendor_code", "syringe_volume_mL",
-                            "syringe_diameter_mm", "syringe_gang", "syringe_force_percent"), 0),
-                            "layer": dict.fromkeys(("infuse_volume_ml", "infuse_rate_ml_min",
+                    "run": {"debug_mode": False, "nr_runs": count,
+                            "multi_run_interval_s": 0,
+                            "confirm_before_starting_next_run": False,
+                            "tank": dict.fromkeys(
+                                ("pressure_bar", "settling_time_s", "avg_window_s", "tolerance_bar",
+                                 "poll_interval_s", "intermediate_diff_bar", "intermediate_time_s"), 0),
+                            "cleaning": cleaning, "wait_before_run_us": 0,
+                            "flow_curve_csv_path": "curve.csv"},
+                    "piv": {"nebuliser": {"pressure_bar": 0, "fill_time_s": 0,
+                                           "pre_run_start_s": 0, "post_run_finish_s": 0}},
+                    "film": {"layer": dict.fromkeys(("infuse_volume_ml", "infuse_rate_ml_min",
                                 "withdraw_volume_ml", "withdraw_rate_ml_min", "film_settling_time_s"), 0),
-                            "clean_tube": {}},
-                        "camera": {"inputs": {"camera_exposure_us": 1, "roi": [], "flip": None,
+                             "clean_tube": {}},
+                    "geometry": {"ops": {"position": position}},
+                    "devices": {
+                        "syringe_pump": dict.fromkeys(("syringe_vendor_code", "syringe_volume_mL",
+                            "syringe_diameter_mm", "syringe_gang", "syringe_force_percent"), 0),
+                        "camera": {"camera_exposure_us": 1, "roi": [], "flip": None,
                                                "camera_gain_db": 0, "scale_mm_per_px": 1,
-                                               "live_preview": live}},
-                        "vertical_stage": {"inputs": {}}, "spraytec": {"enabled": False, "inputs": {}},
-                        "ops": {"enabled": record_ops and mode == "film", "inputs": {"bin_boundaries_um": [], "alarm_threshold": 4000,
-                                          "pre_run_s": 10, "post_run_s": 10, "position": position}},
+                                               "live_preview": live},
+                        "spraytec": {"enabled": False},
+                        "ops": {"enabled": record_ops and mode == "film", "bin_boundaries_um": [], "alarm_threshold": 4000,
+                                "pre_run_s": 10, "post_run_s": 10},
                     },
                 }
                 (root / "config.toml").write_text("")
@@ -351,7 +352,7 @@ class RunOutputTests(unittest.TestCase):
                 self.assertEqual(position_prompt.call_count, int(mode == "film" and record_ops and not position))
                 if save and not fail_fan and not fail_preview:
                     if mode == "film" and record_ops:
-                        self.assertEqual(config["devices"]["ops"]["inputs"]["position"],
+                        self.assertEqual(config["geometry"]["ops"]["position"],
                                          position or "Beside the trachea")
                 if fail_preview:
                     self.assertEqual(events, ["ops-connect", "preview-open", "preview-frame",
@@ -435,7 +436,7 @@ class RunOutputTests(unittest.TestCase):
         }
         with patch.dict(sys.modules, modules):
             logger = load_module("_test_logger", "src/tcm_control/logger.py")
-            config = {"devices": {"ops": {"inputs": {"pre_run_s": 10, "position": "Beside the trachea"}}}}
+            config = {"devices": {"ops": {"pre_run_s": 10}}, "geometry": {"ops": {"position": "Beside the trachea"}}}
             values = dict(time_start="start", time_finish="finish", output_dir=Path("."),
                           tcm=fake_module(name="fake", serial_settings={}),
                           temperature_start=18, temperature_finish=19, humidity_start=30, humidity_finish=50)
@@ -448,7 +449,7 @@ class RunOutputTests(unittest.TestCase):
             ops_meta = logger.build_run_metadata(
                 config, **values, ops=fake_module(metadata=lambda: {"model": "3330"}))
             self.assertEqual(ops_meta["runtime"]["devices"]["ops"]["model"], "3330")
-            self.assertEqual(ops_meta["configuration"]["devices"]["ops"]["inputs"]["pre_run_s"], 10)
+            self.assertEqual(ops_meta["configuration"]["devices"]["ops"]["pre_run_s"], 10)
 
 
 if __name__ == "__main__":

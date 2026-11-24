@@ -19,8 +19,8 @@ with metadata_path.open("r", encoding="utf-8") as fh:
     payload = json.load(fh)
 experiment_dir = Path(payload["runtime"]["output_dir"])
 time_start = payload["runtime"]["time"]["start"]
-spraytec_append_file_path = payload["configuration"]["devices"]["spraytec"]["inputs"]["append_file_path"]
-nr_runs = payload["configuration"]["inputs"]["cough"]["nr_runs"]
+spraytec_append_file_path = payload["configuration"]["devices"]["spraytec"]["append_file_path"]
+nr_runs = payload["configuration"]["run"]["nr_runs"]
 run_dirs = [
     experiment_dir / ("run" if nr_runs == 1 else f"run{index}")
     for index in range(1, nr_runs + 1)

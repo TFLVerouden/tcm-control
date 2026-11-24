@@ -4,6 +4,11 @@ from typing import Optional
 from .base_serial import PoFSerialDevice
 
 
+DEFAULT_TOLERANCE_MM = 0.3
+DEFAULT_TIMEOUT_S = 30.0
+DEFAULT_POLL_INTERVAL_S = 0.2
+
+
 class VerticalStage(PoFSerialDevice):
     def __init__(
         self,
@@ -42,9 +47,9 @@ class VerticalStage(PoFSerialDevice):
         height_mm: float,
         *,
         wait_for_target: bool = True,
-        tolerance_mm: float = 0.3,
-        timeout_s: float = 30.0,
-        poll_interval_s: float = 0.2,
+        tolerance_mm: float = DEFAULT_TOLERANCE_MM,
+        timeout_s: float = DEFAULT_TIMEOUT_S,
+        poll_interval_s: float = DEFAULT_POLL_INTERVAL_S,
         echo: Optional[bool] = None,
     ) -> Optional[float]:
         """Move lift to absolute height in mm via command syntax ``m#.###``.
@@ -114,9 +119,9 @@ class VerticalStage(PoFSerialDevice):
         table_height_mm: float,
         spraytec_to_lift_z_mm: float,
         wait_for_target: bool = True,
-        tolerance_mm: float = 0.3,
-        timeout_s: float = 30.0,
-        poll_interval_s: float = 0.2,
+        tolerance_mm: float = DEFAULT_TOLERANCE_MM,
+        timeout_s: float = DEFAULT_TIMEOUT_S,
+        poll_interval_s: float = DEFAULT_POLL_INTERVAL_S,
         echo: Optional[bool] = None,
     ) -> tuple[Optional[float], Optional[float]]:
         """Set SprayTec measurement height by inverting the current geometry equation.

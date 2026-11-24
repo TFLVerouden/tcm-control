@@ -89,7 +89,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     # --------------------------------------------------------------------------
 
     # Initialise cough machine
-    cough_inputs = config["inputs"]["cough"]
+    cough_inputs = config["run"]
     tcm = CoughMachine(debug=cough_inputs["debug_mode"])
 
     # Register devices so interrupt cleanup can stop them.
@@ -182,17 +182,17 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         # 4) Set up devices and resolve run geometry
         # --------------------------------------------------------------
 
-        ops_inputs = config["devices"]["ops"]["inputs"]
+        ops_inputs = config["devices"]["ops"]
         if record_droplet_size_ops and experiment_mode == "film":
             assert ops_inputs is not None
             ops = OpticalParticleSizer(
                 bin_boundaries_um=ops_inputs["bin_boundaries_um"],
                 alarm_threshold=ops_inputs["alarm_threshold"],
             )
-            ops_position = ops_inputs["position"] or prompt_input(
+            ops_position = config["geometry"]["ops"]["position"] or prompt_input(
                 "Describe the OPS position and press ENTER: ", value_type="string"
             )
-            ops_inputs["position"] = ops_position
+            config["geometry"]["ops"]["position"] = ops_position
 
         # # In droplet and PIV modes, set up the pump
         # if experiment_mode in ["droplet", "piv"]:
@@ -210,7 +210,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         tcm.clear_memory()
 
         # Load flow curve
-        cough_machine_inputs = config["devices"]["cough_machine"]["inputs"]
+        cough_machine_inputs = config["run"]
         tcm.load_flowcurve(
             csv_path=cough_machine_inputs["flow_curve_csv_path"],
             experiment_dir=output_dir if save_data else None,
@@ -241,7 +241,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         pump = None
         if experiment_mode == "film":
             # The camera output directory is changed to the current run below
-            camera_inputs = config["devices"]["camera"]["inputs"]
+            camera_inputs = config["devices"]["camera"]
             camera_output_dir = output_dir
             camera = Camera(exposure_us=camera_inputs["camera_exposure_us"],
                             output_dir=camera_output_dir,
@@ -253,7 +253,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             camera_inputs["camera_gain_db"] = camera.gain_db
 
             # TODO: Set up pump in droplet mode too
-            syringe_inputs = config["devices"]["pump"]["syringe"]
+            syringe_inputs = config["devices"]["syringe_pump"]
             pump = SyringePump(syringe_inputs["syringe_vendor_code"],
                                syringe_inputs["syringe_volume_mL"],
                                syringe_inputs["syringe_diameter_mm"],
@@ -268,34 +268,31 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         spraytec_x_mm = spraytec_y_mm = spraytec_z_mm = None
         stage_pos_z_mm = spraytec_laser_intensity = None
         if record_droplet_size_spraytec:
-            spraytec_inputs = config["devices"]["spraytec"]["inputs"]
-            vertical_stage_inputs = config["devices"]["vertical_stage"]["inputs"]
+            spraytec_inputs = config["devices"]["spraytec"]
+            spraytec_geometry = config["geometry"]["spraytec"]
             # Vertical stage is only needed when SprayTec measurements are enabled.
             vertical_stage = VerticalStage()
             spraytec_x_mm, spraytec_y_mm, spraytec_z_mm, stage_pos_x_mm, stage_pos_y_mm, spraytec_target_z_mm, stage_pos_z_mm = set_spraytec_pos(
                 vertical_stage,
-                spraytec_inputs["tcm_trachea_exit_to_ref_x_mm"],
-                spraytec_inputs["tcm_trachea_exit_to_ref_y_mm"],
-                spraytec_inputs["spraytec_to_ref_x_mm"],
-                spraytec_inputs["spraytec_to_ref_y_mm"],
-                spraytec_inputs["tcm_trachea_bottom_z_mm"],
-                spraytec_inputs["tcm_trachea_height_mm"],
-                spraytec_inputs["lift_zero_z_mm"],
-                spraytec_inputs["table_height_mm"],
-                spraytec_inputs["spraytec_to_lift_z_mm"],
-                spraytec_inputs["stage_pos_x_zero_mm"],
-                spraytec_inputs["stage_pos_y_zero_mm"],
-                spraytec_target_z_mm=spraytec_inputs["position"]["spraytec_target_z_mm"],
-                stage_pos_x_mm=spraytec_inputs["position"]["stage_pos_x_mm"],
-                stage_pos_y_mm=spraytec_inputs["position"]["stage_pos_y_mm"],
-                tolerance_mm=vertical_stage_inputs["tolerance_mm"],
-                timeout_s=vertical_stage_inputs["timeout_s"],
-                poll_interval_s=vertical_stage_inputs["poll_interval_s"],
+                spraytec_geometry["tcm_trachea_exit_to_ref_x_mm"],
+                spraytec_geometry["tcm_trachea_exit_to_ref_y_mm"],
+                spraytec_geometry["spraytec_to_ref_x_mm"],
+                spraytec_geometry["spraytec_to_ref_y_mm"],
+                spraytec_geometry["tcm_trachea_bottom_z_mm"],
+                spraytec_geometry["tcm_trachea_height_mm"],
+                spraytec_geometry["lift_zero_z_mm"],
+                spraytec_geometry["table_height_mm"],
+                spraytec_geometry["spraytec_to_lift_z_mm"],
+                spraytec_geometry["stage_pos_x_zero_mm"],
+                spraytec_geometry["stage_pos_y_zero_mm"],
+                spraytec_target_z_mm=spraytec_geometry["position"]["spraytec_target_z_mm"],
+                stage_pos_x_mm=spraytec_geometry["position"]["stage_pos_x_mm"],
+                stage_pos_y_mm=spraytec_geometry["position"]["stage_pos_y_mm"],
             )
             # Persist resolved/manual stage inputs for traceability in metadata.
-            spraytec_inputs["position"]["stage_pos_x_mm"] = stage_pos_x_mm
-            spraytec_inputs["position"]["stage_pos_y_mm"] = stage_pos_y_mm
-            spraytec_inputs["position"]["spraytec_target_z_mm"] = spraytec_target_z_mm
+            spraytec_geometry["position"]["stage_pos_x_mm"] = stage_pos_x_mm
+            spraytec_geometry["position"]["stage_pos_y_mm"] = stage_pos_y_mm
+            spraytec_geometry["position"]["spraytec_target_z_mm"] = spraytec_target_z_mm
 
             spraytec = SprayTec(
                 append_file_path=spraytec_inputs["append_file_path"],
@@ -390,7 +387,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 # 5B) Film atomisation mode
                 # ------------------------------------------------------
                 # Explicitly require operator confirmation of syringe being filled
-                layer_inputs = config["devices"]["pump"]["layer"]
+                layer_inputs = config["film"]["layer"]
                 confirm_syringe_filled = prompt_yes_no(
                     "Press ENTER to confirm the syringe is filled with > "
                     f"{layer_inputs['infuse_volume_ml']} mL...",
@@ -408,8 +405,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     if pump is not None:
                         # Resolve tube-cleaning settings only when cleaning is selected
                         cleaning_tube_inputs = resolve_tube_cleaning(
-                            config["devices"]["pump"]["clean_tube"])
-                        config["devices"]["pump"]["clean_tube"] = cleaning_tube_inputs
+                            config["film"]["clean_tube"])
+                        config["film"]["clean_tube"] = cleaning_tube_inputs
                         pump.clean_tubes(volume_ml_layer=cleaning_tube_inputs["volume_ml_layer"],
                                          rate_ml_min_layer=cleaning_tube_inputs["rate_ml_min_layer"],
                                          volume_ml_repetition=cleaning_tube_inputs["volume_ml_repetition"],
@@ -420,10 +417,10 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     tcm.clean(
                         clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
                         clean_valve_open_duration_s=cleaning_inputs["valve_open_duration_s"],
+                        clean_cycle_count=cleaning_inputs["cycle_count"],
                         dry_pressure_bar=cleaning_inputs["dry_pressure_bar"],
                         dry_duration_s=cleaning_inputs["dry_duration_s"],
                         dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"],
-                        clean_cycle_count=cleaning_inputs["cycle_count"],
                     )
 
                 # Execute repeated runs
@@ -577,20 +574,10 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     tcm.clean(
                         clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
                         clean_valve_open_duration_s=cleaning_inputs["valve_open_duration_s"],
+                        clean_cycle_count=cleaning_inputs["cycle_count"],
                         dry_pressure_bar=cleaning_inputs["dry_pressure_bar"],
                         dry_duration_s=cleaning_inputs["dry_duration_s"],
                         dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"],
-                        clean_cycle_count=cleaning_inputs["cycle_count"],
-                    )
-
-                    drying = cough_machine_inputs["drying"]
-                    tcm.clean(
-                        clean_pressure_bar=drying["clean_pressure_bar"],
-                        clean_valve_open_duration_s=drying["valve_open_duration_s"],
-                        dry_pressure_bar=drying["dry_pressure_bar"],
-                        dry_duration_s=drying["dry_duration_s"],
-                        dry_valve_current_ma=drying["dry_valve_current_ma"],
-                        clean_cycle_count=drying["cycle_count"],
                     )
 
                     # Image the channel after cleaning
@@ -604,7 +591,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 # ------------------------------------------------------------------
 
                 # Initialise nebuliser parameters
-                nebuliser_inputs = cough_machine_inputs["nebuliser"]
+                nebuliser_inputs = config["piv"]["nebuliser"]
                 nebuliser_pressure_bar = nebuliser_inputs["pressure_bar"]
                 nebuliser_fill_time_s = nebuliser_inputs["fill_time_s"]
 
@@ -729,10 +716,10 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         # Run cleaning routine every cycle
                         tcm.clean(clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
                                   clean_valve_open_duration_s=cleaning_inputs["valve_open_duration_s"],
+                                  clean_cycle_count=cleaning_inputs["cycle_count"],
                                   dry_pressure_bar=cleaning_inputs["dry_pressure_bar"],
                                   dry_duration_s=cleaning_inputs["dry_duration_s"],
-                                  dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"],
-                                  clean_cycle_count=cleaning_inputs["cycle_count"])
+                                  dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"])
 
         # ------------------------------------------------------------------
         # 6) Finalize run and write (meta)data
@@ -760,7 +747,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 )
                 # TODO: Add some print statements in save_data so user is not wondering what is going on.
                 spraytec_audit_path = spraytec.save_data(
-                    append_file_path=config["devices"]["spraytec"]["inputs"]["append_file_path"],
+                    append_file_path=config["devices"]["spraytec"]["append_file_path"],
                     start_time=time_start,
                     debug=cough_inputs["debug_mode"],
                     offer_archive_if_large=True,

@@ -85,13 +85,13 @@ Set the connection defaults in `OpticalParticleSizer.__init__` to match the
 address shown on the instrument. The instrument must already be powered on.
 After moving a USB connection from another PC, it may need a power cycle.
 
-Set `[devices.ops.inputs]` for the 17 boundaries of the 16 size channels, the
+Set `[devices.ops]` for the 17 boundaries of the 16 size channels, the
 number-concentration alarm threshold, and the pre- and post-run recording times.
 The defaults in the example config are 10 seconds on either side. Recording
 starts once the instrument reports it is running; the post-run interval starts
 at the cough machine's completion event. One-second samples are written to
 `ops.csv` in each run folder, and device identity, settings and connection
-information go in experiment metadata. Set `position` to a description or
+information go in experiment metadata. Set `[geometry.ops].position` to a description or
 leave it empty to be prompted once. The description is saved in the metadata.
 The instrument's humidity field is a
 placeholder and is not an ambient humidity measurement. Unit measurements in
@@ -116,6 +116,12 @@ Existing prompt conditions are `mode`, `always`, `film`, `ops`, `spraytec`,
 `clean_tube`, and `clean_repetition`. Use an optional field with a default of
 `None` for a value that should be prompted when its condition applies.
 
+Settings are grouped under `experiment`, `run`, `film`, `piv`, `droplet`,
+`devices`, and `geometry`. Older config and metadata paths must be updated to
+match this layout. `[run.cleaning]` controls the cleaning cycles and the
+optional drying phase that follows them. Vertical-stage motion defaults are
+defined in `devices/vertical_stage.py`, rather than the experiment config.
+
 The documented `src/tcm_control/config/config_template.toml` is generated from
 the models. Regenerate it after changing the schema (this overwrites the
 template). Entries marked optional with a default use that value when omitted;
@@ -139,25 +145,25 @@ validated again before use.
 
 ### Camera ROI
 
-Set `[devices.camera.inputs].camera_gain_db` to a number to configure gain in
+Set `[devices.camera].camera_gain_db` to a number to configure gain in
 dB, or omit it to leave the camera's gain unchanged. The configured value is
 included in run metadata. For direct use, pass `gain_db=...` to `Camera` or
 call `camera.set_gain(...)`. Supported gain limits depend on the camera.
 
-Set `[devices.camera.inputs].roi` to `[y_start, y_end, x_start, x_end]` in
+Set `[devices.camera].roi` to `[y_start, y_end, x_start, x_end]` in
 pixels. End coordinates are exclusive; `0` means the full extent, and negative
 coordinates count from the image edge. The default `[0, 0, 0, 0]` saves the
 full frame. The image is cropped after capture, and the configured ROI is saved
-in metadata under `configuration.devices.camera.inputs.roi`.
+in metadata under `configuration.devices.camera.roi`.
 
-Set `[devices.camera.inputs].flip` to `"vertical"`, `"horizontal"`, or `"both"`
+Set `[devices.camera].flip` to `"vertical"`, `"horizontal"`, or `"both"`
 to flip the image after cropping. The default is `"vertical"`; set it to an
 empty string for no flip. The selected setting is also saved in metadata.
 
 Camera snapshots are saved as TIFF files. Explicit `output_path` values must
 end in `.tif` or `.tiff`.
 
-Live preview defaults to enabled. Set `[devices.camera.inputs].live_preview`
+Live preview defaults to enabled. Set `[devices.camera].live_preview`
 to `false` to disable the local window during
 film infusion, withdrawal and settling. The light stays on while the window is
 open when the preview is enabled. Close the window or press `q` to continue without the preview. The
