@@ -28,7 +28,6 @@ from tcm_control.user_input import (
 )
 from tcm_utils.file_dialogs import ensure_directory_path
 from tcm_utils.io_utils import (
-    ensure_non_empty_text,
     prompt_input,
     prompt_yes_no,
     wait_with_progress,
@@ -116,25 +115,26 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
         latest_experiment_name = logger.latest_experiment_display_name(
             series_directory)
-        experiment_prompt = "Enter experiment name: "
+        experiment_prompt = "Enter experiment name"
         if latest_experiment_name is not None:
             experiment_prompt = (
                 "Enter experiment name "
-                f"(latest in series: {latest_experiment_name}): "
+                f"(latest in series: {latest_experiment_name})"
             )
     else:
         # If data is not being saved, we don't need a series directory or name
         series_directory = None
         experiment_prompt = ""
-        print("Data saving disabled via config setting series_directory='None'.")
+        print("Data saving disabled via config setting experiment.save_data=false.")
 
     if save_data:
-        # The name is used for folder naming, so it is required when saving.
-        experiment_name = ensure_non_empty_text(
-            config["experiment"]["name"],
-            prompt=experiment_prompt,
-            empty_error="Experiment name cannot be empty.",
-        )
+        experiment_name = config["experiment"]["name"]
+        if experiment_name is None:
+            prompt = experiment_prompt or "Enter experiment name"
+            experiment_name = prompt_input(
+                f"{prompt} (optional; press ENTER to skip): ",
+                value_type="string",
+            ).strip() or None
     else:
         experiment_name = None
     config["experiment"]["name"] = experiment_name
@@ -146,8 +146,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     if save_data:
         assert series_directory is not None
         assert console_log is not None
-        assert experiment_name is not None
-        if record_droplet_size_spraytec:
+        if record_droplet_size_spraytec and experiment_name is not None:
             # Warn (but proceed) if SprayTec won't be able to display the full name
             warn_if_experiment_dir_name_too_long(time_start, experiment_name)
         # Create output directory for this experiment.
@@ -791,7 +790,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         else:
             print("Experiment completed.")
             if not save_data:
-                print("No data was saved (series_directory='None').")
+                print("No data was saved (experiment.save_data=false).")
             print("Exiting.")
     finally:
         # Close console capture even if resetting the fan fails

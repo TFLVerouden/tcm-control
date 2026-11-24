@@ -29,7 +29,7 @@ CONSOLE_LOGS_SUBDIR = "host_console_logs"
 
 def create_experiment_dir(
     experiment_dir: Path,
-    experiment_name: str,
+    experiment_name: str | None,
     start_time: str | None = None,
 ) -> Path:
     """Create a timestamped output directory for one experiment."""
@@ -39,7 +39,7 @@ def create_experiment_dir(
         start_time = timestamp_str()
 
     # Create the experiment directory
-    dir_name = f"{start_time}_{experiment_name}"
+    dir_name = f"{start_time}_{experiment_name}" if experiment_name else start_time
     experiment_dir = experiment_dir / dir_name
     experiment_dir.mkdir(parents=True, exist_ok=False)
 

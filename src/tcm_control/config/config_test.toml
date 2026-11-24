@@ -1,0 +1,184 @@
+[experiment]
+# Experiment name; leave empty to be prompted when saving (optional).
+name = "Test" # optional; see description
+# Experiment mode: "film", "piv" or "droplet".
+mode = "film" # prompted when required
+# Save experiment data to disk.
+save_data = true # optional; default: true
+series_directory =  "C:\\Data\\Tests" # optional; see description
+
+[run]
+# Enable cough-machine debug mode.
+debug_mode = false  # optional; default: false
+# Number of coughs in the experiment.
+nr_runs = 1  # optional; default: 1
+# Wait between runs in seconds.
+multi_run_interval_s = 0.0  # optional; default: 0.0
+# Ask for confirmation before each subsequent run.
+confirm_before_starting_next_run = true  # optional; default: true
+# Flow-curve path or name; leave empty to select a CSV.
+flow_curve_csv_path = "gupta_71kg_1-94m" # optional; see description
+# Controller pre-trigger wait in milliseconds.
+wait_before_run_ms = 0.0  # optional; default: 0.0
+
+    [run.tank]
+    # Tank pressure in bar.
+    pressure_bar = 2.5 # prompted when required
+    # Pressure settling timeout in seconds.
+    settling_time_s = 60.0  # optional; default: 60.0
+    # Pressure averaging window in seconds.
+    avg_window_s = 5.0  # optional; default: 5.0
+    # Pressure tolerance in bar.
+    tolerance_bar = 0.05  # optional; default: 0.05
+    # Pressure polling interval in seconds.
+    poll_interval_s = 0.2  # optional; default: 0.2
+    # Intermediate pressure difference in bar; set together with intermediate_time_s.
+    intermediate_diff_bar = -0.1 # optional; see description
+    # Intermediate pressure hold time in seconds; set together with intermediate_diff_bar.
+    intermediate_time_s = 2.0 # optional; see description
+
+    [run.cleaning]
+    # Cleaning pressure in bar.
+    clean_pressure_bar = 4.0  # optional; default: 4.0
+    # Valve-open duration in seconds.
+    valve_open_duration_s = 2.5  # optional; default: 2.5
+    # Number of cleaning cycles before drying.
+    cycle_count = 0  # optional; default: 0
+    # Drying pressure in bar; omit to use cleaning pressure.
+    # dry_pressure_bar =  # optional; see description
+    # Drying duration in seconds.
+    dry_duration_s = 0.0  # optional; default: 0.0
+    # Drying valve current in mA.
+    dry_valve_current_ma = 14.0  # optional; default: 14.0
+
+[film]
+# Settings used in film mode.
+
+    [film.layer]
+    # Film settling time in seconds.
+    film_settling_time_s = 30 # prompted when required
+    # Volume infused to make the layer in mL.
+    infuse_volume_ml =  3.5 # prompted when required
+    # Layer infusion rate in mL/min.
+    infuse_rate_ml_min = 15 # prompted when required
+    # Volume withdrawn to make the layer in mL.
+    withdraw_volume_ml = 2.5 # prompted when required
+    # Layer withdrawal rate in mL/min.
+    withdraw_rate_ml_min = 5 # prompted when required
+
+    [film.clean_tube]
+    # Initial tube-cleaning infusion volume in mL.
+    # volume_ml_layer =  # prompted when required
+    # Initial tube-cleaning rate in mL/min.
+    # rate_ml_min_layer =  # prompted when required
+    # Volume per tube-cleaning repetition in mL.
+    # volume_ml_repetition =  # prompted when required
+    # Tube-cleaning repetition rate in mL/min.
+    # rate_ml_min_repetition =  # prompted when required
+    # Number of tube-cleaning repetitions.
+    repetitions = 0  # optional; default: 0
+
+[piv]
+# Settings used in PIV mode.
+
+    [piv.nebuliser]
+    # Nebuliser filling time in seconds.
+    fill_time_s = 60.0  # optional; default: 60.0
+    # Nebuliser pressure in bar.
+    pressure_bar = 0.1  # optional; default: 0.1
+    # Nebulisation time before the cough in seconds.
+    pre_run_start_s = 0.0  # optional; default: 0.0
+    # Nebulisation time after the cough in seconds.
+    post_run_finish_s = 0.0  # optional; default: 0.0
+
+[droplet]
+# Settings used in droplet mode.
+# Droplets to skip before recording in droplet mode.
+nr_droplets_to_skip_before_recording = 0  # optional; default: 0
+
+[devices]
+# Device configuration.
+
+    [devices.syringe_pump]
+    # Syringe vendor code.
+    syringe_vendor_code = "hm2" # prompted when required
+    # Syringe volume in mL.
+    syringe_volume_mL = 100.0 # prompted when required
+    # Syringe diameter in mm.
+    syringe_diameter_mm = 32.573 # prompted when required
+    # Number of syringes in the gang.
+    syringe_gang = 1 # prompted when required
+    # Pump force in percent, in multiples of 10.
+    syringe_force_percent = 100 # prompted when required
+
+    [devices.camera]
+    # Camera exposure in microseconds.
+    camera_exposure_us = 4000  # optional; default: 4000
+    # Camera gain in dB; omit to leave unchanged.
+    # camera_gain_db =  # optional; see description
+    # ROI [y_start, y_end, x_start, x_end]; end 0 means full extent.
+    roi = [0, 0, 0, 0]  # optional; default: [0, 0, 0, 0]
+    # Camera flip; empty disables it.
+    flip = "vertical"  # optional; default: "vertical"
+    # Camera calibration in mm per pixel.
+    scale_mm_per_px = 0.01614443137990558  # optional; default: 0.01614443137990558
+    # Show the live film preview.
+    live_preview = true  # optional; default: true
+
+    [devices.spraytec]
+    # Enable SprayTec recording in film mode.
+    enabled = false  # optional; default: false
+    # SprayTec append file; leave empty to select it.
+    # append_file_path =  # optional; see description
+
+    [devices.ops]
+    # Enable OPS recording in film mode.
+    enabled = false  # optional; default: false
+    # OPS recording time before the cough in seconds.
+    # pre_run_s =  # prompted when required
+    # OPS recording time after the cough in seconds.
+    # post_run_s =  # prompted when required
+    # OPS concentration alarm threshold in particles/cm3.
+    # alarm_threshold =  # prompted when required
+    # 17 OPS bin boundaries in micrometres, from 0.3 to 10.
+    # bin_boundaries_um =  # prompted when required
+
+[geometry]
+# Measurement geometry and positions.
+
+    [geometry.spraytec]
+    # Trachea bottom height in mm.
+    # tcm_trachea_bottom_z_mm =  # prompted when required
+    # Trachea height in mm.
+    # tcm_trachea_height_mm =  # prompted when required
+    # Lift zero height in mm.
+    # lift_zero_z_mm =  # prompted when required
+    # SprayTec-to-lift vertical offset in mm.
+    # spraytec_to_lift_z_mm =  # prompted when required
+    # Trachea-exit x offset from reference in mm.
+    # tcm_trachea_exit_to_ref_x_mm =  # prompted when required
+    # Trachea-exit y offset from reference in mm.
+    # tcm_trachea_exit_to_ref_y_mm =  # prompted when required
+    # SprayTec x offset from reference in mm.
+    # spraytec_to_ref_x_mm =  # prompted when required
+    # SprayTec y offset from reference in mm.
+    # spraytec_to_ref_y_mm =  # prompted when required
+    # Stage x zero ruler reading in mm.
+    # stage_pos_x_zero_mm =  # prompted when required
+    # Stage y zero ruler reading in mm.
+    # stage_pos_y_zero_mm =  # prompted when required
+    # Table height in mm.
+    # table_height_mm =  # prompted when required
+
+        [geometry.spraytec.position]
+        # Target SprayTec height in mm; leave empty to prompt.
+        # spraytec_target_z_mm =  # optional; see description
+        # Stage x ruler reading in mm; leave empty to prompt.
+        # stage_pos_x_mm =  # optional; see description
+        # Stage y ruler reading in mm; leave empty to prompt.
+        # stage_pos_y_mm =  # optional; see description
+
+    [geometry.ops]
+    # OPS position description; leave empty to prompt.
+    position = ""  # optional; default: ""
+# Series directory; leave empty to select one.

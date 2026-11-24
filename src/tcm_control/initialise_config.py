@@ -55,11 +55,13 @@ class Settings(BaseModel):
 
 class Experiment(Settings):
     name: str | None = setting(
-        "Experiment name; leave empty to prompt when saving.")
+        "Experiment name; leave empty to be prompted when saving (optional).")
     mode: Literal["film", "piv", "droplet"] | None = setting(
         "Experiment mode: \"film\", \"piv\" or \"droplet\".", required_for="mode")
+    save_data: StrictBool = setting(
+        "Save experiment data to disk.", default=True)
     series_directory: str | None = setting(
-        'Series directory; leave empty to select one, or use "None" to disable saving.')
+        "Series directory; leave empty to select one.")
 
     @field_validator("name", "series_directory")
     @classmethod
@@ -460,12 +462,10 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             contexts.add("spraytec")
     _prompt_required(config, contexts)
 
-    # A missing directory prompts; the explicit string "None" disables saving.
-    series = config.experiment.series_directory
-    save_data = not (series is not None and series.strip().lower() == "none")
-    if save_data:
+    if config.experiment.save_data:
         selected = ensure_directory_path(
-            series, key="tcm_series_directory", title="Select series directory",
+            config.experiment.series_directory, key="tcm_series_directory",
+            title="Select series directory",
             start=Path(__file__).resolve().parent,
         )
         if selected is None:
@@ -475,7 +475,6 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
         config.experiment.series_directory = None
 
     result = config.model_dump()
-    result["experiment"]["save_data"] = save_data
     result["experiment"]["config_file_path"] = config_file
     result["run"]["wait_before_run_us"] = int(
         config.run.wait_before_run_ms * 1000)

@@ -3,8 +3,10 @@
 name = "" # keep empty to prompt
 # Experiment mode: film, piv or droplet (not yet implemented).
 mode = "film" # droplet | film | piv
-# Series directory; leave empty to select one, or use "None" to disable saving.
-series_directory = 'C:\CoughMachineData\261005_PEO2MCampaign' # keep empty to prompt; set to "None" to disable saving data
+# Save experiment data to disk.
+save_data = true
+# Series directory; leave empty to select one.
+series_directory = 'C:\CoughMachineData\261005_PEO2MCampaign' # keep empty to prompt
 
 [run]
 # Enable cough-machine debug mode.
