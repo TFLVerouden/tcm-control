@@ -57,7 +57,7 @@ class Experiment(Settings):
     name: str | None = setting(
         "Experiment name; leave empty to prompt when saving.")
     mode: Literal["film", "piv", "droplet"] | None = setting(
-        "Experiment mode: film, piv or droplet (not yet implemented).", required_for="mode")
+        "Experiment mode: \"film\", \"piv\" or \"droplet\".", required_for="mode")
     series_directory: str | None = setting(
         'Series directory; leave empty to select one, or use "None" to disable saving.')
 
@@ -361,8 +361,12 @@ def _prompt_required(model: Settings, contexts: set[str], prefix: str = "") -> N
         if value is not None or required_for not in contexts:
             continue
         while True:
+            description = (field.description or "").strip().removesuffix(".")
+            if description:
+                description = description[0].lower() + description[1:]
             text = prompt_input(
-                f"{path}: {field.description} ", value_type="string")
+                f'Specify {description} ("config.{path}"): ',
+                value_type="string")
             candidate: Any = text
             if name == "bin_boundaries_um":
                 candidate = [item.strip()
