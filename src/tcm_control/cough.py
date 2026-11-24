@@ -182,49 +182,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
         # --------------------------------------------------------------
         # 4) Set up devices and resolve run geometry
-        # --------------------------------------------------------------
+        # ======================================================================
+        # External Device Connections
+        # ======================================================================
 
-        ops_inputs = config["devices"]["ops"]
-        if record_droplet_size_ops and experiment_mode == "film":
-            assert ops_inputs is not None
-            ops = OpticalParticleSizer(
-                bin_boundaries_um=ops_inputs["bin_boundaries_um"],
-                alarm_threshold=ops_inputs["alarm_threshold"],
-            )
-            ops_position = config["geometry"]["ops"]["position"] or prompt_input(
-                "Describe the OPS position and press ENTER: ", value_type="string"
-            )
-            config["geometry"]["ops"]["position"] = ops_position
-
-        # # In droplet and PIV modes, set up the pump
-        # if experiment_mode in ["droplet", "piv"]:
-        #     pump = SyringePump(
-        #         syringe_volume_ml=pump_inputs["syringe_volume_ml"],
-        #         syringe_diameter_mm=pump_inputs["syringe_diameter_mm"],
-        #     )
-        # pump = SyringePump2(pump_inputs)
-
-        #     # Register pump so interrupt cleanup can call stop() on it
-        #     set_active_pump(pump)
-
-        # Clear memory before starting the experiment; turn off fan
-        tcm.set_fan_speed(CoughMachine.FAN_SPEED_OFF)
-        tcm.clear_memory()
-
-        # Load flow curve
-        cough_machine_inputs = config["run"]
-        tcm.load_flowcurve(
-            csv_path=cough_machine_inputs["flow_curve_csv_path"],
-            experiment_dir=output_dir if save_data else None,
-        )
-        # Store the resolved flow curve path for metadata traceability.
-        cough_machine_inputs["flow_curve_csv_path"] = tcm.get_flowcurve_csv_path(
-        )
-
-        # Program the fixed pre-run wait into the cough machine controller
-        tcm.set_wait_us(wait_us=cough_machine_inputs["wait_before_run_us"])
-
-        # In film mode, set up the camera and pump
+        # Film mode: camera and syringe pump
         if experiment_mode == "film":
             # The camera output directory is changed to the current run below
             camera_inputs = config["devices"]["camera"]
@@ -248,7 +210,31 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
             # set_active_pump(pump)
 
-        # Optional SprayTec setup and geometry resolution
+        # # In droplet and PIV modes, set up the pump
+        # if experiment_mode in ["droplet", "piv"]:
+        #     pump = SyringePump(
+        #         syringe_volume_ml=pump_inputs["syringe_volume_ml"],
+        #         syringe_diameter_mm=pump_inputs["syringe_diameter_mm"],
+        #     )
+        # pump = SyringePump2(pump_inputs)
+
+        #     # Register pump so interrupt cleanup can call stop() on it
+        #     set_active_pump(pump)
+
+        # Optional: Optical Particle Sizer (OPS) for droplet measurement
+        ops_inputs = config["devices"]["ops"]
+        if record_droplet_size_ops and experiment_mode == "film":
+            assert ops_inputs is not None
+            ops = OpticalParticleSizer(
+                bin_boundaries_um=ops_inputs["bin_boundaries_um"],
+                alarm_threshold=ops_inputs["alarm_threshold"],
+            )
+            ops_position = config["geometry"]["ops"]["position"] or prompt_input(
+                "Describe the OPS position and press ENTER: ", value_type="string"
+            )
+            config["geometry"]["ops"]["position"] = ops_position
+
+        # Optional: SprayTec setup and geometry resolution
         vertical_stage = None
         spraytec = None
         spraytec_x_mm = spraytec_y_mm = spraytec_z_mm = None
@@ -301,7 +287,28 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 "Press ENTER to confirm that SprayTec SOP is waiting for a trigger...",
                 default=True)
 
-        # Set tank pressure after connecting all other devices
+        # ======================================================================
+        # TCM Configuration (after all external devices are connected)
+        # ======================================================================
+
+        # Clear memory before starting the experiment; turn off fan
+        tcm.set_fan_speed(CoughMachine.FAN_SPEED_OFF)
+        tcm.clear_memory()
+
+        # Load flow curve
+        cough_machine_inputs = config["run"]
+        tcm.load_flowcurve(
+            csv_path=cough_machine_inputs["flow_curve_csv_path"],
+            experiment_dir=output_dir if save_data else None,
+        )
+        # Store the resolved flow curve path for metadata traceability.
+        cough_machine_inputs["flow_curve_csv_path"] = tcm.get_flowcurve_csv_path(
+        )
+
+        # Program the fixed pre-run wait into the cough machine controller
+        tcm.set_wait_us(wait_us=cough_machine_inputs["wait_before_run_us"])
+
+        # Set tank pressure
         tank_inputs = cough_machine_inputs["tank"]
         tcm.set_pressure(
             tank_inputs["pressure_bar"],
