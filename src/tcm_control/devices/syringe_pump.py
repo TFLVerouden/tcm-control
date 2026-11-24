@@ -9,12 +9,37 @@ try:
 except ModuleNotFoundError:  # Python < 3.11
     tomllib = importlib.import_module("tomli")
 
-import serial
+from .base_serial import PoFSerialDevice
 
 DEFAULT_SPECS_PATH = Path(__file__).resolve().parent.parent / \
     "config" / "config_layer.toml"
 DEFAULT_SYRINGES_PATH = Path(__file__).resolve().parent / \
     "lookup_tables" / "syringes.toml"
+
+RATE_UNIT = "m/m"
+VOLUME_UNIT = "m"
+STATUS_POLL_S = 1.0
+PHASE_TIMEOUT_S = 3600.0
+COMMAND_DELAY_S = 0.2
+CONNECTION_SETTLE_S = 2.0
+
+CMD_SET_SYRINGE = "syrm"
+CMD_SET_DIAMETER = "diameter"
+CMD_SET_GANG = "gang"
+CMD_SET_FORCE = "force"
+CMD_SET_IRATE = "irate"
+CMD_SET_WRATE = "wrate"
+CMD_SET_TVOLUME = "tvolume"
+CMD_SET_POLL = "poll"
+CMD_LOAD_QS = "load qs iw"
+CMD_STATUS = "status"
+CMD_IRUN = "irun"
+CMD_WRUN = "wrun"
+CMD_STOP = "stop"
+CMD_CLEAR_TARGET = "ctvolume"
+CMD_CLEAR_VOLUME = "cvolume"
+CMD_CLEAR_IVOLUME = "civolume"
+CMD_CLEAR_WVOLUME = "cwvolume"
 
 STATUS_PATTERN = re.compile(
     r"^\s*(?:(?P<addr>\d{1,2}):)?\s*"
@@ -36,68 +61,76 @@ PROMPT_DESCRIPTIONS = {
 }
 
 
-class SyringePump:
-    DEFAULT_SERIAL_CFG = {
-        "port": "COM4",
-        "baudrate": 9600,
-        "timeout_s": 0.2,
-        "pump_address": 2,
-        "command_delay_s": 0.2,
-        "active_profile": "hm2_100ml_32573mm",
-    }
-
-    DEFAULT_PUMP_CFG = {
-        "rate_unit": "m/m",
-        "volume_unit": "m",
-        "status_poll_s": 1.0,
-        "phase_timeout_s": 3600,
-    }
-
-    def __init__(self, syringe_vendor_code, syringe_volume_mL, syringe_diameter_mm, syringe_gang, syringe_force_percent) -> None:
-        # self.specs = specs or {}
-
-        serial_cfg = {**self.DEFAULT_SERIAL_CFG}
-        pump_cfg = {**self.DEFAULT_PUMP_CFG}
-
-        self.port = serial_cfg["port"]
-        self.baudrate = int(serial_cfg.get("baudrate", 9600))
-        self.timeout_s = float(serial_cfg.get("timeout_s", 0.2))
-        self.pump_address = int(serial_cfg.get("pump_address", 2))
-        self.command_delay_s = float(serial_cfg.get("command_delay_s", 0.2))
-
-        self.rate_unit = pump_cfg.get("rate_unit", "m/m")
-        self.volume_unit = pump_cfg.get("volume_unit", "m")
-        self.status_poll_s = float(pump_cfg.get("status_poll_s", 1.0))
-        self.phase_timeout_s = float(pump_cfg.get("phase_timeout_s", 3600))
-
-        self.ser: serial.Serial | None = None
-
-        self.cmd_set_syringe = "syrm"
-        self.cmd_set_diameter = "diameter"
-        self.cmd_set_gang = "gang"
-        self.cmd_set_force = "force"
-        self.cmd_set_irate = "irate"
-        self.cmd_set_wrate = "wrate"
-        self.cmd_set_tvolume = "tvolume"
-        self.cmd_set_poll = "poll"
-        self.cmd_load_qs = "load qs iw"
-        self.cmd_status = "status"
-        self.cmd_irun = "irun"
-        self.cmd_wrun = "wrun"
-        self.cmd_stop = "stop"
-        self.cmd_clear_target = "ctvolume"
-        self.cmd_clear_volume = "cvolume"
-        self.cmd_clear_ivolume = "civolume"
-        self.cmd_clear_wvolume = "cwvolume"
-
+class SyringePump(PoFSerialDevice):
+    def __init__(
+        self,
+        syringe_vendor_code,
+        syringe_volume_mL,
+        syringe_diameter_mm,
+        syringe_gang,
+        syringe_force_percent,
+        *,
+        name: str = "SyringePump",
+        long_name: str = "Harvard PHD Ultra",
+        baudrate: int = 9600,
+        timeout_s: float = 0.2,
+        debug: bool = False,
+    ) -> None:
+        self.baudrate = baudrate
+        self.timeout_s = timeout_s
+        self.pump_address = 0
+        self.command_delay_s = COMMAND_DELAY_S
+        self.rate_unit = RATE_UNIT
+        self.volume_unit = VOLUME_UNIT
+        self.status_poll_s = STATUS_POLL_S
+        self.phase_timeout_s = PHASE_TIMEOUT_S
         self.syringe_vendor_code = syringe_vendor_code
         self.syringe_volume_mL = syringe_volume_mL
         self.syringe_diameter_mm = syringe_diameter_mm
         self.syringe_gang = syringe_gang
         self.syringe_force_percent = syringe_force_percent
 
-        self.prepare()
-        self.apply_profile()
+        super().__init__(
+            name=name,
+            long_name=long_name,
+            expected_id="PHD Ultra",
+            baudrate=baudrate,
+            timeout=timeout_s,
+            debug=debug,
+        )
+        self.port = self.ser.port
+        try:
+            self.prepare()
+            self.apply_profile()
+        except Exception:
+            self.disconnect()
+            raise
+
+    def infuse(self, volume_ml: float, rate_ml_min: float, wait_for_completion: bool = True, *, update: Callable[[], None] | None = None) -> bool:
+        return self._run_phase(
+            action_verb="infusing",
+            phase_name="infusion",
+            volume_ml=volume_ml,
+            rate_ml_min=rate_ml_min,
+            rate_cmd=CMD_SET_IRATE,
+            run_cmd=CMD_IRUN,
+            expected_prompt=">",
+            wait_for_completion=wait_for_completion,
+            update=update,
+        )
+
+    def withdraw(self, volume_ml: float, rate_ml_min: float, wait_for_completion: bool = True, *, update: Callable[[], None] | None = None) -> bool:
+        return self._run_phase(
+            action_verb="withdrawing",
+            phase_name="withdraw",
+            volume_ml=volume_ml,
+            rate_ml_min=rate_ml_min,
+            rate_cmd=CMD_SET_WRATE,
+            run_cmd=CMD_WRUN,
+            expected_prompt="<",
+            wait_for_completion=wait_for_completion,
+            update=update,
+        )
 
     def _log_info(self, msg: str) -> None:
         print(msg)
@@ -243,12 +276,20 @@ class SyringePump:
             self._log_error(f"{cmd}: {sentence}")
         return response
 
+    def _identify_for_connection(self) -> tuple[str, None]:
+        time.sleep(CONNECTION_SETTLE_S)
+        self.ser.read_all()
+        response = self._send("ver", log_errors=False)
+        for line in self._sanitize_response_text(response).splitlines():
+            _, line = self._strip_optional_address_prefix(line)
+            if re.fullmatch(r"PHD Ultra \d+\.\d+\.\d+", line):
+                return "PHD Ultra", None
+        return "", None
+
     def connect(self) -> None:
-        self.ser = serial.Serial(
-            self.port, self.baudrate, timeout=self.timeout_s)
-        time.sleep(2)
-        self._log_info(
-            f"Connected to serial device SyringePump at {self.port}")
+        if not self.is_alive:
+            self._connect()
+            self.port = self.ser.port
 
     def prepare(self) -> None:
         """Prepare pump for direct infuse/withdraw calls."""
@@ -262,7 +303,7 @@ class SyringePump:
         """Stop motor and close serial connection."""
         if self.ser is not None:
             try:
-                self._send(self.cmd_stop)
+                self._send(CMD_STOP)
             finally:
                 self.disconnect()
 
@@ -270,6 +311,7 @@ class SyringePump:
         if self.ser is not None:
             self.ser.close()
             self.ser = None
+            self.is_alive = False
 
     def _format_rate(self, value_ml_min: float) -> str:
         return f"{value_ml_min:g} {self.rate_unit}"
@@ -278,14 +320,17 @@ class SyringePump:
         return f"{value_ml:g} {self.volume_unit}"
 
     def set_poll_mode(self, mode: str = "off") -> None:
-        self._send(f"{self.cmd_set_poll} {mode}")
+        self._send(f"{CMD_SET_POLL} {mode}")
 
     def select_pump_address(self) -> None:
-        self._send(f"address {self.pump_address}")
+        """Verify the standalone pump address without changing its setting."""
+        response = self._sanitize_response_text(self._send("address"))
+        if not re.search(r"(?im)^\s*(?:\d{1,2}:)?\s*Pump address is 0\s*$", response):
+            raise RuntimeError(f"Expected pump address 0, got: {response!r}")
 
     def ensure_quickstart_mode(self) -> None:
         # Ensure run/time/volume/rate commands are interpreted in Quick Start mode.
-        response = self._send(self.cmd_load_qs, log_errors=False)
+        response = self._send(CMD_LOAD_QS, log_errors=False)
         sentence, _ = self._decode_response(response)
         low_sentence = sentence.lower()
 
@@ -295,7 +340,7 @@ class SyringePump:
             return
 
         if self._is_error_text(sentence):
-            self._log_error(f"{self.cmd_load_qs}: {sentence}")
+            self._log_error(f"{CMD_LOAD_QS}: {sentence}")
 
     def _run_phase(
         self,
@@ -324,7 +369,7 @@ class SyringePump:
 
         phase_setup_cmds = [
             f"{rate_cmd} {self._format_rate(rate_ml_min)}",
-            f"{self.cmd_set_tvolume} {self._format_volume(volume_ml)}",
+            f"{CMD_SET_TVOLUME} {self._format_volume(volume_ml)}",
         ]
         if not self._start_phase_with_recovery(phase_setup_cmds, run_cmd, expected_prompt, phase_name):
             return False
@@ -334,25 +379,25 @@ class SyringePump:
 
     def clear_previous_command_state(self) -> None:
         # Clear stop state, target volume and accumulated run volumes.
-        self._send(self.cmd_stop)
-        self._send(self.cmd_clear_target)
-        self._send(self.cmd_clear_volume)
-        self._send(self.cmd_clear_ivolume)
-        self._send(self.cmd_clear_wvolume)
+        self._send(CMD_STOP)
+        self._send(CMD_CLEAR_TARGET)
+        self._send(CMD_CLEAR_VOLUME)
+        self._send(CMD_CLEAR_IVOLUME)
+        self._send(CMD_CLEAR_WVOLUME)
 
     def apply_profile(self) -> None:
         self.select_pump_address()
         self._send(
-            f"{self.cmd_set_syringe} {self.syringe_vendor_code} {self.syringe_volume_mL:g} ml")
-        self._send(f"{self.cmd_set_diameter} {self.syringe_diameter_mm:g}")
-        self._send(f"{self.cmd_set_gang} {self.syringe_gang}")
-        self._send(f"{self.cmd_set_force} {self.syringe_force_percent:g}")
+            f"{CMD_SET_SYRINGE} {self.syringe_vendor_code} {self.syringe_volume_mL:g} ml")
+        self._send(f"{CMD_SET_DIAMETER} {self.syringe_diameter_mm:g}")
+        self._send(f"{CMD_SET_GANG} {self.syringe_gang}")
+        self._send(f"{CMD_SET_FORCE} {self.syringe_force_percent:g}")
 
     def _wait_until_phase_complete(self, phase_name: str, update: Callable[[], None] | None = None) -> bool:
         started = time.time()
 
         while True:
-            response = self._send(self.cmd_status)
+            response = self._send(CMD_STATUS)
             sentence, target_reached = self._decode_response(response)
 
             low = response.lower().strip()
@@ -396,7 +441,7 @@ class SyringePump:
 
     def _verify_motion_started(self, expected_prompt: str, phase_name: str) -> tuple[bool, str]:
         """Check that phase actually started running right after irun/wrun."""
-        response = self._send(self.cmd_status)
+        response = self._send(CMD_STATUS)
         cleaned = self._sanitize_response_text(response).strip()
 
         # Address-prefixed prompt forms (e.g. 02>) are accepted.
@@ -441,32 +486,6 @@ class SyringePump:
         self._log_error(
             f"{phase_name} did not start. Last status: {sentence_retry or sentence}")
         return False
-
-    def infuse(self, volume_ml: float, rate_ml_min: float, wait_for_completion: bool = True, *, update: Callable[[], None] | None = None) -> bool:
-        return self._run_phase(
-            action_verb="infusing",
-            phase_name="infusion",
-            volume_ml=volume_ml,
-            rate_ml_min=rate_ml_min,
-            rate_cmd=self.cmd_set_irate,
-            run_cmd=self.cmd_irun,
-            expected_prompt=">",
-            wait_for_completion=wait_for_completion,
-            update=update,
-        )
-
-    def withdraw(self, volume_ml: float, rate_ml_min: float, wait_for_completion: bool = True, *, update: Callable[[], None] | None = None) -> bool:
-        return self._run_phase(
-            action_verb="withdrawing",
-            phase_name="withdraw",
-            volume_ml=volume_ml,
-            rate_ml_min=rate_ml_min,
-            rate_cmd=self.cmd_set_wrate,
-            run_cmd=self.cmd_wrun,
-            expected_prompt="<",
-            wait_for_completion=wait_for_completion,
-            update=update,
-        )
 
     def run_protocol(self, steps: list[dict]) -> None:
         if not steps:

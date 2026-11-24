@@ -35,21 +35,23 @@ class PoFSerialDevice(SerialDevice):
         def id_query() -> tuple[str, None]:
             if boot_drain_s > 0:
                 _ = self._read_lines(timeout=boot_drain_s)
-            _success, reply = self.query("id?")
-            if isinstance(reply, str):
-                reply_broad = reply.strip()
-            else:
-                reply_broad = ""
-            return reply_broad, None
+            return self._identify_for_connection()
 
         self.set_ID_validation_query(
             ID_validation_query=id_query,
             valid_ID_broad=expected_id,
         )
 
+        self._connect()
+
+    def _identify_for_connection(self) -> tuple[str, None]:
+        _success, reply = self.query("id?")
+        return reply.strip() if isinstance(reply, str) else "", None
+
+    def _connect(self) -> None:
         # Auto connect to device; suppress print of connection attempts
         # TODO: Give more specific error message if id or version does not match
-        if debug:
+        if self._debug:
             connected = self.auto_connect(
                 filepath_last_known_port=CONNECTIONS_FILENAME
             )
@@ -65,7 +67,7 @@ class PoFSerialDevice(SerialDevice):
 
         if not connected:
             raise SystemError(
-                f"Serial device {name} not found via auto_connect. It might be turned off or serial port is in use by another programme.")
+                f"Serial device {self.name} not found via auto_connect. It might be turned off or serial port is in use by another programme.")
         else:
             # Drain any boot/session leftovers before issuing new commands.
             pending = self._read_lines(timeout=0.5)
@@ -74,7 +76,7 @@ class PoFSerialDevice(SerialDevice):
                     for line in pending:
                         print(f"[{self.name}] {line}")
                 self._check_errors(pending, raise_on_error=True)
-            print(f"Connected to serial device {name} at {self.ser.port}")
+            print(f"Connected to serial device {self.name} at {self.ser.port}")
 
     # ------------------------------------------------------------------
     # Low-level helpers

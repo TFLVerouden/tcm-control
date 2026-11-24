@@ -17,6 +17,21 @@ This project uses two separate version numbers:
 
 The protocol should be a single integer: host and MCU protocol versions must match exactly. The version number is increased when communication changes in a breaking way.
 
+## Syringe pump connection
+
+The Harvard PHD Ultra must be configured as a standalone pump at address 0,
+with a baud rate of 9600 by default. The pump is discovered by sending `ver`
+and checking for a PHD Ultra version response; discovery may open and probe
+other serial ports. The last successful port is saved in `connections.ini`.
+The software checks the pump address without changing it and stops setup if
+the address is not 0. Syringe dimensions and force remain configured in the
+experiment TOML.
+
+Commands use carriage-return termination. Quick Start mode is needed for
+parameter commands; after using the touchscreen, communication may need to be
+re-established with a carriage return. See the [PHD Ultra manual](https://www.harvardapparatus.com/media/manuals/Product%20Manuals/PHD%20ULTRA%20Manual-70-3xxx_5419-002REV1.0.pdf)
+for connection and command details.
+
 ## Pressure sensor calibration
 
 Run `src/tcm_control/calibration/pressure_calibration.py` in VS Code with the
