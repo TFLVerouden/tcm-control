@@ -11,10 +11,14 @@
   "engines": {
     "vscode": "^1.93.0"
   },
-  "extensionDependencies": ["ms-python.python"],
+  "extensionDependencies": [
+    "ms-python.python"
+  ],
   "main": "./extension.js",
-  "files": ["extension.js"],
-  "activationEvents": ["onCommand:tcmConfigRunner.run"],
+  "files": [
+    "extension.js"
+  ],
+  "activationEvents": [],
   "contributes": {
     "commands": [
       {
