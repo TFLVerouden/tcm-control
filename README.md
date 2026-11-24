@@ -8,6 +8,33 @@ How to install tcm-utils to a virtual environment[^1]?
 [^1] The reason it is not included in [pyproject.toml](/pyproject.toml), is that editable installs on a relative path are [not allowed by `setuptools`](https://github.com/pypa/setuptools/discussions/2951).
 [^2] On Windows, one might have issues activating this virtual environment because the terminal in VS Code is not allowed to run scripts. We tried to mitigate this using the default profile specified in [settings.json](/.vscode/settings.json), but the error and how to fix it are described [here on StackOverflow](https://stackoverflow.com/questions/56199111/visual-studio-code-cmd-error-cannot-be-loaded-because-running-scripts-is-disabl).
 
+## Run an experiment from VS Code
+
+`python run.py path\to\experiment.toml` runs the specified configuration.
+Without an argument, `run.py` opens a file picker for the experiment TOML.
+
+The optional extension in `vscode-extension` adds a play button to open TOML
+files. Cloning the repository does not install it: install it once in each
+VS Code installation or profile where you want the button. First install
+Node.js 22 or newer and the Microsoft Python extension, then run these commands
+from the repository root:
+
+```shell
+cd vscode-extension
+npx --yes @vscode/vsce package --no-dependencies --skip-license
+code --install-extension tcm-config-runner-0.0.1.vsix
+```
+
+Reload VS Code, open this repository as a workspace, and select the project's
+Python interpreter, with this project and its dependencies installed. Open an
+experiment TOML and click **Run TCM experiment**. The file is saved first,
+and the experiment runs interactively in a terminal. The button appears on all
+TOML files, including files that are not experiment configs; select the intended
+experiment file before clicking it.
+
+The generated `.vsix` file can be deleted after installation. If the extension
+source changes, package and install it again to update the installed copy.
+
 ## Versioning policy
 
 This project uses two separate version numbers:

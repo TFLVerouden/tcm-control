@@ -1,0 +1,36 @@
+{
+  "name": "tcm-config-runner",
+  "displayName": "TCM Config Runner",
+  "description": "Run a cough experiment from an open TOML file.",
+  "version": "0.0.1",
+  "publisher": "tcm-control",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TFLVerouden/tcm-control.git"
+  },
+  "engines": {
+    "vscode": "^1.93.0"
+  },
+  "extensionDependencies": ["ms-python.python"],
+  "main": "./extension.js",
+  "files": ["extension.js"],
+  "activationEvents": ["onCommand:tcmConfigRunner.run"],
+  "contributes": {
+    "commands": [
+      {
+        "command": "tcmConfigRunner.run",
+        "title": "Run TCM experiment",
+        "icon": "$(play)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "tcmConfigRunner.run",
+          "when": "resourceScheme == file && resourceExtname == .toml",
+          "group": "navigation"
+        }
+      ]
+    }
+  }
+}

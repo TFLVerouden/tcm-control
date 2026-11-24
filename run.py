@@ -5,25 +5,17 @@ from tcm_control.interrupt_handling import (
     handle_sigint,
 )
 from tcm_control.cough import cough
+import argparse
 from pathlib import Path
 import signal
 
-# This runner assumes an editable install so `tcm_control` resolves from `src/`.
-# Install once from the repository root with: `pip install -e .`
-REPO_ROOT = Path(__file__).resolve().parent
-
-# Hardcode the path here to run experiment multiple times with the same config
-CONFIG_PATH = REPO_ROOT / "src" / "tcm_control" / "config" / "config_spraytec.toml"
-
-
-def main() -> int:
+def main(config_path: Path | None = None) -> int:
     # Save any existing Ctrl+C handler and install project-specific cleanup handling.
     previous_sigint_handler = signal.getsignal(signal.SIGINT)
     signal.signal(signal.SIGINT, handle_sigint)
     try:
         # Run one experiment from the selected config.
-        cough(CONFIG_PATH)
-        # cough()
+        cough(config_path)
     except KeyboardInterrupt:
         # User-initiated stop: run safe cleanup and return standard SIGINT code.
         cleanup_on_interrupt(ask_before_delete_output_dir=True)
@@ -40,4 +32,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    parser = argparse.ArgumentParser(description="Run a cough experiment.")
+    parser.add_argument("config", nargs="?", type=Path,
+                        help="experiment TOML file (opens a file picker if omitted)")
+    args = parser.parse_args()
+    raise SystemExit(main(args.config))
