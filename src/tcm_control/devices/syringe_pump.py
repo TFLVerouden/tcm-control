@@ -1,20 +1,8 @@
 import re
 import time
-import importlib
 from collections.abc import Callable
-from pathlib import Path
 
-try:
-    tomllib = importlib.import_module("tomllib")
-except ModuleNotFoundError:  # Python < 3.11
-    tomllib = importlib.import_module("tomli")
-
-from .base_serial import PoFSerialDevice
-
-DEFAULT_SPECS_PATH = Path(__file__).resolve().parent.parent / \
-    "config" / "config_layer.toml"
-DEFAULT_SYRINGES_PATH = Path(__file__).resolve().parent / \
-    "lookup_tables" / "syringes.toml"
+from tcm_control.devices.base_serial import PoFSerialDevice
 
 RATE_UNIT = "m/m"
 VOLUME_UNIT = "m"
@@ -72,7 +60,7 @@ class SyringePump(PoFSerialDevice):
         *,
         name: str = "SyringePump",
         long_name: str = "Harvard PHD Ultra",
-        baudrate: int = 9600,
+        baudrate: int = 115200,
         timeout_s: float = 0.2,
         debug: bool = False,
     ) -> None:
@@ -299,7 +287,7 @@ class SyringePump(PoFSerialDevice):
         response = self._send("ver", log_errors=False)
         for line in self._sanitize_response_text(response).splitlines():
             _, line = self._strip_optional_address_prefix(line)
-            if re.fullmatch(r"PHD Ultra \d+\.\d+\.\d+", line):
+            if re.fullmatch(r"PHD Ultra \d+\.\d+\.\d+", line, re.IGNORECASE):
                 return "PHD Ultra", None
         return "", None
 
@@ -560,7 +548,8 @@ class SyringePump(PoFSerialDevice):
         """Clean the tubes by performing repeated infuse/withdraw cycles."""
         try:
             if repetitions > 0 and (volume_ml_repetition is None or rate_ml_min_repetition is None):
-                raise ValueError("Repetition volume and rate are required when cleaning repetitions are enabled.")
+                raise ValueError(
+                    "Repetition volume and rate are required when cleaning repetitions are enabled.")
 
             # Initial infusion to create fluid layer
             self.infuse(
@@ -588,38 +577,26 @@ class SyringePump(PoFSerialDevice):
             raise
 
 
-def main(specs_path: Path = DEFAULT_SPECS_PATH) -> None:
-    config: dict = {}
-    if specs_path.exists():
-        config = tomllib.load(specs_path.open("rb"))
-
-    syringe_inputs = config["devices"]["syringe_pump"]
-    layer_inputs = config["film"]["layer"]
-    clean_tube = config["film"]["clean_tube"]
-
-    pump = SyringePump(syringe_inputs["syringe_vendor_code"],
-                       syringe_inputs["syringe_volume_mL"],
-                       syringe_inputs["syringe_diameter_mm"],
-                       syringe_inputs["syringe_gang"],
-                       syringe_inputs["syringe_force_percent"])
-
-    pump.make_layer(infuse_volume_ml=layer_inputs["infuse_volume_ml"],
-                    infuse_rate_ml_min=layer_inputs["infuse_rate_ml_min"],
-                    withdraw_volume_ml=layer_inputs["withdraw_volume_ml"],
-                    withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"],
-                    settling_time_s=layer_inputs["film_settling_time_s"])
-
-    pump = SyringePump(syringe_inputs["syringe_vendor_code"],
-                       syringe_inputs["syringe_volume_mL"],
-                       syringe_inputs["syringe_diameter_mm"],
-                       syringe_inputs["syringe_gang"],
-                       syringe_inputs["syringe_force_percent"])
-
-    pump.clean_tubes(volume_ml_layer=clean_tube["volume_ml_layer"],
-                     rate_ml_min_layer=clean_tube["rate_ml_min_layer"],
-                     volume_ml_repetition=clean_tube["volume_ml_repetition"],
-                     rate_ml_min_repetition=clean_tube["rate_ml_min_repetition"],
-                     repetitions=clean_tube["repetitions"])
+def main() -> None:
+    pump = SyringePump(
+        syringe_vendor_code="hm2",
+        syringe_volume_mL=100.0,
+        syringe_diameter_mm=32.573,
+        syringe_gang=1,
+        syringe_force_percent=100,
+        baudrate=115200,
+        debug=True,
+    )
+    try:
+        pump.make_layer(
+            infuse_volume_ml=3.5,
+            infuse_rate_ml_min=15,
+            withdraw_volume_ml=2.5,
+            withdraw_rate_ml_min=5,
+            settling_time_s=30,
+        )
+    finally:
+        pump.disconnect()
 
 
 if __name__ == "__main__":
