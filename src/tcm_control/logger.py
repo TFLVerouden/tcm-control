@@ -346,7 +346,7 @@ def build_run_metadata(config, **meta) -> dict[str, Any]:
     nr_runs = config["inputs"]["cough"]["nr_runs"]
     multi_run_interval_s = config["inputs"]["cough"]["multi_run_interval_s"]
     confirm_before_starting_next_run = config["inputs"]["cough"]["confirm_before_starting_next_run"]
-    record_droplet_size = config["inputs"]["cough"]["record_droplet_size"]
+    record_droplet_size_spraytec = config["inputs"]["cough"]["record_droplet_size_spraytec"]
     config_file_path = config["experiment"]["config_file_path"]
 
     # Prefer configured syringe geometry values because runtime objects may
@@ -449,8 +449,14 @@ def build_run_metadata(config, **meta) -> dict[str, Any]:
             "camera": {
                 "inputs": meta["camera_inputs"],
             },
+            "ops": {
+                "mode": "enabled" if meta["ops"] is not None else "disabled",
+                "inputs": meta["ops_inputs"],
+                "position_description": meta["ops_position"],
+                "device": meta["ops"].metadata() if meta["ops"] is not None else None,
+            },
             "spraytec": {
-                "mode": "enabled" if record_droplet_size else "disabled",
+                "mode": "enabled" if record_droplet_size_spraytec else "disabled",
                 "inputs": meta["spraytec_inputs"],
                 "measurement_position_mm": {
                     "x": meta["spraytec_x_mm"],

@@ -3,12 +3,7 @@ import seaborn as sns
 import numpy as np
 import matplotlib.pyplot as plt
 from tsitools import ParticleData
-import os
 from pathlib import Path
-
-path = Path(__file__).parent.parent / "data"  # / "Sprayer_tests"
-os.chdir(path)
-
 
 # Apply seaborn style
 sns.set_style('darkgrid')
@@ -202,7 +197,3 @@ def OPS_visualize_data(output_dir: Path) -> None:
     calculate_average_and_std(data, output_dir)
     calculate_average_and_std_volume(data, output_dir)
     plot_counts_over_time(data, output_dir)
-
-
-if __name__ == "__main__":
-    OPS_visualize_data(output_dir=Path("./data"))

@@ -1,12 +1,14 @@
 from __future__ import annotations
 """Load and validate experiment input configuration from TOML."""
 
+import math
 import re
 from pathlib import Path
 from typing import Any
 
 from tcm_utils.file_dialogs import ask_open_file
 from tcm_control.devices.camera import validate_flip, validate_gain, validate_roi
+from tcm_control.devices.ops import MAX_RECORDING_S, validate_bin_boundaries
 from tcm_control.devices.cough_machine import (
     DEFAULT_CLEAN_CYCLE_COUNT,
     DEFAULT_CLEAN_DRY_DURATION_S,
@@ -182,6 +184,18 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
     # ------------------------------------------------------------------
     # Cough run controls
     # ------------------------------------------------------------------
+    if _nested_get(raw, "inputs", "cough", "record_droplet_size") is not None:
+        raise ValueError(
+            "Replace [inputs.cough].record_droplet_size with "
+            "record_droplet_size_spraytec and record_droplet_size_ops."
+        )
+    recording_flags = {}
+    for key in ("record_droplet_size_spraytec", "record_droplet_size_ops"):
+        value = _nested_get(raw, "inputs", "cough", key)
+        if not isinstance(value, bool):
+            raise ValueError(f"Config [inputs.cough].{key} must be a boolean.")
+        recording_flags[key] = value
+
     cough_inputs = {
         "debug_mode": bool(
             _nested_get(raw, "inputs", "cough", "debug_mode", default=False)
@@ -200,17 +214,14 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
                 default=True,
             )
         ),
-        "record_droplet_size": bool(
-            _nested_get(raw, "inputs", "cough",
-                        "record_droplet_size", default=False)
-        ),
+        **recording_flags,
     }
     if cough_inputs["nr_runs"] < 1:
         cough_inputs["nr_runs"] = 1
 
     # SprayTec is intentionally disabled in PIV mode.
     if experiment_mode == "piv":
-        cough_inputs["record_droplet_size"] = False
+        cough_inputs["record_droplet_size_spraytec"] = False
 
     # ------------------------------------------------------------------
     # Cough machine inputs
@@ -767,7 +778,37 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
         ),
     }
 
-    record_droplet_size = bool(cough_inputs["record_droplet_size"])
+    record_droplet_size_spraytec = bool(cough_inputs["record_droplet_size_spraytec"])
+
+    # OPS recording currently runs only in film mode.
+    ops_inputs = None
+    if cough_inputs["record_droplet_size_ops"] and experiment_mode == "film":
+        raw_ops = _nested_get(raw, "devices", "ops", "inputs")
+        if not isinstance(raw_ops, dict):
+            raise ValueError("Config [devices.ops.inputs] is required when OPS recording is enabled.")
+        position = raw_ops.get("position", "")
+        if not isinstance(position, str):
+            raise ValueError("Config [devices.ops.inputs].position must be a string.")
+        boundaries = validate_bin_boundaries(raw_ops.get("bin_boundaries_um"))
+        try:
+            pre_run_s = float(raw_ops["pre_run_s"])
+            post_run_s = float(raw_ops["post_run_s"])
+            alarm_threshold = float(raw_ops["alarm_threshold"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("Invalid or missing [devices.ops.inputs] settings.") from exc
+        if not all(math.isfinite(value) and value >= 0 for value in (pre_run_s, post_run_s)):
+            raise ValueError("OPS pre_run_s and post_run_s must be finite and non-negative.")
+        if pre_run_s + post_run_s >= MAX_RECORDING_S:
+            raise ValueError("OPS pre- and post-run durations must total less than the recording limit.")
+        if not math.isfinite(alarm_threshold) or not 0 <= alarm_threshold <= 10000:
+            raise ValueError("OPS alarm_threshold must be between 0 and 10000 particles/cm3.")
+        ops_inputs = {
+            "position": position.strip(),
+            "bin_boundaries_um": boundaries,
+            "alarm_threshold": alarm_threshold,
+            "pre_run_s": pre_run_s,
+            "post_run_s": post_run_s,
+        }
 
     # ------------------------------------------------------------------
     # Vertical stage inputs
@@ -923,7 +964,7 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
         },
     }
 
-    if not record_droplet_size:
+    if not record_droplet_size_spraytec:
         spraytec_inputs = {
             "append_file_path": None,
             "tcm_trachea_bottom_z_mm": None,
@@ -997,8 +1038,12 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
                 "inputs": vertical_stage_inputs,
             },
             "spraytec": {
-                "enabled": record_droplet_size,
+                "enabled": record_droplet_size_spraytec,
                 "inputs": spraytec_inputs,
+            },
+            "ops": {
+                "enabled": bool(cough_inputs["record_droplet_size_ops"]) and experiment_mode == "film",
+                "inputs": ops_inputs,
             },
         },
     }

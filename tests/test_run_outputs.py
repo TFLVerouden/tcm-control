@@ -3,6 +3,8 @@ import importlib.util
 import io
 import sys
 import tempfile
+import threading
+import time
 import types
 import unittest
 from contextlib import contextmanager, redirect_stdout
@@ -34,11 +36,145 @@ def fake_module(**values):
 
 
 class RunOutputTests(unittest.TestCase):
+    def test_recording_flags_are_independent_and_required(self):
+        ops_module = load_module("_test_ops", "src/tcm_control/devices/ops.py")
+        modules = {
+            "tcm_utils.file_dialogs": fake_module(ask_open_file=None),
+            "tcm_control.devices.camera": fake_module(
+                validate_flip=lambda value: value,
+                validate_gain=lambda value: value,
+                validate_roi=lambda value: value,
+            ),
+            "tcm_control.devices.ops": fake_module(
+                MAX_RECORDING_S=ops_module.MAX_RECORDING_S,
+                validate_bin_boundaries=ops_module.validate_bin_boundaries,
+            ),
+            "tcm_control.devices.cough_machine": fake_module(
+                DEFAULT_CLEAN_CYCLE_COUNT=0,
+                DEFAULT_CLEAN_DRY_DURATION_S=0,
+                DEFAULT_CLEAN_DRY_VALVE_CURRENT_MA=14,
+                DEFAULT_CLEAN_PRESSURE_BAR=4,
+                DEFAULT_CLEAN_VALVE_OPEN_DURATION_S=2.5,
+                MAX_PRESSURE_BAR=7.2,
+            ),
+        }
+        source = (ROOT / "src/tcm_control/config/config_spraytec.toml").read_text()
+        with patch.dict(sys.modules, modules), tempfile.TemporaryDirectory() as tmp:
+            config_module = load_module(
+                "_test_initialise_config", "src/tcm_control/initialise_config.py")
+            config_path = Path(tmp) / "config.toml"
+            for spraytec in (False, True):
+                for ops in (False, True):
+                    with self.subTest(spraytec=spraytec, ops=ops):
+                        text = source.replace(
+                            "record_droplet_size_spraytec = true",
+                            f"record_droplet_size_spraytec = {str(spraytec).lower()}",
+                        ).replace(
+                            "record_droplet_size_ops = true",
+                            f"record_droplet_size_ops = {str(ops).lower()}",
+                        )
+                        config_path.write_text(text)
+                        config = config_module.load_experiment_config(config_path)
+                        self.assertEqual(config["inputs"]["cough"]["record_droplet_size_spraytec"], spraytec)
+                        self.assertEqual(config["inputs"]["cough"]["record_droplet_size_ops"], ops)
+                        self.assertEqual(config["devices"]["spraytec"]["enabled"], spraytec)
+
+            config_path.write_text(source.replace('mode = "film"', 'mode = "piv"'))
+            config = config_module.load_experiment_config(config_path)
+            self.assertFalse(config["inputs"]["cough"]["record_droplet_size_spraytec"])
+            self.assertTrue(config["inputs"]["cough"]["record_droplet_size_ops"])
+
+            for entry, expected in (('position = "  Near the outlet  "', "Near the outlet"),
+                                    ('position = "   "', ""), ("", "")):
+                config_path.write_text(source.replace('position = "" # keep empty to prompt for a description', entry))
+                config = config_module.load_experiment_config(config_path)
+                self.assertEqual(config["devices"]["ops"]["inputs"]["position"], expected)
+            config_path.write_text(source.replace('position = "" # keep empty to prompt for a description',
+                                                  "position = 123"))
+            with self.assertRaisesRegex(ValueError, "position must be a string"):
+                config_module.load_experiment_config(config_path)
+
+            config_path.write_text(source.replace("record_droplet_size_ops = true", ""))
+            with self.assertRaisesRegex(ValueError, "record_droplet_size_ops"):
+                config_module.load_experiment_config(config_path)
+            config_path.write_text(source.replace("record_droplet_size_ops = true", "record_droplet_size = false"))
+            with self.assertRaisesRegex(ValueError, "Replace .*record_droplet_size"):
+                config_module.load_experiment_config(config_path)
+            for old, new, error in (
+                ("pre_run_s = 10.0", "pre_run_s = 50.0", "durations"),
+                ("alarm_threshold = 4000.0", "alarm_threshold = 10001.0", "alarm_threshold"),
+                ("0.374, 0.465", "0.301, 0.465", "boundaries"),
+            ):
+                config_path.write_text(source.replace(old, new))
+                with self.subTest(setting=new), self.assertRaisesRegex(ValueError, error):
+                    config_module.load_experiment_config(config_path)
+
+    def test_ops_records_sample_columns_and_stops(self):
+        ops_module = load_module("_test_ops", "src/tcm_control/devices/ops.py")
+        ops = ops_module.OpticalParticleSizer.__new__(ops_module.OpticalParticleSizer)
+        with tempfile.TemporaryDirectory() as tmp:
+            ops._record_path = Path(tmp) / "ops.csv"
+            ops._record_error = None
+            ops._stop_event = threading.Event()
+            ops._stop_deadline = None
+            ops._started_at = time.monotonic()
+            commands = []
+
+            def send(command):
+                commands.append(command)
+                if command == "RMLOGGEDBINS":
+                    return "1,1,1\r" + ",".join(str(i) for i in range(17))
+                if command == "RMUNITMEAS":
+                    return "1,2,3,4,5,6,7,8"
+                if command == "RMMESSAGES":
+                    ops._stop_event.set()
+                    return "0,0,1"
+                return "OK"
+
+            ops._send = send
+            ops._record()
+            ops.check_recording()
+            with ops._record_path.open() as file:
+                header, row = list(csv.reader(file))
+            self.assertEqual(len(header), len(row))
+            self.assertEqual(row[:4], ["1", "1", "1", "0"])
+            self.assertEqual(row[-2:], ["0", "1"])
+            self.assertEqual(commands[-1], "MSTOP")
+
+    def test_ops_surfaces_missed_samples_and_stops(self):
+        ops_module = load_module("_test_ops", "src/tcm_control/devices/ops.py")
+        ops = ops_module.OpticalParticleSizer.__new__(ops_module.OpticalParticleSizer)
+        with tempfile.TemporaryDirectory() as tmp:
+            ops._record_path = Path(tmp) / "ops.csv"
+            ops._record_error = None
+            ops._stop_event = threading.Event()
+            ops._stop_deadline = None
+            ops._started_at = time.monotonic()
+            seconds = iter([1, 3])
+            commands = []
+
+            def send(command):
+                commands.append(command)
+                if command == "RMLOGGEDBINS":
+                    return f"{next(seconds)},1,1\r" + ",".join("0" for _ in range(17))
+                if command == "RMUNITMEAS":
+                    return "1,2,3,4,5,6,7,8"
+                if command == "RMMESSAGES":
+                    return "0,0,0"
+                return "OK"
+
+            ops._send = send
+            ops._record()
+            with self.assertRaisesRegex(RuntimeError, "recording failed") as caught:
+                ops.check_recording()
+            self.assertIn("missed samples", str(caught.exception.__cause__))
+            self.assertEqual(commands[-1], "MSTOP")
+
     def test_temperature_humidity_csv_and_failures(self):
         modules = {
             "tcm_utils.file_dialogs": fake_module(ask_open_file=None, find_repo_root=None),
             "tcm_utils.io_utils": fake_module(countdown_beep=None, make_minimal_progress_bar=None, beep=None),
-            "tcm_control.devices.base": fake_module(PoFSerialDevice=object),
+            "tcm_control.devices.base_serial": fake_module(PoFSerialDevice=object),
             "tcm_control.logger": fake_module(copy_flow_curve=None, create_labeled_csv_filename=None),
         }
         with patch.dict(sys.modules, modules), tempfile.TemporaryDirectory() as tmp:
@@ -63,13 +199,17 @@ class RunOutputTests(unittest.TestCase):
                 machine.read_temperature_humidity(save_csv=Path(tmp) / "missing" / "reading.csv")
 
     def test_film_and_piv_outputs(self):
-        for mode, count, save, fail_fan, live, fail_preview in (
-                ("film", 1, True, False, False, False),
-                ("film", 2, True, False, False, False),
-                ("film", 1, True, False, True, False),
-                ("film", 1, True, False, True, True),
-                ("piv", 1, True, False, False, False), ("piv", 2, True, False, False, False),
-                ("piv", 2, False, False, False, False), ("piv", 1, True, True, False, False)):
+        for mode, count, save, fail_fan, live, fail_preview, record_ops, position in (
+                ("film", 1, True, False, False, False, True, ""),
+                ("film", 2, True, False, False, False, True, ""),
+                ("film", 2, True, False, False, False, True, "Near the outlet"),
+                ("film", 1, True, False, False, False, False, "Near the outlet"),
+                ("film", 1, True, False, True, False, True, ""),
+                ("film", 1, True, False, True, True, True, ""),
+                ("piv", 1, True, False, False, False, False, ""),
+                ("piv", 2, True, False, False, False, True, "Near the outlet"),
+                ("piv", 2, False, False, False, False, False, ""),
+                ("piv", 1, True, True, False, False, False, "")):
             with self.subTest(mode=mode, count=count, save=save, fail_fan=fail_fan), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp).resolve()
                 events = []
@@ -123,32 +263,35 @@ class RunOutputTests(unittest.TestCase):
                     def __init__(self, output_dir, **_kwargs):
                         self.output_dir = output_dir
 
-                class OPSClient:
+                class OpticalParticleSizer:
                     def __init__(self, **_kwargs):
-                        pass
+                        events.append("ops-connect")
+                        self.recording = False
 
-                    def __enter__(self):
-                        return self
-
-                    def __exit__(self, *_args):
-                        pass
-
-                    def read_model_number(self):
-                        return "fake"
-
-                class OPS:
-                    def __init__(self, _client):
-                        pass
-
-                    def read_status(self):
-                        return "ready"
-
-                    def start_standard_recording(self, out_csv_path, **_kwargs):
-                        self.path = out_csv_path
+                    def start_recording(self, output_dir):
+                        events.append("ops-start")
+                        self.recording = True
+                        self.path = output_dir / "ops.csv"
                         self.path.write_text("OPS")
 
+                    def check_recording(self):
+                        pass
+
+                    def finish_after(self, duration):
+                        events.append(f"ops-finish-{duration}")
+
                     def collect_recording(self):
+                        events.append("ops-collected")
+                        self.recording = False
                         return self.path
+
+                    def stop_if_recording(self):
+                        if self.recording:
+                            events.append("ops-stop")
+                            self.recording = False
+
+                    def close(self):
+                        events.append("ops-close")
 
                 def snapshot(camera, _machine, filename):
                     path = camera.output_dir / f"{filename}.tif"
@@ -190,7 +333,8 @@ class RunOutputTests(unittest.TestCase):
                     "experiment": {"mode": mode, "save_data": save, "series_directory": str(root),
                                    "name": "test", "config_file_path": root / "config.toml"},
                     "inputs": {"cough": {"debug_mode": False, "nr_runs": count,
-                                          "record_droplet_size": False, "multi_run_interval_s": 0,
+                                          "record_droplet_size_spraytec": False,
+                                          "record_droplet_size_ops": record_ops, "multi_run_interval_s": 0,
                                           "confirm_before_starting_next_run": False}},
                     "devices": {
                         "cough_machine": {"inputs": {"tank": dict.fromkeys(
@@ -209,6 +353,8 @@ class RunOutputTests(unittest.TestCase):
                                                "camera_gain_db": 0, "scale_mm_per_px": 1,
                                                "live_preview": live}},
                         "vertical_stage": {"inputs": {}}, "spraytec": {"inputs": {}},
+                        "ops": {"inputs": {"bin_boundaries_um": [], "alarm_threshold": 4000,
+                                          "pre_run_s": 10, "post_run_s": 10, "position": position}},
                     },
                 }
                 (root / "config.toml").write_text("")
@@ -219,14 +365,16 @@ class RunOutputTests(unittest.TestCase):
                     create_experiment_dir=lambda *_a, **_kw: (output.mkdir() or output),
                     copy_experiment_config=lambda **_kw: None, create_console_log_path=lambda _p: root / "log",
                     build_run_metadata=lambda _c, **kw: kw,
-                    write_run_metadata=lambda **_kw: None,
+                    write_run_metadata=MagicMock(),
                 )
                 noop = lambda *args, **kwargs: None
+                position_prompt = MagicMock(return_value="Beside the trachea")
                 modules = {
                     "tcm_control": fake_module(logger=logger),
                     "tcm_control.devices": fake_module(CoughMachine=Machine, Camera=Camera,
                         SyringePump=MagicMock(return_value=pump),
-                        VerticalStage=MagicMock(), SprayTec=MagicMock()),
+                        VerticalStage=MagicMock(), SprayTec=MagicMock(),
+                        OpticalParticleSizer=OpticalParticleSizer),
                     "tcm_control.devices.spraytec": fake_module(warn_if_experiment_dir_name_too_long=noop),
                     "tcm_control.initialise_config": fake_module(load_experiment_config=lambda _p: config),
                     "tcm_control.interrupt_handling": fake_module(**dict.fromkeys(
@@ -242,17 +390,15 @@ class RunOutputTests(unittest.TestCase):
                     "tcm_utils.file_dialogs": fake_module(ensure_directory_path=lambda *_a, **_kw: root,
                         ask_open_file=noop, find_repo_root=lambda: root),
                     "tcm_utils.io_utils": fake_module(ensure_non_empty_text=lambda text, **_kw: text,
-                        prompt_input=noop, prompt_yes_no=lambda *_a, **_kw: False
+                        prompt_input=position_prompt, prompt_yes_no=lambda *_a, **_kw: False
                         if _a and _a[0].startswith("Do you want") else True,
                         wait_with_progress=noop, beep=noop, countdown_beep=noop,
                         make_minimal_progress_bar=progress, create_timestamped_filename=noop,
                         save_metadata_json=noop),
                     "tcm_utils.time_utils": fake_module(timestamp_str=lambda: "261124_083347",
                                                        timestamp_from_file=noop),
-                    "tcm_control.devices.base": fake_module(PoFSerialDevice=object),
+                    "tcm_control.devices.base_serial": fake_module(PoFSerialDevice=object),
                     "tcm_control.logger": logger,
-                    "tcm_control.devices.ops3330.ops3330": fake_module(OPSClient=OPSClient, OPS=OPS),
-                    "tcm_control.devices.ops3330.ops3330.VisualiseData": fake_module(OPS_visualize_data=noop),
                 }
                 with patch.dict(sys.modules, modules), redirect_stdout(io.StringIO()) as out:
                     actual_logger = load_module("_test_logger", "src/tcm_control/logger.py")
@@ -274,14 +420,29 @@ class RunOutputTests(unittest.TestCase):
                         logger.ConsoleLogCapture.return_value.close.assert_called_once()
                     else:
                         self.assertEqual(runner.cough(), output if save else None)
+                self.assertEqual(position_prompt.call_count, int(mode == "film" and record_ops and not position))
+                if save and not fail_fan and not fail_preview:
+                    saved_meta = logger.write_run_metadata.call_args.kwargs["meta"]
+                    self.assertEqual(saved_meta["ops_position"],
+                                     (position or "Beside the trachea") if mode == "film" and record_ops else None)
                 if fail_preview:
-                    self.assertEqual(events, ["preview-open", "preview-frame", "preview-close"])
+                    self.assertEqual(events, ["ops-connect", "preview-open", "preview-frame",
+                                              "preview-close", "ops-close"])
                     continue
                 self.assertIn("WARNING: Temperature or humidity", out.getvalue())
-                self.assertEqual(events, (["preview-open", "preview-frame", "preview-settle",
+                ops_events = [event for event in events if event.startswith("ops-")]
+                self.assertEqual([event for event in events if not event.startswith("ops-")],
+                                 (["preview-open", "preview-frame", "preview-settle",
                                            "preview-close"] if live else [])
                                  + ["reading"] + ["reading", "start"] * count
                                  + (["reading"] if save else []))
+                self.assertEqual(ops_events, (["ops-connect"]
+                    + ["ops-start", "ops-finish-10", "ops-collected"] * count + ["ops-close"])
+                    if mode == "film" and record_ops else [])
+                if mode == "film" and record_ops:
+                    self.assertLess(events.index("ops-start"), events.index("start"))
+                    self.assertLess(events.index("start"), events.index("ops-finish-10"))
+                    self.assertLess(events.index("ops-finish-10"), events.index("ops-collected"))
                 if not save:
                     self.assertFalse(output.exists())
                     continue
@@ -293,7 +454,7 @@ class RunOutputTests(unittest.TestCase):
                     self.assertTrue((run / "processed" / "plot.pdf").exists())
                     if mode == "film":
                         self.assertEqual(len(list((run / "camera").glob("*.tif"))), 3)
-                        self.assertEqual(len(list((run / "OPS_data").glob("*_OPS.csv"))), 1)
+                        self.assertEqual((run / "ops.csv").exists(), record_ops)
                         with (run / "film_measurement.csv").open() as file:
                             row = next(csv.DictReader(file))
                         self.assertEqual((row["run_nr"], row["film_height_mm"]), (str(n), "2"))
@@ -348,17 +509,29 @@ class RunOutputTests(unittest.TestCase):
             logger = load_module("_test_logger", "src/tcm_control/logger.py")
             config = {"inputs": {"cough": {"debug_mode": False, "nr_runs": 1,
                       "multi_run_interval_s": 0, "confirm_before_starting_next_run": False,
-                      "record_droplet_size": False}}, "experiment": {"config_file_path": "test.toml"}}
+                      "record_droplet_size_spraytec": False, "record_droplet_size_ops": False}},
+                      "experiment": {"config_file_path": "test.toml"}}
             values: dict[str, Any] = dict.fromkeys(("experiment_name", "time_start", "time_finish", "output_dir",
                 "wait_before_run_us", "comments", "cough_machine_inputs", "pump", "syringe_inputs",
                 "layer_inputs", "camera_inputs", "spraytec_inputs", "spraytec_x_mm", "spraytec_y_mm",
                 "spraytec_z_mm", "stage_pos_x_mm", "stage_pos_y_mm", "stage_pos_z_mm",
-                "spraytec_audit_path", "spraytec_laser_intensity", "vertical_stage"))
+                "spraytec_audit_path", "spraytec_laser_intensity", "vertical_stage",
+                "ops", "ops_inputs", "ops_position"))
             values.update(experiment_mode="film", tcm=fake_module(name="fake", serial_settings={}),
                           temperature_start=18, temperature_finish=19, humidity_start=30, humidity_finish=50)
             measurements = logger.build_run_metadata(config, **values)["experiment"]["measurements"]
             self.assertEqual(measurements, {"temperature": {"start": 18, "finish": 19},
                                             "humidity": {"start": 30, "finish": 50}})
+            disabled_ops = logger.build_run_metadata(config, **values)["devices"]["ops"]
+            self.assertIsNone(disabled_ops["position_description"])
+            values["ops"] = fake_module(metadata=lambda: {"model": "3330"})
+            values["ops_inputs"] = {"pre_run_s": 10}
+            values["ops_position"] = "Beside the trachea"
+            ops_meta = logger.build_run_metadata(config, **values)["devices"]["ops"]
+            self.assertEqual(ops_meta["mode"], "enabled")
+            self.assertEqual(ops_meta["device"]["model"], "3330")
+            self.assertEqual(ops_meta["inputs"]["pre_run_s"], 10)
+            self.assertEqual(ops_meta["position_description"], "Beside the trachea")
 
 
 if __name__ == "__main__":

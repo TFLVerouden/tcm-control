@@ -1,12 +1,10 @@
 """Main experiment runner for the Twente Cough Machine."""
 
 import time
-from contextlib import nullcontext
 from pathlib import Path
-import time
 from typing import Optional
 
-from tcm_control.devices import CoughMachine, VerticalStage, SprayTec, Camera, SyringePump
+from tcm_control.devices import CoughMachine, VerticalStage, SprayTec, Camera, SyringePump, OpticalParticleSizer
 from tcm_control.devices.spraytec import warn_if_experiment_dir_name_too_long
 from tcm_control import logger
 from tcm_control.initialise_config import load_experiment_config
@@ -38,15 +36,6 @@ from tcm_utils.io_utils import (
 )
 from tcm_utils.time_utils import timestamp_str
 from tcm_utils.io_utils import countdown_beep
-
-from tcm_control.devices.ops3330.ops3330 import OPSClient, OPS
-from tcm_control.devices.ops3330.ops3330.VisualiseData import OPS_visualize_data
-import logging
-import sys
-import time
-from pathlib import Path
-import datetime
-
 
 def cough(config_path: Path | str | None = None) -> Optional[Path]:
     """Run a full experiment using a TOML configuration.
@@ -104,14 +93,19 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     # Cache the selected mode for the central match/case branch below
     experiment_mode = exp_conf["mode"]
 
-    # Toggle for optional SprayTec setup and post-processing branches
-    record_droplet_size = bool(cough_inputs["record_droplet_size"])
+    record_droplet_size_spraytec = bool(cough_inputs["record_droplet_size_spraytec"])
+    record_droplet_size_ops = bool(cough_inputs["record_droplet_size_ops"])
+    ops_inputs = config["devices"]["ops"]["inputs"]
+    if record_droplet_size_ops and experiment_mode == "film" and not save_data:
+        raise ValueError("OPS recording requires an experiment output directory.")
 
     # Host-level pre-trigger delay that is sent to the cough machine
     wait_before_run_us = cough_machine_inputs["wait_before_run_us"]
 
     # Initialise variables
     pump = None
+    ops = None
+    ops_position = None
     vertical_stage = None
     stage_pos_x_mm = None
     stage_pos_y_mm = None
@@ -136,7 +130,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     set_active_tcm(tcm)
 
     # Vertical stage is only needed when SprayTec measurements are enabled.
-    # if record_droplet_size:
+    # if record_droplet_size_spraytec:
     #     vertical_stage = VerticalStage()
 
     # --------------------------------------------------------------------------
@@ -186,7 +180,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         assert series_directory is not None
         assert console_log is not None
         assert experiment_name is not None
-        if record_droplet_size:
+        if record_droplet_size_spraytec:
             # Warn (but proceed) if SprayTec won't be able to display the full name
             warn_if_experiment_dir_name_too_long(time_start, experiment_name)
         # Create output directory for this experiment.
@@ -212,6 +206,16 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         # --------------------------------------------------------------
         # 4) Set up devices and resolve run geometry
         # --------------------------------------------------------------
+
+        if record_droplet_size_ops and experiment_mode == "film":
+            assert ops_inputs is not None
+            ops = OpticalParticleSizer(
+                bin_boundaries_um=ops_inputs["bin_boundaries_um"],
+                alarm_threshold=ops_inputs["alarm_threshold"],
+            )
+            ops_position = ops_inputs["position"] or prompt_input(
+                "Describe the OPS position and press ENTER: ", value_type="string"
+            )
 
         # # In droplet and PIV modes, set up the pump
         # if experiment_mode in ["droplet", "piv"]:
@@ -271,7 +275,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             # set_active_pump(pump)
 
         # Optional SprayTec setup and geometry resolution
-        if record_droplet_size:
+        if record_droplet_size_spraytec:
             # Vertical stage is only needed when SprayTec measurements are enabled.
             vertical_stage = VerticalStage()
             spraytec_x_mm, spraytec_y_mm, spraytec_z_mm, stage_pos_x_mm, stage_pos_y_mm, spraytec_target_z_mm, stage_pos_z_mm = set_spraytec_pos(
@@ -504,53 +508,45 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             ],
                         )
 
-                    CONNECTION_IP_OPS = "192.168.1.50"
-                    PROFILE_PATH_OPS = Path(__file__).resolve(
-                    ).parent / "devices" / "ops3330" / "profiles" / "default_minimal.toml"
-                    if output_dir is None:
-                        raise ValueError(
-                            "Output directory is None, cannot save OPS data.")
-                    # Create a folder for OPS data in the output directory
-                    assert run_dir is not None
-                    OUT_OPS_DIR = run_dir / "OPS_data"
-                    OUT_OPS_DIR.mkdir(exist_ok=True)
-
-                    OUT_CSV_OPS = OUT_OPS_DIR / \
-                        f"{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_OPS.csv"
-
-                    with OPSClient(ip=CONNECTION_IP_OPS) as client:
-                        ops = OPS(client)
-
-                        print("Model:", client.read_model_number())
-                        print("Status:", ops.read_status())
-
-                        ops.start_standard_recording(
-                            profile_toml_path=PROFILE_PATH_OPS,
-                            out_csv_path=OUT_CSV_OPS,
+                    if ops is not None:
+                        assert run_dir is not None and ops_inputs is not None
+                        ops.start_recording(run_dir)
+                        wait_with_progress(
+                            wait_s=ops_inputs["pre_run_s"],
+                            label="Recording OPS before cough...",
                         )
+                        ops.check_recording()
 
-                        # Wait for the OPS to start recording before triggering the cough machine
-                        time.sleep(20)
+                    try:
                         countdown_beep()
 
                         # Record the ambient conditions immediately before the cough
                         tcm.read_temperature_humidity(
                             show_reading=True,
-                            save_csv=run_dir / "temperature_humidity.csv",
+                            save_csv=run_dir / "temperature_humidity.csv" if run_dir else None,
                         )
 
-                        run_log_path = tcm.run(
-                            output_dir=run_dir,
-                            run_nr_start=(run_idx + 1),
-                            save_logs=save_data,
-                        )
-
-                        # Keep the connection open until the background
-                        # recording thread has finished
-                        recorded_csv = ops.collect_recording()
-
-                    OPS_visualize_data(output_dir=OUT_OPS_DIR)
-                    print(f"Saved data to {recorded_csv}")
+                        if ops is not None:
+                            assert ops_inputs is not None
+                            ops.check_recording()
+                            tcm.start_run()
+                            tcm.wait_for_run_finished()
+                            ops.finish_after(ops_inputs["post_run_s"])
+                            run_log_path = tcm.receive_run_log(
+                                output_dir=run_dir,
+                                run_nr_start=(run_idx + 1),
+                                save_logs=save_data,
+                            )
+                            ops.collect_recording()
+                        else:
+                            run_log_path = tcm.run(
+                                output_dir=run_dir,
+                                run_nr_start=(run_idx + 1),
+                                save_logs=save_data,
+                            )
+                    finally:
+                        if ops is not None:
+                            ops.stop_if_recording()
 
                     # Plot run log
                     if save_data and run_log_path is not None:
@@ -736,7 +732,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             comments = ask_user_for_comments(output_dir=output_dir)
 
             # Optional SprayTec post-processing.
-            if record_droplet_size:
+            if record_droplet_size_spraytec:
                 assert spraytec is not None
                 prompt_yes_no(
                     "Press ENTER if the SprayTec has finished processing and exporting the measurement(s)...",
@@ -769,7 +765,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 syringe_inputs=syringe_inputs,
                 layer_inputs=layer_inputs,
                 camera_inputs=camera_inputs,
-                record_droplet_size=record_droplet_size,
+                ops=ops,
+                ops_inputs=ops_inputs,
+                ops_position=ops_position,
                 spraytec_inputs=spraytec_inputs,
                 spraytec_x_mm=spraytec_x_mm,
                 spraytec_y_mm=spraytec_y_mm,
@@ -799,7 +797,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             print("Exiting.")
     finally:
         # Close console capture even if resetting the fan fails
-        console_log.close()
+        try:
+            if ops is not None:
+                ops.close()
+        finally:
+            console_log.close()
 
     # ------------------------------------------------------------------
     # 7) Clear interrupt-handling references and return

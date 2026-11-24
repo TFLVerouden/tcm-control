@@ -53,6 +53,11 @@ order; select the appropriate `PRESSURE_COMMAND` for the output filenames.
 
 ## Film and PIV output
 
+Set both `[inputs.cough].record_droplet_size_spraytec` and
+`record_droplet_size_ops` to `true` or `false`. The old
+`record_droplet_size` setting must be replaced. OPS recording is currently
+implemented only for film mode; SprayTec remains disabled in PIV mode.
+
 Each saved experiment contains `run` for one run, or `run1`, `run2`, etc. for
 multiple runs. Experiment-wide metadata, the config copy, flow curve, comments,
 and console log remain in the experiment folder. Each run folder contains its
@@ -62,12 +67,40 @@ printed; the experiment start and finish readings remain in `metadata.json`.
 For direct device use, `read_temperature_humidity(save_csv=path)` saves the
 reading in the same CSV format; omit `save_csv` to read without saving.
 
-Film runs also contain camera images, `film_measurement.csv`, and their OPS
-data and plots. Film measurements are no longer duplicated in the experiment
-metadata. SprayTec measurements are exported after the experiment and matched
+Film runs also contain camera images and `film_measurement.csv`, and OPS data
+when OPS recording is enabled. Automatic OPS plotting is deferred. Film
+measurements are no longer duplicated in the experiment metadata. SprayTec
+measurements are exported after the experiment and matched
 chronologically to run folders only if the counts agree and the timestamps
 are unambiguous. Otherwise, new measurements are saved in
 `spraytec_unmatched` in the experiment folder and a warning is printed.
+
+### Optical particle sizer
+
+The TSI 3330 OPS uses TCP, including over USB via TSI's Windows NDIS driver.
+Set the connection defaults in `OpticalParticleSizer.__init__` to match the
+address shown on the instrument. The instrument must already be powered on.
+After moving a USB connection from another PC, it may need a power cycle.
+
+Set `[devices.ops.inputs]` for the 17 boundaries of the 16 size channels, the
+number-concentration alarm threshold, and the pre- and post-run recording times.
+The defaults in the example config are 10 seconds on either side. Recording
+starts once the instrument reports it is running; the post-run interval starts
+at the cough machine's completion event. One-second samples are written to
+`ops.csv` in each run folder, and device identity, settings and connection
+information go in experiment metadata. Set `position` to a description or
+leave it empty to be prompted once. The description is saved in the metadata.
+The instrument's humidity field is a
+placeholder and is not an ambient humidity measurement. Unit measurements in
+the CSV are read after each bin sample and are not necessarily simultaneous.
+
+The instrument is configured for at most 60 seconds per recording. A longer
+recording, missing samples, or communication errors abort the run rather than
+silently producing incomplete data. Instrument logging consumes its internal
+storage. The previous user-calibration values, including shape correction 0.0,
+are retained with user calibration disabled; the manual documents 0.1-3.0
+for shape correction, so verify that the instrument accepts this setting.
+See the [OPS manual](https://kenelec.com.au/wp-content/uploads/2016/06/TSI_3330_Opticle_Particle_Sizer_Manual.pdf).
 
 ## Config and metadata extension guide
 
