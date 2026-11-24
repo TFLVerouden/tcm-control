@@ -51,16 +51,19 @@ def cleanup_on_interrupt(*, ask_before_delete_output_dir: bool = False) -> None:
         return
     _INTERRUPT_CLEANED_UP = True
 
-    if _ACTIVE_PUMP is not None:
-        try:
-            pump_state = _ACTIVE_PUMP.get_state()
-            if pump_state in getattr(_ACTIVE_PUMP, "stopped_status", (":",)):
-                print("Syringe pump already stopped")
-            else:
-                _ACTIVE_PUMP.stop(already_stopped_ok=True)
-                print("Syringe pump stopped")
-        except Exception as exc:
-            print(f"Warning: Failed to stop syringe pump: {exc}")
+    # TODO: Check whether this branch (and set_active_pump) can be removed;
+    # cough() now stops and disconnects the pump in its own finally block, and
+    # SyringePump has no get_state() or stop(already_stopped_ok=...).
+    # if _ACTIVE_PUMP is not None:
+    #     try:
+    #         pump_state = _ACTIVE_PUMP.get_state()
+    #         if pump_state in getattr(_ACTIVE_PUMP, "stopped_status", (":",)):
+    #             print("Syringe pump already stopped")
+    #         else:
+    #             _ACTIVE_PUMP.stop(already_stopped_ok=True)
+    #             print("Syringe pump stopped")
+    #     except Exception as exc:
+    #         print(f"Warning: Failed to stop syringe pump: {exc}")
 
     if _ACTIVE_TCM is not None:
         try:

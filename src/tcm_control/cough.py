@@ -168,8 +168,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         # No output directory exists in non-saving mode
         set_active_output_dir(None)
 
-    # OPS must be available to cleanup even if setup fails
+    # Devices must be available to cleanup even if setup fails
     ops = None
+    pump = None
+    camera = None
+    vertical_stage = None
     try:
         # Persist an initial snapshot in case the experiment is interrupted
         if output_dir is not None:
@@ -793,10 +796,23 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 print("No data was saved (experiment.save_data=false).")
             print("Exiting.")
     finally:
-        # Close console capture even if resetting the fan fails
+        # Release every device and the console log even if one release fails.
+        # The cough machine stays open: interrupt cleanup still needs it.
         try:
-            if ops is not None:
-                ops.close()
+            for name, device, release in (
+                ("OPS", ops, lambda: ops.close()),
+                ("camera", camera, lambda: camera.close()),
+                ("vertical stage", vertical_stage,
+                 lambda: vertical_stage.close(ignore_exceptions=True)),
+                # stop() halts the motor, then closes the serial port
+                ("syringe pump", pump, lambda: pump.stop()),
+            ):
+                if device is None:
+                    continue
+                try:
+                    release()
+                except Exception as exc:
+                    print(f"Warning: Failed to release {name}: {exc}")
         finally:
             console_log.close()
 
