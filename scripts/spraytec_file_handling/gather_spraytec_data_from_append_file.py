@@ -17,9 +17,15 @@ selected_metadata = ask_open_file(
 metadata_path = Path(selected_metadata).expanduser().resolve()
 with metadata_path.open("r", encoding="utf-8") as fh:
     payload = json.load(fh)
-experiment_dir = payload.get("experiment_dir")
-time_start = payload.get("time", {}).get("start")
-spraytec_append_file_path = payload.get("spraytec", {}).get("append_file_path")
+experiment_dir = Path(payload["runtime"]["output_dir"])
+time_start = payload["runtime"]["time"]["start"]
+spraytec_append_file_path = payload["configuration"]["devices"]["spraytec"]["inputs"]["append_file_path"]
+nr_runs = payload["configuration"]["inputs"]["cough"]["nr_runs"]
+run_dirs = [
+    experiment_dir / ("run" if nr_runs == 1 else f"run{index}")
+    for index in range(1, nr_runs + 1)
+    if (experiment_dir / ("run" if nr_runs == 1 else f"run{index}")).is_dir()
+]
 
 # Make spraytec object
 spraytec = SprayTec(
@@ -30,4 +36,5 @@ spraytec = SprayTec(
 spraytec.save_data(append_file_path=spraytec_append_file_path,
                    start_time=time_start,
                    offer_archive_if_large=True,
+                   run_dirs=run_dirs,
                    )

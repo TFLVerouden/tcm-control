@@ -65,13 +65,13 @@ def update_metadata_output_dir(
         old_folder_name: str,
         new_folder_name: str,
 ) -> tuple[bool, list[str]]:
-    """Update ``experiment.output_dir`` and return changed flag + unexpected hits."""
+    """Update ``runtime.output_dir`` and return changed flag + unexpected hits."""
     with metadata_path.open("r", encoding="utf-8") as fh:
         payload = json.load(fh)
 
     changed = False
     experiment_dict: dict[str, Any] | None = (
-        payload.get("experiment") if isinstance(payload, dict) else None
+        payload.get("runtime") if isinstance(payload, dict) else None
     )
     output_dir = (
         experiment_dict.get("output_dir")
@@ -94,7 +94,7 @@ def update_metadata_output_dir(
             json.dump(payload, fh, indent=2)
 
     all_hits = _find_string_occurrences(payload, old_folder_name)
-    expected_field = "experiment.output_dir"
+    expected_field = "runtime.output_dir"
     unexpected_hits = [hit for hit in all_hits if hit != expected_field]
 
     return changed, unexpected_hits

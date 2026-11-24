@@ -1,105 +1,183 @@
 [experiment]
+# Experiment name; leave empty to prompt when saving.
 name = "" # keep empty to prompt
+# Experiment mode: film, piv or droplet (not yet implemented).
 mode = "film" # droplet | film | piv
-series_directory = "C:\CoughMachineData\261005_PEO2MCampaign" # keep empty to prompt; set to "None" to disable saving data
+# Series directory; leave empty to select one, or use "None" to disable saving.
+series_directory = 'C:\CoughMachineData\261005_PEO2MCampaign' # keep empty to prompt; set to "None" to disable saving data
 
 [inputs.cough]
+# Enable cough-machine debug mode.
 debug_mode = false
+# Number of coughs in the experiment.
 nr_runs = 1
+# Wait between runs in seconds.
 multi_run_interval_s = 1
+# Ask for confirmation before each subsequent run.
 confirm_before_starting_next_run = false
-record_droplet_size_spraytec = true
-record_droplet_size_ops = true
 
 [devices.cough_machine.inputs]
+# Flow-curve path or name; leave empty to select a CSV.
 flow_curve_csv_path = "gupta_71kg_1-94m"
+# Controller pre-trigger wait in milliseconds.
 wait_before_run_ms = 0
+# Droplets to skip before recording in droplet mode.
 nr_droplets_to_skip_before_recording = 5
 
 [devices.cough_machine.inputs.cleaning]
+# Cleaning pressure in bar.
 clean_pressure_bar = 5.0
+# Valve-open duration in seconds.
 valve_open_duration_s = 2.5
+# Drying pressure in bar; omit to use cleaning pressure.
 dry_pressure_bar = 4.0
+# Drying duration in seconds.
 dry_duration_s = 0.0
+# Drying valve current in mA.
 dry_valve_current_ma = 14.0
+# Number of cleaning cycles.
 cycle_count = 4
 
 [devices.cough_machine.inputs.drying]
+# Cleaning pressure in bar.
 clean_pressure_bar = 2.5
+# Valve-open duration in seconds.
 valve_open_duration_s = 20
+# Drying pressure in bar; omit to use cleaning pressure.
 dry_pressure_bar = 4.0
+# Drying duration in seconds.
 dry_duration_s = 0.0
+# Drying valve current in mA.
 dry_valve_current_ma = 14.0
+# Number of cleaning cycles.
 cycle_count = 2
 
 [devices.cough_machine.inputs.tank]
+# Tank pressure in bar.
 pressure_bar = 2.5
+# Pressure settling timeout in seconds.
 settling_time_s = 60.0
+# Pressure averaging window in seconds.
 avg_window_s = 5.0
+# Pressure tolerance in bar.
 tolerance_bar = 0.05
+# Pressure polling interval in seconds.
 poll_interval_s = 0.2
+# Intermediate pressure difference in bar; set together with intermediate_time_s.
 intermediate_diff_bar = -0.1 # set together with intermediate_time_s (empty disables)
+# Intermediate pressure hold time in seconds; set together with intermediate_diff_bar.
 intermediate_time_s = 2 # set together with intermediate_diff_bar (empty disables)
 
 [devices.pump.syringe]
+# Syringe vendor code.
 syringe_vendor_code = "hm2"
+# Syringe volume in mL.
 syringe_volume_mL = 100.0
+# Syringe diameter in mm.
 syringe_diameter_mm = 32.573
+# Number of syringes in the gang.
 syringe_gang = 1
+# Pump force in percent, in multiples of 10.
 syringe_force_percent = 100
 
 [devices.pump.layer]
+# Film settling time in seconds.
 film_settling_time_s = 30
+# Volume infused to make the layer in mL.
 infuse_volume_ml = 3.5
+# Layer infusion rate in mL/min.
 infuse_rate_ml_min = 15
+# Volume withdrawn to make the layer in mL.
 withdraw_volume_ml = 2.5
+# Layer withdrawal rate in mL/min.
 withdraw_rate_ml_min = 5
 
 [devices.camera.inputs]
+# Camera exposure in microseconds.
 camera_exposure_us = 4000
 # camera_gain_db = 0.0 # omit to leave the camera's gain unchanged
+# ROI [y_start, y_end, x_start, x_end]; end 0 means full extent.
 roi = [0, 0, 0, 0] # y_start, y_end, x_start, x_end; end 0 = full extent
-flip = "" # empty, vertical, horizontal, or both
-scale_mm_per_px = 0.01614443137990558
-live_preview = false # show an optional local preview while making the layer
+# Camera flip; empty disables it.
+flip = "vertical" # empty, vertical, horizontal, or both
+# Camera calibration in mm per pixel; omit to use the camera module default.
+# scale_mm_per_px = 0.01614443137990558
+# Show the live film preview.
+live_preview = true # show an optional local preview while making the layer
 
 [devices.pump.clean_tube]
+# Initial tube-cleaning infusion volume in mL.
 volume_ml_layer = 3
+# Initial tube-cleaning rate in mL/min.
 rate_ml_min_layer = 15
+# Volume per tube-cleaning repetition in mL.
 volume_ml_repetition = 0.5
+# Tube-cleaning repetition rate in mL/min.
 rate_ml_min_repetition = 5
+# Number of tube-cleaning repetitions.
 repetitions = 5
 
 [devices.vertical_stage.inputs]
+# Vertical-stage position tolerance in mm.
 tolerance_mm = 0.3
+# Vertical-stage timeout in seconds.
 timeout_s = 30.0
+# Vertical-stage polling interval in seconds.
 poll_interval_s = 0.2
 
+[devices.spraytec]
+# Enable SprayTec recording in film mode.
+enabled = true
+
 [devices.spraytec.inputs]
+# SprayTec append file; leave empty to select it.
 append_file_path = "C:/Users/Public/Documents/Malvern Instruments/Spraytec/Export Data/SPRAYTEC_APPEND_FILE.txt" # keep empty to trigger file dialog
+# Trachea bottom height in mm.
 tcm_trachea_bottom_z_mm = 326
+# Trachea height in mm.
 tcm_trachea_height_mm = 15.15   
+# Lift zero height in mm.
 lift_zero_z_mm = 172.7 #lift actually at 1.3mm, so 174-1.3 =172.7
 # TODO: Move this 1.3 somewhere it can be stored!
+# SprayTec-to-lift vertical offset in mm.
 spraytec_to_lift_z_mm = 739  
+# Table height in mm.
 table_height_mm = 920
+# Trachea-exit x offset from reference in mm.
 tcm_trachea_exit_to_ref_x_mm = 44.5
+# Trachea-exit y offset from reference in mm.
 tcm_trachea_exit_to_ref_y_mm = 200
+# SprayTec x offset from reference in mm.
 spraytec_to_ref_x_mm = 44
+# SprayTec y offset from reference in mm.
 spraytec_to_ref_y_mm = 483
+# Stage x zero ruler reading in mm.
 stage_pos_x_zero_mm = 96
+# Stage y zero ruler reading in mm.
 stage_pos_y_zero_mm = 655
 
 [devices.spraytec.inputs.position]
+# Target SprayTec height in mm; leave empty to prompt.
 spraytec_target_z_mm = -30 # keep empty to prompt, or set target SprayTec z height in mm
+# Stage x ruler reading in mm; leave empty to prompt.
 stage_pos_x_mm = 8.5 # keep empty to prompt 
+# Stage y ruler reading in mm; leave empty to prompt.
 stage_pos_y_mm = 79.6 # keep empty to prompt
 
+[devices.ops]
+# Enable OPS recording in film mode.
+enabled = true
+
 [devices.ops.inputs]
+# OPS position description; leave empty to prompt.
 position = "" # keep empty to prompt for a description
+# OPS recording time before the cough in seconds.
 pre_run_s = 10.0
+# OPS recording time after the cough in seconds.
 post_run_s = 10.0
+# OPS concentration alarm threshold in particles/cm3.
 alarm_threshold = 4000.0
+# 17 OPS bin boundaries in micrometres, from 0.3 to 10.
 bin_boundaries_um = [
     0.300, 0.374, 0.465, 0.579, 0.721, 0.897, 1.117, 1.391,
     1.732, 2.156, 2.685, 3.343, 4.162, 5.182, 6.451, 8.031, 10.000,

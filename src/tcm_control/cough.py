@@ -7,7 +7,7 @@ from typing import Optional
 from tcm_control.devices import CoughMachine, VerticalStage, SprayTec, Camera, SyringePump, OpticalParticleSizer
 from tcm_control.devices.spraytec import warn_if_experiment_dir_name_too_long
 from tcm_control import logger
-from tcm_control.initialise_config import load_experiment_config
+from tcm_control.initialise_config import load_experiment_config, resolve_tube_cleaning
 from tcm_control.interrupt_handling import (
     reset_interrupt_cleanup_state,
     set_active_output_dir,
@@ -71,59 +71,23 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     # Load the experiment config from the TOML file and validate it
     config = load_experiment_config(config_path)
 
-    # Split the normalized config into local sections used throughout this run
-    exp_conf = config["experiment"]
-    cough_inputs = config["inputs"]["cough"]
-    cough_machine_inputs = config["devices"]["cough_machine"]["inputs"]
-    tank_inputs = cough_machine_inputs["tank"]
-    syringe_inputs = config["devices"]["pump"]["syringe"]
-    layer_inputs = config["devices"]["pump"]["layer"]
-    cleaning_tube_inputs = config["devices"]["pump"]["clean_tube"]
-
-    cleaning_inputs = cough_machine_inputs["cleaning"]
-    drying = cough_machine_inputs["drying"]
-    nebuliser_inputs = cough_machine_inputs["nebuliser"]
-    camera_inputs = config["devices"]["camera"]["inputs"]
-    vertical_stage_inputs = config["devices"]["vertical_stage"]["inputs"]
-    spraytec_inputs = config["devices"]["spraytec"]["inputs"]
-
     # Default to saving unless config explicitly disables it
-    save_data = bool(exp_conf.get("save_data", True))
+    save_data = bool(config["experiment"].get("save_data", True))
 
     # Cache the selected mode for the central match/case branch below
-    experiment_mode = exp_conf["mode"]
+    experiment_mode = config["experiment"]["mode"]
 
-    record_droplet_size_spraytec = bool(cough_inputs["record_droplet_size_spraytec"])
-    record_droplet_size_ops = bool(cough_inputs["record_droplet_size_ops"])
-    ops_inputs = config["devices"]["ops"]["inputs"]
+    record_droplet_size_spraytec = config["devices"]["spraytec"]["enabled"]
+    record_droplet_size_ops = config["devices"]["ops"]["enabled"]
     if record_droplet_size_ops and experiment_mode == "film" and not save_data:
         raise ValueError("OPS recording requires an experiment output directory.")
-
-    # Host-level pre-trigger delay that is sent to the cough machine
-    wait_before_run_us = cough_machine_inputs["wait_before_run_us"]
-
-    # Initialise variables
-    pump = None
-    ops = None
-    ops_position = None
-    vertical_stage = None
-    stage_pos_x_mm = None
-    stage_pos_y_mm = None
-    stage_pos_z_mm = None
-    spraytec_target_z_mm = None
-    spraytec = None
-    spraytec_x_mm = None
-    spraytec_y_mm = None
-    spraytec_z_mm = None
-    spraytec_audit_path = None
-    spraytec_laser_intensity = None
-    run_dirs: list[Path] = []
 
     # --------------------------------------------------------------------------
     # 2) Make connections to external devices
     # --------------------------------------------------------------------------
 
     # Initialise cough machine
+    cough_inputs = config["inputs"]["cough"]
     tcm = CoughMachine(debug=cough_inputs["debug_mode"])
 
     # Register devices so interrupt cleanup can stop them.
@@ -140,7 +104,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     if save_data:
         # Resolve and validate the root folder where this experiment run will be stored
         series_directory = ensure_directory_path(
-            exp_conf["series_directory"],
+            config["experiment"]["series_directory"],
             key="tcm_series_directory",
             title="Select series directory",
             start=Path(__file__).resolve().parent,
@@ -165,12 +129,13 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     if save_data:
         # The name is used for folder naming, so it is required when saving.
         experiment_name = ensure_non_empty_text(
-            exp_conf["name"],
+            config["experiment"]["name"],
             prompt=experiment_prompt,
             empty_error="Experiment name cannot be empty.",
         )
     else:
         experiment_name = None
+    config["experiment"]["name"] = experiment_name
 
     # Capture run start timestamp once and reuse it across artifacts and metadata
     time_start = timestamp_str()
@@ -188,7 +153,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             series_directory, experiment_name, start_time=time_start)
         logger.copy_experiment_config(
             experiment_dir=output_dir,
-            config_path=exp_conf["config_file_path"],
+            config_path=config["experiment"]["config_file_path"],
         )
         # Register folder globally so Ctrl+C cleanup can optionally remove it
         set_active_output_dir(output_dir)
@@ -197,16 +162,25 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         console_log_path = console_log.relocate(
             logger.create_console_log_path(output_dir))
         print(f"Session console log file: {console_log_path}")
+
     else:
         # No output directory exists in non-saving mode
         set_active_output_dir(None)
 
+    # OPS must be available to cleanup even if setup fails
+    ops = None
     try:
+        # Persist an initial snapshot in case the experiment is interrupted
+        if output_dir is not None:
+            logger.write_run_metadata(
+                output_dir, logger.build_run_metadata(
+                    config, time_start=time_start, output_dir=output_dir, tcm=tcm))
 
         # --------------------------------------------------------------
         # 4) Set up devices and resolve run geometry
         # --------------------------------------------------------------
 
+        ops_inputs = config["devices"]["ops"]["inputs"]
         if record_droplet_size_ops and experiment_mode == "film":
             assert ops_inputs is not None
             ops = OpticalParticleSizer(
@@ -216,6 +190,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             ops_position = ops_inputs["position"] or prompt_input(
                 "Describe the OPS position and press ENTER: ", value_type="string"
             )
+            ops_inputs["position"] = ops_position
 
         # # In droplet and PIV modes, set up the pump
         # if experiment_mode in ["droplet", "piv"]:
@@ -233,6 +208,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         tcm.clear_memory()
 
         # Load flow curve
+        cough_machine_inputs = config["devices"]["cough_machine"]["inputs"]
         tcm.load_flowcurve(
             csv_path=cough_machine_inputs["flow_curve_csv_path"],
             experiment_dir=output_dir if save_data else None,
@@ -242,9 +218,10 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         )
 
         # Program the fixed pre-run wait into the cough machine controller
-        tcm.set_wait_us(wait_us=wait_before_run_us)
+        tcm.set_wait_us(wait_us=cough_machine_inputs["wait_before_run_us"])
 
         # Set tank pressure
+        tank_inputs = cough_machine_inputs["tank"]
         tcm.set_pressure(
             tank_inputs["pressure_bar"],
             timeout_s=tank_inputs["settling_time_s"],
@@ -254,18 +231,27 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             interm_press_diff_bar=tank_inputs["intermediate_diff_bar"],
             interm_press_time_s=tank_inputs["intermediate_time_s"],
         )
+        # Record the averaging window actually used by the controller helper
+        if tank_inputs["settling_time_s"] <= tank_inputs["avg_window_s"]:
+            tank_inputs["avg_window_s"] = tank_inputs["settling_time_s"] / 2
 
         # In film mode, set up the camera and pump
+        pump = None
         if experiment_mode == "film":
             # The camera output directory is changed to the current run below
+            camera_inputs = config["devices"]["camera"]["inputs"]
             camera_output_dir = output_dir
             camera = Camera(exposure_us=camera_inputs["camera_exposure_us"],
                             output_dir=camera_output_dir,
                             roi=camera_inputs["roi"],
                             flip=camera_inputs["flip"],
                             gain_db=camera_inputs["camera_gain_db"])
+            # Record any camera values clamped to device limits
+            camera_inputs["camera_exposure_us"] = camera.exposure_us
+            camera_inputs["camera_gain_db"] = camera.gain_db
 
             # TODO: Set up pump in droplet mode too
+            syringe_inputs = config["devices"]["pump"]["syringe"]
             pump = SyringePump(syringe_inputs["syringe_vendor_code"],
                                syringe_inputs["syringe_volume_mL"],
                                syringe_inputs["syringe_diameter_mm"],
@@ -275,7 +261,13 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             # set_active_pump(pump)
 
         # Optional SprayTec setup and geometry resolution
+        vertical_stage = None
+        spraytec = None
+        spraytec_x_mm = spraytec_y_mm = spraytec_z_mm = None
+        stage_pos_z_mm = spraytec_laser_intensity = None
         if record_droplet_size_spraytec:
+            spraytec_inputs = config["devices"]["spraytec"]["inputs"]
+            vertical_stage_inputs = config["devices"]["vertical_stage"]["inputs"]
             # Vertical stage is only needed when SprayTec measurements are enabled.
             vertical_stage = VerticalStage()
             spraytec_x_mm, spraytec_y_mm, spraytec_z_mm, stage_pos_x_mm, stage_pos_y_mm, spraytec_target_z_mm, stage_pos_z_mm = set_spraytec_pos(
@@ -324,6 +316,19 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 "Press ENTER to confirm that SprayTec SOP is waiting for a trigger...",
                 default=True)
 
+        # Save resolved setup values before starting the first run
+        if output_dir is not None:
+            logger.write_run_metadata(output_dir, logger.build_run_metadata(
+                config, time_start=time_start, output_dir=output_dir, tcm=tcm,
+                pump=pump, ops=ops, vertical_stage=vertical_stage,
+                spraytec_x_mm=spraytec_x_mm, spraytec_y_mm=spraytec_y_mm,
+                spraytec_z_mm=spraytec_z_mm, spraytec_laser_intensity=spraytec_laser_intensity,
+                stage_pos_z_mm=stage_pos_z_mm,
+            ))
+
+        # Track run folders and cleaning settings shared by film and PIV modes
+        run_dirs: list[Path] = []
+        cleaning_inputs = cough_machine_inputs["cleaning"]
         match experiment_mode:
             case "droplet":
                 # ------------------------------------------------------------------
@@ -383,6 +388,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 # 5B) Film atomisation mode
                 # ------------------------------------------------------
                 # Explicitly require operator confirmation of syringe being filled
+                layer_inputs = config["devices"]["pump"]["layer"]
                 confirm_syringe_filled = prompt_yes_no(
                     "Press ENTER to confirm the syringe is filled with > "
                     f"{layer_inputs['infuse_volume_ml']} mL...",
@@ -398,6 +404,10 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     default=False)
                 if confirm_cleaning:
                     if pump is not None:
+                        # Resolve tube-cleaning settings only when cleaning is selected
+                        cleaning_tube_inputs = resolve_tube_cleaning(
+                            config["devices"]["pump"]["clean_tube"])
+                        config["devices"]["pump"]["clean_tube"] = cleaning_tube_inputs
                         pump.clean_tubes(volume_ml_layer=cleaning_tube_inputs["volume_ml_layer"],
                                          rate_ml_min_layer=cleaning_tube_inputs["rate_ml_min_layer"],
                                          volume_ml_repetition=cleaning_tube_inputs["volume_ml_repetition"],
@@ -566,6 +576,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         cycle_count=cleaning_inputs["cycle_count"],
                     )
 
+                    drying = cough_machine_inputs["drying"]
                     tcm.clean(
                         clean_pressure_bar=drying["clean_pressure_bar"],
                         valve_open_duration_s=drying["valve_open_duration_s"],
@@ -586,6 +597,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 # ------------------------------------------------------------------
 
                 # Initialise nebuliser parameters
+                nebuliser_inputs = cough_machine_inputs["nebuliser"]
                 nebuliser_pressure_bar = nebuliser_inputs["pressure_bar"]
                 nebuliser_fill_time_s = nebuliser_inputs["fill_time_s"]
 
@@ -732,6 +744,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             comments = ask_user_for_comments(output_dir=output_dir)
 
             # Optional SprayTec post-processing.
+            spraytec_audit_path = None
             if record_droplet_size_spraytec:
                 assert spraytec is not None
                 prompt_yes_no(
@@ -739,45 +752,33 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     default=True,
                 )
                 # TODO: Add some print statements in save_data so user is not wondering what is going on.
-                spraytec_audit_path = spraytec.save_data(append_file_path=spraytec_inputs["append_file_path"],
-                                                         start_time=time_start,
-                                                         debug=cough_inputs["debug_mode"],
-                                                         offer_archive_if_large=True,
-                                                         run_dirs=run_dirs,
-                                                         )
+                spraytec_audit_path = spraytec.save_data(
+                    append_file_path=config["devices"]["spraytec"]["inputs"]["append_file_path"],
+                    start_time=time_start,
+                    debug=cough_inputs["debug_mode"],
+                    offer_archive_if_large=True,
+                    run_dirs=run_dirs,
+                )
 
             metadata = logger.build_run_metadata(
                 config,
                 time_start=time_start,
                 time_finish=time_finish,
-                experiment_name=experiment_name,
-                experiment_mode=experiment_mode,
                 output_dir=output_dir,
-                wait_before_run_us=wait_before_run_us,
                 temperature_start=temperature_start,
                 humidity_start=humidity_start,
                 temperature_finish=temperature_finish,
                 humidity_finish=humidity_finish,
                 comments=comments,
                 tcm=tcm,
-                cough_machine_inputs=cough_machine_inputs,
                 pump=pump,
-                syringe_inputs=syringe_inputs,
-                layer_inputs=layer_inputs,
-                camera_inputs=camera_inputs,
                 ops=ops,
-                ops_inputs=ops_inputs,
-                ops_position=ops_position,
-                spraytec_inputs=spraytec_inputs,
                 spraytec_x_mm=spraytec_x_mm,
                 spraytec_y_mm=spraytec_y_mm,
                 spraytec_z_mm=spraytec_z_mm,
                 spraytec_audit_path=spraytec_audit_path,
                 spraytec_laser_intensity=spraytec_laser_intensity,
                 stage_pos_z_mm=stage_pos_z_mm,
-                stage_pos_x_mm=stage_pos_x_mm,
-                stage_pos_y_mm=stage_pos_y_mm,
-                spraytec_target_z_mm=spraytec_target_z_mm,
                 vertical_stage=vertical_stage,
             )
             # Persist full run metadata snapshot.

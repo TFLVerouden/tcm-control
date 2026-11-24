@@ -40,8 +40,8 @@ def collect_metadata_rows(root_dir: Path, variable_paths: list[str]) -> list[dic
 
         row: dict[str, Any] = {
             "metadata_file": path_relative_to(metadata_path, root_dir),
-            "time_start": get_nested_value(payload, "time.start"),
-            "time_finish": get_nested_value(payload, "time.finish"),
+            "time_start": get_nested_value(payload, "runtime.time.start"),
+            "time_finish": get_nested_value(payload, "runtime.time.finish"),
         }
 
         for variable_path in variable_paths:
@@ -137,10 +137,10 @@ def main() -> int:
 
     # Expand this list to include any additional dotted key paths from metadata.
     variable_paths = [
-        "experiment.temperature_start",
-        "experiment.temperature_finish",
-        "experiment.humidity_start",
-        "experiment.humidity_finish",
+        "runtime.measurements.temperature.start",
+        "runtime.measurements.temperature.finish",
+        "runtime.measurements.humidity.start",
+        "runtime.measurements.humidity.finish",
     ]
 
     rows = collect_metadata_rows(root_dir, variable_paths=variable_paths)

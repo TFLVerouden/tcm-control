@@ -53,10 +53,9 @@ order; select the appropriate `PRESSURE_COMMAND` for the output filenames.
 
 ## Film and PIV output
 
-Set both `[inputs.cough].record_droplet_size_spraytec` and
-`record_droplet_size_ops` to `true` or `false`. The old
-`record_droplet_size` setting must be replaced. OPS recording is currently
-implemented only for film mode; SprayTec remains disabled in PIV mode.
+Set `[devices.spraytec].enabled` and `[devices.ops].enabled` to enable either
+instrument; both default to `false` and are disabled in PIV mode. Older
+recording flags under `[inputs.cough]` are no longer accepted.
 
 Each saved experiment contains `run` for one run, or `run1`, `run2`, etc. for
 multiple runs. Experiment-wide metadata, the config copy, flow curve, comments,
@@ -64,6 +63,10 @@ and console log remain in the experiment folder. Each run folder contains its
 run log and plot, and `temperature_humidity.csv` with the reading taken just
 before the cough. An unavailable sensor value is left empty and a warning is
 printed; the experiment start and finish readings remain in `metadata.json`.
+Metadata has `schema_version`, `configuration` (resolved settings) and
+`runtime` (measurements, device details and experiment status). It is written
+when the experiment directory is created, after device setup, and on successful
+completion; interrupted experiments may retain an `in_progress` snapshot.
 For direct device use, `read_temperature_humidity(save_csv=path)` saves the
 reading in the same CSV format; omit `save_csv` to read without saving.
 
@@ -104,20 +107,35 @@ See the [OPS manual](https://kenelec.com.au/wp-content/uploads/2016/06/TSI_3330_
 
 ## Config and metadata extension guide
 
-Use this checklist when adding a new configuration value and writing it to run metadata.
+Define each setting in its Pydantic model in
+`src/tcm_control/initialise_config.py`, including its description, default,
+validation and optional `required_for` condition. The entire resolved config
+is automatically included in metadata. Read the value where it is used in
+`cough.py`; runtime measurements still belong in `build_run_metadata`.
+Existing prompt conditions are `mode`, `always`, `film`, `ops`, `spraytec`,
+`clean_tube`, and `clean_repetition`. Use an optional field with a default of
+`None` for a value that should be prompted when its condition applies.
 
-1. Add or update the value in the experiment TOML.
-2. Ensure it is normalized in `load_experiment_config(...)` in `src/tcm_control/initialise_config.py`.
-3. Read the value in `src/tcm_control/cough.py` from the appropriate config block (`cough_inputs`, `cough_machine_inputs` including `tank_inputs`, `pump_inputs`, `spraytec_inputs`).
-4. If the value belongs to a config block already included in metadata, check
-   that the normalized block is passed to `build_run_metadata(...)` in
-   `src/tcm_control/cough.py`. Otherwise, pass the value there and add it to
-   the output schema in `build_run_metadata(...)` in `src/tcm_control/logger.py`.
-5. Run one experiment and inspect `metadata.json` in the output directory.
+The documented `src/tcm_control/config/config_template.toml` is generated from
+the models. Regenerate it after changing the schema (this overwrites the
+template). Entries marked optional with a default use that value when omitted;
+other entries describe prompting or optional behavior:
 
-Rule of thumb:
-- Use `experiment` metadata for experiment-wide timing, ambient readings and comments.
-- Use `devices` metadata for a hardware subsystem and its resolved settings.
+```shell
+python -m tcm_control.config.regenerate_template
+```
+
+To generate a separate template without overwriting an existing file:
+
+```shell
+python -m tcm_control.initialise_config path/to/new_config.toml
+```
+
+Missing tank pressure and other required values are prompted only when needed.
+Leave the series directory empty to select it, or set it to `"None"` to disable
+saving. If tube cleaning is selected, missing cleaning volumes and rates are
+prompted then. Invalid configured values fail validation; prompted values are
+validated again before use.
 
 ### Camera ROI
 
@@ -130,22 +148,24 @@ Set `[devices.camera.inputs].roi` to `[y_start, y_end, x_start, x_end]` in
 pixels. End coordinates are exclusive; `0` means the full extent, and negative
 coordinates count from the image edge. The default `[0, 0, 0, 0]` saves the
 full frame. The image is cropped after capture, and the configured ROI is saved
-in the run metadata under `devices.camera.inputs.roi`.
+in metadata under `configuration.devices.camera.inputs.roi`.
 
 Set `[devices.camera.inputs].flip` to `"vertical"`, `"horizontal"`, or `"both"`
-to flip the image after cropping. Leave it empty (or omit it) for no flip. The
-selected setting is also saved in run metadata.
+to flip the image after cropping. The default is `"vertical"`; set it to an
+empty string for no flip. The selected setting is also saved in metadata.
 
 Camera snapshots are saved as TIFF files. Explicit `output_path` values must
 end in `.tif` or `.tiff`.
 
-Set `[devices.camera.inputs].live_preview = true` to open a local window during
+Live preview defaults to enabled. Set `[devices.camera.inputs].live_preview`
+to `false` to disable the local window during
 film infusion, withdrawal and settling. The light stays on while the window is
-open. Close the window or press `q` to continue without the preview. The
+open when the preview is enabled. Close the window or press `q` to continue without the preview. The
 background and final snapshots and saved final measurement are unchanged.
 Live thickness and contact angle use the background plate and camera scale;
 they are provisional and may be unavailable or inaccurate while the contour
 is forming. Preview frames are not saved. A desktop display is required.
+Omit `scale_mm_per_px` to use the camera module's default calibration.
 
 
 ## VS Code workspace settings

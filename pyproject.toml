@@ -23,6 +23,7 @@ dependencies = [
   "opencv_python",
   "pandas",
   "Pillow",
+  "pydantic>=2,<3",
   "pyserial",
   "SciencePlots",
   "scipy",

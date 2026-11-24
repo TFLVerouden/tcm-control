@@ -242,6 +242,7 @@ def measure_plate_height(
 
 
 if __name__ == "__main__":
+    from tcm_control.devices.camera import DEFAULT_SCALE_MM_PER_PX
     # Example usage: measure film height from captured images
     output_dir = Path(
         r"/Users/tommieverouden/Developer/twente-cough-machine/control/temp"
@@ -260,7 +261,7 @@ if __name__ == "__main__":
         r"/Users/tommieverouden/Developer/twente-cough-machine/control/temp/infuse_4mL.tif"
     )
     # Use the same camera calibration as the experiment configuration.
-    scale_mm_per_px = 0.01614443137990558
+    scale_mm_per_px = DEFAULT_SCALE_MM_PER_PX
     film_height_mm, film_error_mm, contact_angle_deg, film_level_px = measure_film_properties(
         image_path, plate_measurement, scale_mm_per_px, output_dir)
     print(f"Determined film level: {film_level_px:.2f} px")

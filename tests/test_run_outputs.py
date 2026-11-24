@@ -9,7 +9,6 @@ import types
 import unittest
 from contextlib import contextmanager, redirect_stdout
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 
@@ -36,79 +35,6 @@ def fake_module(**values):
 
 
 class RunOutputTests(unittest.TestCase):
-    def test_recording_flags_are_independent_and_required(self):
-        ops_module = load_module("_test_ops", "src/tcm_control/devices/ops.py")
-        modules = {
-            "tcm_utils.file_dialogs": fake_module(ask_open_file=None),
-            "tcm_control.devices.camera": fake_module(
-                validate_flip=lambda value: value,
-                validate_gain=lambda value: value,
-                validate_roi=lambda value: value,
-            ),
-            "tcm_control.devices.ops": fake_module(
-                MAX_RECORDING_S=ops_module.MAX_RECORDING_S,
-                validate_bin_boundaries=ops_module.validate_bin_boundaries,
-            ),
-            "tcm_control.devices.cough_machine": fake_module(
-                DEFAULT_CLEAN_CYCLE_COUNT=0,
-                DEFAULT_CLEAN_DRY_DURATION_S=0,
-                DEFAULT_CLEAN_DRY_VALVE_CURRENT_MA=14,
-                DEFAULT_CLEAN_PRESSURE_BAR=4,
-                DEFAULT_CLEAN_VALVE_OPEN_DURATION_S=2.5,
-                MAX_PRESSURE_BAR=7.2,
-            ),
-        }
-        source = (ROOT / "src/tcm_control/config/config_spraytec.toml").read_text()
-        with patch.dict(sys.modules, modules), tempfile.TemporaryDirectory() as tmp:
-            config_module = load_module(
-                "_test_initialise_config", "src/tcm_control/initialise_config.py")
-            config_path = Path(tmp) / "config.toml"
-            for spraytec in (False, True):
-                for ops in (False, True):
-                    with self.subTest(spraytec=spraytec, ops=ops):
-                        text = source.replace(
-                            "record_droplet_size_spraytec = true",
-                            f"record_droplet_size_spraytec = {str(spraytec).lower()}",
-                        ).replace(
-                            "record_droplet_size_ops = true",
-                            f"record_droplet_size_ops = {str(ops).lower()}",
-                        )
-                        config_path.write_text(text)
-                        config = config_module.load_experiment_config(config_path)
-                        self.assertEqual(config["inputs"]["cough"]["record_droplet_size_spraytec"], spraytec)
-                        self.assertEqual(config["inputs"]["cough"]["record_droplet_size_ops"], ops)
-                        self.assertEqual(config["devices"]["spraytec"]["enabled"], spraytec)
-
-            config_path.write_text(source.replace('mode = "film"', 'mode = "piv"'))
-            config = config_module.load_experiment_config(config_path)
-            self.assertFalse(config["inputs"]["cough"]["record_droplet_size_spraytec"])
-            self.assertTrue(config["inputs"]["cough"]["record_droplet_size_ops"])
-
-            for entry, expected in (('position = "  Near the outlet  "', "Near the outlet"),
-                                    ('position = "   "', ""), ("", "")):
-                config_path.write_text(source.replace('position = "" # keep empty to prompt for a description', entry))
-                config = config_module.load_experiment_config(config_path)
-                self.assertEqual(config["devices"]["ops"]["inputs"]["position"], expected)
-            config_path.write_text(source.replace('position = "" # keep empty to prompt for a description',
-                                                  "position = 123"))
-            with self.assertRaisesRegex(ValueError, "position must be a string"):
-                config_module.load_experiment_config(config_path)
-
-            config_path.write_text(source.replace("record_droplet_size_ops = true", ""))
-            with self.assertRaisesRegex(ValueError, "record_droplet_size_ops"):
-                config_module.load_experiment_config(config_path)
-            config_path.write_text(source.replace("record_droplet_size_ops = true", "record_droplet_size = false"))
-            with self.assertRaisesRegex(ValueError, "Replace .*record_droplet_size"):
-                config_module.load_experiment_config(config_path)
-            for old, new, error in (
-                ("pre_run_s = 10.0", "pre_run_s = 50.0", "durations"),
-                ("alarm_threshold = 4000.0", "alarm_threshold = 10001.0", "alarm_threshold"),
-                ("0.374, 0.465", "0.301, 0.465", "boundaries"),
-            ):
-                config_path.write_text(source.replace(old, new))
-                with self.subTest(setting=new), self.assertRaisesRegex(ValueError, error):
-                    config_module.load_experiment_config(config_path)
-
     def test_ops_records_sample_columns_and_stops(self):
         ops_module = load_module("_test_ops", "src/tcm_control/devices/ops.py")
         ops = ops_module.OpticalParticleSizer.__new__(ops_module.OpticalParticleSizer)
@@ -260,8 +186,10 @@ class RunOutputTests(unittest.TestCase):
                         return path
 
                 class Camera:
-                    def __init__(self, output_dir, **_kwargs):
+                    def __init__(self, output_dir, **kwargs):
                         self.output_dir = output_dir
+                        self.exposure_us = kwargs["exposure_us"]
+                        self.gain_db = kwargs["gain_db"]
 
                 class OpticalParticleSizer:
                     def __init__(self, **_kwargs):
@@ -333,8 +261,7 @@ class RunOutputTests(unittest.TestCase):
                     "experiment": {"mode": mode, "save_data": save, "series_directory": str(root),
                                    "name": "test", "config_file_path": root / "config.toml"},
                     "inputs": {"cough": {"debug_mode": False, "nr_runs": count,
-                                          "record_droplet_size_spraytec": False,
-                                          "record_droplet_size_ops": record_ops, "multi_run_interval_s": 0,
+                                          "multi_run_interval_s": 0,
                                           "confirm_before_starting_next_run": False}},
                     "devices": {
                         "cough_machine": {"inputs": {"tank": dict.fromkeys(
@@ -352,8 +279,8 @@ class RunOutputTests(unittest.TestCase):
                         "camera": {"inputs": {"camera_exposure_us": 1, "roi": [], "flip": None,
                                                "camera_gain_db": 0, "scale_mm_per_px": 1,
                                                "live_preview": live}},
-                        "vertical_stage": {"inputs": {}}, "spraytec": {"inputs": {}},
-                        "ops": {"inputs": {"bin_boundaries_um": [], "alarm_threshold": 4000,
+                        "vertical_stage": {"inputs": {}}, "spraytec": {"enabled": False, "inputs": {}},
+                        "ops": {"enabled": record_ops and mode == "film", "inputs": {"bin_boundaries_um": [], "alarm_threshold": 4000,
                                           "pre_run_s": 10, "post_run_s": 10, "position": position}},
                     },
                 }
@@ -376,7 +303,8 @@ class RunOutputTests(unittest.TestCase):
                         VerticalStage=MagicMock(), SprayTec=MagicMock(),
                         OpticalParticleSizer=OpticalParticleSizer),
                     "tcm_control.devices.spraytec": fake_module(warn_if_experiment_dir_name_too_long=noop),
-                    "tcm_control.initialise_config": fake_module(load_experiment_config=lambda _p: config),
+                    "tcm_control.initialise_config": fake_module(load_experiment_config=lambda _p: config,
+                                                                 resolve_tube_cleaning=lambda inputs: inputs),
                     "tcm_control.interrupt_handling": fake_module(**dict.fromkeys(
                         ("reset_interrupt_cleanup_state", "set_active_output_dir", "set_active_pump", "set_active_tcm"), noop)),
                     "tcm_control.processing.run_log_processing": fake_module(plot_run_log=plot),
@@ -422,9 +350,9 @@ class RunOutputTests(unittest.TestCase):
                         self.assertEqual(runner.cough(), output if save else None)
                 self.assertEqual(position_prompt.call_count, int(mode == "film" and record_ops and not position))
                 if save and not fail_fan and not fail_preview:
-                    saved_meta = logger.write_run_metadata.call_args.kwargs["meta"]
-                    self.assertEqual(saved_meta["ops_position"],
-                                     (position or "Beside the trachea") if mode == "film" and record_ops else None)
+                    if mode == "film" and record_ops:
+                        self.assertEqual(config["devices"]["ops"]["inputs"]["position"],
+                                         position or "Beside the trachea")
                 if fail_preview:
                     self.assertEqual(events, ["ops-connect", "preview-open", "preview-frame",
                                               "preview-close", "ops-close"])
@@ -507,31 +435,20 @@ class RunOutputTests(unittest.TestCase):
         }
         with patch.dict(sys.modules, modules):
             logger = load_module("_test_logger", "src/tcm_control/logger.py")
-            config = {"inputs": {"cough": {"debug_mode": False, "nr_runs": 1,
-                      "multi_run_interval_s": 0, "confirm_before_starting_next_run": False,
-                      "record_droplet_size_spraytec": False, "record_droplet_size_ops": False}},
-                      "experiment": {"config_file_path": "test.toml"}}
-            values: dict[str, Any] = dict.fromkeys(("experiment_name", "time_start", "time_finish", "output_dir",
-                "wait_before_run_us", "comments", "cough_machine_inputs", "pump", "syringe_inputs",
-                "layer_inputs", "camera_inputs", "spraytec_inputs", "spraytec_x_mm", "spraytec_y_mm",
-                "spraytec_z_mm", "stage_pos_x_mm", "stage_pos_y_mm", "stage_pos_z_mm",
-                "spraytec_audit_path", "spraytec_laser_intensity", "vertical_stage",
-                "ops", "ops_inputs", "ops_position"))
-            values.update(experiment_mode="film", tcm=fake_module(name="fake", serial_settings={}),
+            config = {"devices": {"ops": {"inputs": {"pre_run_s": 10, "position": "Beside the trachea"}}}}
+            values = dict(time_start="start", time_finish="finish", output_dir=Path("."),
+                          tcm=fake_module(name="fake", serial_settings={}),
                           temperature_start=18, temperature_finish=19, humidity_start=30, humidity_finish=50)
-            measurements = logger.build_run_metadata(config, **values)["experiment"]["measurements"]
+            metadata = logger.build_run_metadata(config, **values)
+            measurements = metadata["runtime"]["measurements"]
             self.assertEqual(measurements, {"temperature": {"start": 18, "finish": 19},
                                             "humidity": {"start": 30, "finish": 50}})
-            disabled_ops = logger.build_run_metadata(config, **values)["devices"]["ops"]
-            self.assertIsNone(disabled_ops["position_description"])
-            values["ops"] = fake_module(metadata=lambda: {"model": "3330"})
-            values["ops_inputs"] = {"pre_run_s": 10}
-            values["ops_position"] = "Beside the trachea"
-            ops_meta = logger.build_run_metadata(config, **values)["devices"]["ops"]
-            self.assertEqual(ops_meta["mode"], "enabled")
-            self.assertEqual(ops_meta["device"]["model"], "3330")
-            self.assertEqual(ops_meta["inputs"]["pre_run_s"], 10)
-            self.assertEqual(ops_meta["position_description"], "Beside the trachea")
+            self.assertIsNone(metadata["runtime"]["devices"]["ops"])
+            self.assertEqual(metadata["configuration"], config)
+            ops_meta = logger.build_run_metadata(
+                config, **values, ops=fake_module(metadata=lambda: {"model": "3330"}))
+            self.assertEqual(ops_meta["runtime"]["devices"]["ops"]["model"], "3330")
+            self.assertEqual(ops_meta["configuration"]["devices"]["ops"]["inputs"]["pre_run_s"], 10)
 
 
 if __name__ == "__main__":

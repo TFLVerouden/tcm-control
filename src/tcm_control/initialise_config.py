@@ -1,13 +1,19 @@
+"""Experiment configuration, validation, prompting and template generation."""
+
 from __future__ import annotations
-"""Load and validate experiment input configuration from TOML."""
 
-import math
+import argparse
+import json
 import re
+import tomllib
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any, Literal, get_args
 
-from tcm_utils.file_dialogs import ask_open_file
-from tcm_control.devices.camera import validate_flip, validate_gain, validate_roi
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError, field_validator, model_validator
+
+from tcm_utils.file_dialogs import ask_open_file, ensure_directory_path
+from tcm_utils.io_utils import prompt_input
+from tcm_control.devices.camera import DEFAULT_SCALE_MM_PER_PX, validate_flip, validate_gain, validate_roi
 from tcm_control.devices.ops import MAX_RECORDING_S, validate_bin_boundaries
 from tcm_control.devices.cough_machine import (
     DEFAULT_CLEAN_CYCLE_COUNT,
@@ -18,1032 +24,433 @@ from tcm_control.devices.cough_machine import (
     MAX_PRESSURE_BAR,
 )
 
-import tomllib
+
+NonNegative = Annotated[float, Field(ge=0)]
+Positive = Annotated[float, Field(gt=0)]
+Pressure = Annotated[float, Field(ge=0, le=MAX_PRESSURE_BAR)]
 
 
-VALID_EXPERIMENT_MODES = {"droplet", "film", "piv"}
-PUMP_REQUIRED_MODES = {"droplet", "film"}
-
-# -----------------------------------------------------------------------------
-# Generic value helpers
-# -----------------------------------------------------------------------------
+def setting(description: str, *, default: Any = None, required_for: str | None = None) -> Any:
+    """Define one setting's default, documentation and conditional prompt."""
+    return Field(default=default, description=description,
+                 json_schema_extra={"required_for": required_for})
 
 
-def _nested_get(data: dict[str, Any], *keys: str, default: Any = None) -> Any:
-    """Safely read nested dictionary values with a default fallback."""
-    current: Any = data
-    for key in keys:
-        if not isinstance(current, dict) or key not in current:
-            return default
-        current = current[key]
-    return current
+class Settings(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    @model_validator(mode="before")
+    @classmethod
+    def empty_optional_values(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        # Empty numeric/choice fields mean missing; empty strings retain their own semantics.
+        return {
+            key: None if (item == "" and key in cls.model_fields
+                          and type(None) in get_args(cls.model_fields[key].annotation)
+                          and str not in get_args(cls.model_fields[key].annotation)) else item
+            for key, item in value.items()
+        }
 
 
-def _normalize_optional_string(value: Any) -> str | None:
-    """Convert blank strings to None; otherwise return stripped text."""
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text if text else None
+class Experiment(Settings):
+    name: str | None = setting("Experiment name; leave empty to prompt when saving.")
+    mode: Literal["film", "piv", "droplet"] | None = setting(
+        "Experiment mode: film, piv or droplet (not yet implemented).", required_for="mode")
+    series_directory: str | None = setting(
+        'Series directory; leave empty to select one, or use "None" to disable saving.')
+
+    @field_validator("name", "series_directory")
+    @classmethod
+    def strip_optional_text(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
 
 
-def _normalize_optional_path_string(value: Any) -> str | None:
-    """Normalize optional path-like strings to use forward slashes."""
-    text = _normalize_optional_string(value)
-    if text is None:
-        return None
-    return text.replace("\\", "/")
+class CoughInputs(Settings):
+    debug_mode: StrictBool = setting("Enable cough-machine debug mode.", default=False)
+    nr_runs: int = setting("Number of coughs in the experiment.", default=1)
+    multi_run_interval_s: float = setting("Wait between runs in seconds.", default=0.0)
+    confirm_before_starting_next_run: StrictBool = setting(
+        "Ask for confirmation before each subsequent run.", default=True)
+
+    @field_validator("nr_runs")
+    @classmethod
+    def at_least_one_run(cls, value: int) -> int:
+        return max(1, value)
 
 
-def _sanitize_windows_path_separators_in_toml(raw_text: str) -> str:
-    """Normalize Windows backslashes for selected TOML path keys.
-
-    This targets only basic string assignments for:
-    - series_directory
-    - append_file_path
-
-    It converts backslashes to forward slashes so TOML parsing remains robust
-    when users provide Windows-style paths.
-    """
-
-    pattern = re.compile(
-        r'(^\s*(series_directory|append_file_path)\s*=\s*")([^"\n]*)(")',
-        flags=re.MULTILINE,
-    )
-
-    def _replace(match: re.Match[str]) -> str:
-        prefix = match.group(1)
-        path_value = match.group(3)
-        suffix = match.group(4)
-        return f"{prefix}{path_value.replace('\\', '/')}" + suffix
-
-    return pattern.sub(_replace, raw_text)
+class Inputs(Settings):
+    cough: CoughInputs = Field(default_factory=CoughInputs)
 
 
-def _optional_float(value: Any) -> float | None:
-    """Parse optional numeric values as float, allowing empty values."""
-    if value is None:
-        return None
-    if isinstance(value, (float, int)):
-        return float(value)
-    text = str(value).strip()
-    if not text:
-        return None
-    return float(text)
+class Tank(Settings):
+    pressure_bar: Pressure | None = setting("Tank pressure in bar.", required_for="always")
+    settling_time_s: float = setting("Pressure settling timeout in seconds.", default=60.0)
+    avg_window_s: float = setting("Pressure averaging window in seconds.", default=5.0)
+    tolerance_bar: float = setting("Pressure tolerance in bar.", default=0.05)
+    poll_interval_s: float = setting("Pressure polling interval in seconds.", default=0.2)
+    intermediate_diff_bar: float | None = setting("Intermediate pressure difference in bar; set together with intermediate_time_s.")
+    intermediate_time_s: float | None = setting("Intermediate pressure hold time in seconds; set together with intermediate_diff_bar.")
+
+    @model_validator(mode="after")
+    def paired_intermediate_settings(self) -> Tank:
+        if (self.intermediate_diff_bar is None) != (self.intermediate_time_s is None):
+            raise ValueError("intermediate_diff_bar and intermediate_time_s must be set together")
+        return self
 
 
-def _optional_int(value: Any) -> int | None:
-    """Parse optional numeric values as integer, allowing empty values."""
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        raise ValueError("Boolean value is not valid for integer field.")
-    if isinstance(value, int):
+class Cleaning(Settings):
+    clean_pressure_bar: Pressure = setting("Cleaning pressure in bar.", default=DEFAULT_CLEAN_PRESSURE_BAR)
+    valve_open_duration_s: Positive = setting("Valve-open duration in seconds.", default=DEFAULT_CLEAN_VALVE_OPEN_DURATION_S)
+    dry_pressure_bar: Pressure | None = setting("Drying pressure in bar; omit to use cleaning pressure.")
+    dry_duration_s: NonNegative = setting("Drying duration in seconds.", default=DEFAULT_CLEAN_DRY_DURATION_S)
+    dry_valve_current_ma: Positive = setting("Drying valve current in mA.", default=DEFAULT_CLEAN_DRY_VALVE_CURRENT_MA)
+    cycle_count: Annotated[int, Field(ge=0)] = setting("Number of cleaning cycles.", default=DEFAULT_CLEAN_CYCLE_COUNT)
+
+
+class Nebuliser(Settings):
+    fill_time_s: NonNegative = setting("Nebuliser filling time in seconds.", default=60.0)
+    pressure_bar: Positive = setting("Nebuliser pressure in bar.", default=0.1)
+    pre_run_start_s: NonNegative = setting("Nebulisation time before the cough in seconds.", default=0.0)
+    post_run_finish_s: NonNegative = setting("Nebulisation time after the cough in seconds.", default=0.0)
+
+
+class MachineInputs(Settings):
+    flow_curve_csv_path: str | None = setting("Flow-curve path or name; leave empty to select a CSV.")
+    wait_before_run_ms: float = setting("Controller pre-trigger wait in milliseconds.", default=0.0)
+    nr_droplets_to_skip_before_recording: Annotated[int, Field(ge=0)] = setting(
+        "Droplets to skip before recording in droplet mode.", default=0)
+    tank: Tank = Field(default_factory=Tank)
+    cleaning: Cleaning = Field(default_factory=Cleaning)
+    drying: Cleaning = Field(default_factory=Cleaning)
+    nebuliser: Nebuliser = Field(default_factory=Nebuliser)
+
+    @field_validator("flow_curve_csv_path")
+    @classmethod
+    def normalize_flow_curve(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+
+class Machine(Settings):
+    inputs: MachineInputs = Field(default_factory=MachineInputs)
+
+
+class Syringe(Settings):
+    syringe_vendor_code: str | None = setting("Syringe vendor code.", required_for="film")
+    syringe_volume_mL: Positive | None = setting("Syringe volume in mL.", required_for="film")
+    syringe_diameter_mm: Positive | None = setting("Syringe diameter in mm.", required_for="film")
+    syringe_gang: Annotated[int, Field(gt=0)] | None = setting("Number of syringes in the gang.", required_for="film")
+    syringe_force_percent: Annotated[float, Field(gt=0, le=100)] | None = setting(
+        "Pump force in percent, in multiples of 10.", required_for="film")
+
+    @field_validator("syringe_vendor_code")
+    @classmethod
+    def nonempty_vendor(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+    @field_validator("syringe_force_percent")
+    @classmethod
+    def force_step(cls, value: float | None) -> float | None:
+        if value is not None and value % 10:
+            raise ValueError("syringe force must be a multiple of 10")
         return value
-    if isinstance(value, float):
-        return int(value)
-    text = str(value).strip()
-    if not text:
-        return None
-    return int(float(text))
 
 
-def _required_non_negative_int(value: Any, *, default: int = 0) -> int:
-    """Parse an integer value that must be zero or positive."""
-    parsed = _optional_int(value)
-    if parsed is None:
-        parsed = default
-    if parsed < 0:
-        raise ValueError("Expected a non-negative integer value.")
-    return parsed
+class Layer(Settings):
+    film_settling_time_s: Annotated[int, Field(ge=0)] | None = setting("Film settling time in seconds.", required_for="film")
+    infuse_volume_ml: NonNegative | None = setting("Volume infused to make the layer in mL.", required_for="film")
+    infuse_rate_ml_min: Positive | None = setting("Layer infusion rate in mL/min.", required_for="film")
+    withdraw_volume_ml: NonNegative | None = setting("Volume withdrawn to make the layer in mL.", required_for="film")
+    withdraw_rate_ml_min: Positive | None = setting("Layer withdrawal rate in mL/min.", required_for="film")
+
+
+class CleanTube(Settings):
+    volume_ml_layer: NonNegative | None = setting("Initial tube-cleaning infusion volume in mL.", required_for="clean_tube")
+    rate_ml_min_layer: Positive | None = setting("Initial tube-cleaning rate in mL/min.", required_for="clean_tube")
+    volume_ml_repetition: NonNegative | None = setting("Volume per tube-cleaning repetition in mL.", required_for="clean_repetition")
+    rate_ml_min_repetition: Positive | None = setting("Tube-cleaning repetition rate in mL/min.", required_for="clean_repetition")
+    repetitions: Annotated[int, Field(ge=0)] = setting("Number of tube-cleaning repetitions.", default=0)
+
+
+class Pump(Settings):
+    syringe: Syringe = Field(default_factory=Syringe)
+    layer: Layer = Field(default_factory=Layer)
+    clean_tube: CleanTube = Field(default_factory=CleanTube)
+
+
+class CameraInputs(Settings):
+    camera_exposure_us: Annotated[int, Field(gt=0)] = setting("Camera exposure in microseconds.", default=4000)
+    camera_gain_db: float | None = setting("Camera gain in dB; omit to leave unchanged.")
+    roi: tuple[int, int, int, int] = setting("ROI [y_start, y_end, x_start, x_end]; end 0 means full extent.", default=(0, 0, 0, 0))
+    flip: Literal["vertical", "horizontal", "both"] | None = setting("Camera flip; empty disables it.", default="vertical")
+    scale_mm_per_px: Positive | None = setting("Camera calibration in mm per pixel.", default=DEFAULT_SCALE_MM_PER_PX, required_for="film")
+    live_preview: StrictBool = setting("Show the live film preview.", default=True)
+
+    @field_validator("roi", mode="before")
+    @classmethod
+    def check_roi(cls, value: object) -> tuple[int, int, int, int]:
+        return validate_roi(value)
+
+    @field_validator("flip", mode="before")
+    @classmethod
+    def check_flip(cls, value: object) -> str | None:
+        return validate_flip(None if value == "" else value)
+
+    @field_validator("camera_gain_db", mode="before")
+    @classmethod
+    def check_gain(cls, value: object) -> float | None:
+        return validate_gain(value)
+
+
+class Camera(Settings):
+    inputs: CameraInputs = Field(default_factory=CameraInputs)
+
+
+class StageInputs(Settings):
+    tolerance_mm: NonNegative = setting("Vertical-stage position tolerance in mm.", default=0.3)
+    timeout_s: Positive = setting("Vertical-stage timeout in seconds.", default=30.0)
+    poll_interval_s: Positive = setting("Vertical-stage polling interval in seconds.", default=0.2)
+
+
+class VerticalStage(Settings):
+    inputs: StageInputs = Field(default_factory=StageInputs)
+
+
+class SprayTecPosition(Settings):
+    spraytec_target_z_mm: float | None = setting("Target SprayTec height in mm; leave empty to prompt.")
+    stage_pos_x_mm: float | None = setting("Stage x ruler reading in mm; leave empty to prompt.")
+    stage_pos_y_mm: float | None = setting("Stage y ruler reading in mm; leave empty to prompt.")
+
+
+class SprayTecInputs(Settings):
+    append_file_path: str | None = setting("SprayTec append file; leave empty to select it.")
+    tcm_trachea_bottom_z_mm: float | None = setting("Trachea bottom height in mm.", required_for="spraytec")
+    tcm_trachea_height_mm: float | None = setting("Trachea height in mm.", required_for="spraytec")
+    lift_zero_z_mm: float | None = setting("Lift zero height in mm.", required_for="spraytec")
+    spraytec_to_lift_z_mm: float | None = setting("SprayTec-to-lift vertical offset in mm.", required_for="spraytec")
+    tcm_trachea_exit_to_ref_x_mm: float | None = setting("Trachea-exit x offset from reference in mm.", required_for="spraytec")
+    tcm_trachea_exit_to_ref_y_mm: float | None = setting("Trachea-exit y offset from reference in mm.", required_for="spraytec")
+    spraytec_to_ref_x_mm: float | None = setting("SprayTec x offset from reference in mm.", required_for="spraytec")
+    spraytec_to_ref_y_mm: float | None = setting("SprayTec y offset from reference in mm.", required_for="spraytec")
+    stage_pos_x_zero_mm: float | None = setting("Stage x zero ruler reading in mm.", required_for="spraytec")
+    stage_pos_y_zero_mm: float | None = setting("Stage y zero ruler reading in mm.", required_for="spraytec")
+    table_height_mm: float | None = setting("Table height in mm.", required_for="spraytec")
+    position: SprayTecPosition = Field(default_factory=SprayTecPosition)
+
+    @field_validator("append_file_path")
+    @classmethod
+    def normalize_append_path(cls, value: str | None) -> str | None:
+        return value.strip().replace("\\", "/") or None if value is not None else None
+
+
+class SprayTec(Settings):
+    enabled: StrictBool = setting("Enable SprayTec recording in film mode.", default=False)
+    inputs: SprayTecInputs = Field(default_factory=SprayTecInputs)
+
+
+class OPSInputs(Settings):
+    position: str = setting("OPS position description; leave empty to prompt.", default="")
+    pre_run_s: NonNegative | None = setting("OPS recording time before the cough in seconds.", required_for="ops")
+    post_run_s: NonNegative | None = setting("OPS recording time after the cough in seconds.", required_for="ops")
+    alarm_threshold: Annotated[float, Field(ge=0, le=10000)] | None = setting(
+        "OPS concentration alarm threshold in particles/cm3.", required_for="ops")
+    bin_boundaries_um: list[float] | None = setting(
+        "17 OPS bin boundaries in micrometres, from 0.3 to 10.", required_for="ops")
+
+    @field_validator("position")
+    @classmethod
+    def normalize_position(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("bin_boundaries_um", mode="before")
+    @classmethod
+    def check_boundaries(cls, value: object) -> list[float] | None:
+        return None if value is None else validate_bin_boundaries(value)
+
+    @model_validator(mode="after")
+    def check_duration(self) -> OPSInputs:
+        if (self.pre_run_s is not None and self.post_run_s is not None
+                and self.pre_run_s + self.post_run_s >= MAX_RECORDING_S):
+            raise ValueError("OPS pre- and post-run durations must total less than the recording limit")
+        return self
+
+
+class OPS(Settings):
+    enabled: StrictBool = setting("Enable OPS recording in film mode.", default=False)
+    inputs: OPSInputs = Field(default_factory=OPSInputs)
+
+
+class Devices(Settings):
+    cough_machine: Machine = Field(default_factory=Machine)
+    pump: Pump = Field(default_factory=Pump)
+    camera: Camera = Field(default_factory=Camera)
+    vertical_stage: VerticalStage = Field(default_factory=VerticalStage)
+    spraytec: SprayTec = Field(default_factory=SprayTec)
+    ops: OPS = Field(default_factory=OPS)
+
+
+class ExperimentConfig(Settings):
+    experiment: Experiment = Field(default_factory=Experiment)
+    inputs: Inputs = Field(default_factory=Inputs)
+    devices: Devices = Field(default_factory=Devices)
+
+
+def _prompt_required(model: Settings, contexts: set[str], prefix: str = "") -> None:
+    """Resolve missing fields applicable to the current experiment or action."""
+    for name, field in type(model).model_fields.items():
+        value = getattr(model, name)
+        path = f"{prefix}.{name}" if prefix else name
+        if isinstance(value, Settings):
+            _prompt_required(value, contexts, path)
+            continue
+        required_for = (field.json_schema_extra or {}).get("required_for")
+        if value is not None or required_for not in contexts:
+            continue
+        while True:
+            text = prompt_input(f"{path}: {field.description} ", value_type="string")
+            candidate: Any = text
+            if name == "bin_boundaries_um":
+                candidate = [item.strip() for item in text.strip("[]").split(",")]
+            try:
+                updated = type(model).model_validate({**model.model_dump(), name: candidate})
+            except ValidationError as exc:
+                print(f"Invalid value for {path}: {exc}")
+                continue
+            setattr(model, name, getattr(updated, name))
+            break
+
+
+def resolve_tube_cleaning(inputs: dict[str, Any]) -> dict[str, Any]:
+    """Prompt for tube-cleaning values only when the operator selects cleaning."""
+    cleaning = CleanTube.model_validate(inputs)
+    contexts = {"clean_tube"}
+    if cleaning.repetitions:
+        contexts.add("clean_repetition")
+    _prompt_required(cleaning, contexts, "devices.pump.clean_tube")
+    return cleaning.model_dump()
+
+
+def _read_toml(path: Path) -> dict[str, Any]:
+    text = path.read_text(encoding="utf-8")
+    try:
+        return tomllib.loads(text)
+    except tomllib.TOMLDecodeError:
+        # Preserve support for Windows paths entered without escaped backslashes.
+        sanitized = re.sub(
+            r'(^\s*(?:series_directory|append_file_path)\s*=\s*")([^"\n]*)(")',
+            lambda match: match.group(1) + match.group(2).replace("\\", "/") + match.group(3),
+            text, flags=re.MULTILINE,
+        )
+        if sanitized == text:
+            raise
+        return tomllib.loads(sanitized)
 
 
 def load_experiment_config(config_path: Path | str | None = None) -> dict[str, Any]:
-    """Load the experiment TOML and return normalized runtime dictionaries.
-
-    If no path is provided, a file picker is shown so users can choose a config.
-    """
+    """Load TOML, resolve applicable required settings, and return runtime values."""
     if config_path is None:
         default_dir = Path(__file__).resolve().parent / "config"
-        selected = ask_open_file(
-            key="tcm_experiment_config",
-            title="Select experiment config TOML",
+        config_path = ask_open_file(
+            key="tcm_experiment_config", title="Select experiment config TOML",
             filetypes=(("TOML files", "*.toml"), ("All files", "*.*")),
-            default_dir=default_dir,
-            start=default_dir,
+            default_dir=default_dir, start=default_dir,
+        )
+        if config_path is None:
+            raise SystemExit("No config TOML selected.")
+    config_file = Path(config_path)
+    raw = _read_toml(config_file)
+
+    # Disabled devices do not require or validate their device-specific inputs.
+    experiment = Experiment.model_validate(raw.get("experiment", {}))
+    _prompt_required(experiment, {"mode"}, "experiment")
+    raw["experiment"] = experiment.model_dump()
+    devices = raw.get("devices", {})
+    if not isinstance(devices, dict):
+        raise ValueError("Config [devices] must be a table.")
+    mode = experiment.mode
+    if mode == "piv":
+        devices.pop("pump", None)
+    for name in ("ops", "spraytec"):
+        device = devices.get(name, {})
+        if isinstance(device, dict) and "enabled" in device and not isinstance(device["enabled"], bool):
+            raise ValueError(f"Config [devices.{name}].enabled must be a boolean.")
+        if isinstance(device, dict) and (mode == "piv" or device.get("enabled", False) is False):
+            device.pop("inputs", None)
+            if mode == "piv":
+                device["enabled"] = False
+
+    config = ExperimentConfig.model_validate(raw)
+    if config.experiment.mode == "piv":
+        config.devices.ops.enabled = False
+        config.devices.spraytec.enabled = False
+    contexts = {"always"}
+    if config.experiment.mode == "film":
+        contexts.add("film")
+        if config.devices.ops.enabled:
+            contexts.add("ops")
+        if config.devices.spraytec.enabled:
+            contexts.add("spraytec")
+    _prompt_required(config, contexts)
+
+    # A missing directory prompts; the explicit string "None" disables saving.
+    series = config.experiment.series_directory
+    save_data = not (series is not None and series.strip().lower() == "none")
+    if save_data:
+        selected = ensure_directory_path(
+            series, key="tcm_series_directory", title="Select series directory",
+            start=Path(__file__).resolve().parent,
         )
         if selected is None:
-            raise SystemExit("No config TOML selected.")
-        config_file = Path(selected)
+            raise SystemExit("No series directory selected.")
+        config.experiment.series_directory = str(selected)
     else:
-        config_file = Path(config_path)
+        config.experiment.series_directory = None
 
-    if not config_file.exists():
-        raise FileNotFoundError(f"Config file not found: {config_file}")
+    result = config.model_dump()
+    result["experiment"]["save_data"] = save_data
+    result["experiment"]["config_file_path"] = config_file
+    result["devices"]["cough_machine"]["inputs"]["wait_before_run_us"] = int(
+        config.devices.cough_machine.inputs.wait_before_run_ms * 1000)
+    if not config.devices.ops.enabled:
+        result["devices"]["ops"]["inputs"] = None
+    return result
 
-    raw_text = config_file.read_text(encoding="utf-8")
-    try:
-        raw = tomllib.loads(raw_text)
-    except tomllib.TOMLDecodeError:
-        sanitized_text = _sanitize_windows_path_separators_in_toml(raw_text)
-        if sanitized_text == raw_text:
-            raise
-        raw = tomllib.loads(sanitized_text)
 
-    # ------------------------------------------------------------------
-    # Experiment-level settings
-    # ------------------------------------------------------------------
-    experiment_name_raw = _nested_get(raw, "experiment", "name")
-    experiment_mode = _nested_get(raw, "experiment", "mode")
-    series_directory_raw = _nested_get(raw, "experiment", "series_directory")
+def render_config_template() -> str:
+    """Generate a documented TOML template from the field definitions."""
+    lines: list[str] = []
 
-    if not isinstance(experiment_mode, str) or experiment_mode not in VALID_EXPERIMENT_MODES:
-        raise ValueError(
-            "Config [experiment].mode must be one of: "
-            + ", ".join(sorted(VALID_EXPERIMENT_MODES))
-        )
+    def render(model: type[Settings], section: str) -> None:
+        fields = model.model_fields
+        leaves = [(name, field) for name, field in fields.items()
+                  if not isinstance(field.annotation, type) or not issubclass(field.annotation, Settings)]
+        if leaves:
+            indent = "    " * section.count(".")
+            lines.append(f"{indent}[{section}]")
+            for name, field in leaves:
+                lines.append(f"{indent}# {field.description}")
+                value = field.get_default(call_default_factory=True)
+                if value is None:
+                    extra = field.json_schema_extra
+                    required_for = extra.get("required_for") if isinstance(extra, dict) else None
+                    note = "prompted when required" if required_for else "optional; see description"
+                    lines.append(f"{indent}# {name} =  # {note}")
+                else:
+                    default = json.dumps(value)
+                    lines.append(f"{indent}{name} = {default}  # optional; default: {default}")
+            lines.append("")
+        for name, field in fields.items():
+            if isinstance(field.annotation, type) and issubclass(field.annotation, Settings):
+                render(field.annotation, f"{section}.{name}" if section else name)
 
-    series_directory = _normalize_optional_path_string(series_directory_raw)
-    if series_directory is not None and series_directory.strip().lower() == "none":
-        series_directory = None
-    if series_directory is None:
-        save_data = False
-    else:
-        save_data = True
+    for name, field in ExperimentConfig.model_fields.items():
+        render(field.annotation, name)
+    return "\n".join(lines)
 
-    if experiment_name_raw is not None and not isinstance(experiment_name_raw, str):
-        raise ValueError(
-            "Config [experiment].name must be a string (can be empty to prompt)."
-        )
-    experiment_name = _normalize_optional_string(experiment_name_raw)
-    if save_data and experiment_name_raw is None:
-        raise ValueError(
-            "Config [experiment].name must be a string (can be empty to prompt)."
-        )
 
-    # ------------------------------------------------------------------
-    # Cough run controls
-    # ------------------------------------------------------------------
-    if _nested_get(raw, "inputs", "cough", "record_droplet_size") is not None:
-        raise ValueError(
-            "Replace [inputs.cough].record_droplet_size with "
-            "record_droplet_size_spraytec and record_droplet_size_ops."
-        )
-    recording_flags = {}
-    for key in ("record_droplet_size_spraytec", "record_droplet_size_ops"):
-        value = _nested_get(raw, "inputs", "cough", key)
-        if not isinstance(value, bool):
-            raise ValueError(f"Config [inputs.cough].{key} must be a boolean.")
-        recording_flags[key] = value
-
-    cough_inputs = {
-        "debug_mode": bool(
-            _nested_get(raw, "inputs", "cough", "debug_mode", default=False)
-        ),
-        "nr_runs": int(_nested_get(raw, "inputs", "cough", "nr_runs", default=1)),
-        "multi_run_interval_s": float(
-            _nested_get(raw, "inputs", "cough",
-                        "multi_run_interval_s", default=0.0)
-        ),
-        "confirm_before_starting_next_run": bool(
-            _nested_get(
-                raw,
-                "inputs",
-                "cough",
-                "confirm_before_starting_next_run",
-                default=True,
-            )
-        ),
-        **recording_flags,
-    }
-    if cough_inputs["nr_runs"] < 1:
-        cough_inputs["nr_runs"] = 1
-
-    # SprayTec is intentionally disabled in PIV mode.
-    if experiment_mode == "piv":
-        cough_inputs["record_droplet_size_spraytec"] = False
-
-    # ------------------------------------------------------------------
-    # Cough machine inputs
-    # ------------------------------------------------------------------
-    cough_machine_inputs = {
-        "flow_curve_csv_path": _normalize_optional_string(
-            _nested_get(
-                raw,
-                "devices",
-                "cough_machine",
-                "inputs",
-                "flow_curve_csv_path",
-            )
-        ),
-        "wait_before_run_ms": float(
-            _nested_get(
-                raw,
-                "devices",
-                "cough_machine",
-                "inputs",
-                "wait_before_run_ms",
-                default=0.0,
-            )
-        ),
-        "nr_droplets_to_skip_before_recording": _required_non_negative_int(
-            _nested_get(
-                raw,
-                "devices",
-                "pump",
-                "inputs",
-                "nr_droplets_to_skip_before_recording",
-            )
-        ),
-        "nebuliser": {
-            "fill_time_s": float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "cough_machine",
-                    "inputs",
-                    "nebuliser",
-                    "fill_time_s",
-                    default=60.0,
-                )
-            ),
-            "pressure_bar": float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "cough_machine",
-                    "inputs",
-                    "nebuliser",
-                    "pressure_bar",
-                    default=0.1,
-                )
-            ),
-            "pre_run_start_s": float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "cough_machine",
-                    "inputs",
-                    "nebuliser",
-                    "pre_run_start_s",
-                    default=0.0,
-                )
-            ),
-            "post_run_finish_s": float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "cough_machine",
-                    "inputs",
-                    "nebuliser",
-                    "post_run_finish_s",
-                    default=0.0,
-                )
-            ),
-        },
-        "tank": {
-            "pressure_bar": float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "cough_machine",
-                    "inputs",
-                    "tank",
-                    "pressure_bar",
-                    default=0.0,
-                )
-            ),
-            "settling_time_s": float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "cough_machine",
-                    "inputs",
-                    "tank",
-                    "settling_time_s",
-                    default=60.0,
-                )
-            ),
-            "avg_window_s": float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "cough_machine",
-                    "inputs",
-                    "tank",
-                    "avg_window_s",
-                    default=5.0,
-                )
-            ),
-            "tolerance_bar": float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "cough_machine",
-                    "inputs",
-                    "tank",
-                    "tolerance_bar",
-                    default=0.05,
-                )
-            ),
-            "poll_interval_s": float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "cough_machine",
-                    "inputs",
-                    "tank",
-                    "poll_interval_s",
-                    default=0.2,
-                )
-            ),
-            "intermediate_diff_bar": _optional_float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "cough_machine",
-                    "inputs",
-                    "tank",
-                    "intermediate_diff_bar",
-                )
-            ),
-            "intermediate_time_s": _optional_float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "cough_machine",
-                    "inputs",
-                    "tank",
-                    "intermediate_time_s",
-                )
-            ),
-        },
-        "cleaning": {
-            "clean_pressure_bar": float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "cough_machine",
-                    "inputs",
-                    "cleaning",
-                    "clean_pressure_bar",
-                    default=DEFAULT_CLEAN_PRESSURE_BAR,
-                )
-            ),
-            "valve_open_duration_s": float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "cough_machine",
-                    "inputs",
-                    "cleaning",
-                    "valve_open_duration_s",
-                    default=DEFAULT_CLEAN_VALVE_OPEN_DURATION_S,
-                )
-            ),
-            "dry_pressure_bar": _optional_float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "cough_machine",
-                    "inputs",
-                    "cleaning",
-                    "dry_pressure_bar",
-                )
-            ),
-            "dry_duration_s": float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "cough_machine",
-                    "inputs",
-                    "cleaning",
-                    "dry_duration_s",
-                    default=DEFAULT_CLEAN_DRY_DURATION_S,
-                )
-            ),
-            "dry_valve_current_ma": float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "cough_machine",
-                    "inputs",
-                    "cleaning",
-                    "dry_valve_current_ma",
-                    default=DEFAULT_CLEAN_DRY_VALVE_CURRENT_MA,
-                )
-            ),
-            "cycle_count": int(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "cough_machine",
-                    "inputs",
-                    "cleaning",
-                    "cycle_count",
-                    default=DEFAULT_CLEAN_CYCLE_COUNT,
-                )
-            ),
-        },
-        "drying": {
-            "clean_pressure_bar": float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "cough_machine",
-                    "inputs",
-                    "drying",
-                    "clean_pressure_bar",
-                    default=DEFAULT_CLEAN_PRESSURE_BAR,
-                )
-            ),
-            "valve_open_duration_s": float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "cough_machine",
-                    "inputs",
-                    "drying",
-                    "valve_open_duration_s",
-                    default=DEFAULT_CLEAN_VALVE_OPEN_DURATION_S,
-                )
-            ),
-            "dry_pressure_bar": _optional_float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "cough_machine",
-                    "inputs",
-                    "drying",
-                    "dry_pressure_bar",
-                )
-            ),
-            "dry_duration_s": float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "cough_machine",
-                    "inputs",
-                    "drying",
-                    "dry_duration_s",
-                    default=DEFAULT_CLEAN_DRY_DURATION_S,
-                )
-            ),
-            "dry_valve_current_ma": float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "cough_machine",
-                    "inputs",
-                    "drying",
-                    "dry_valve_current_ma",
-                    default=DEFAULT_CLEAN_DRY_VALVE_CURRENT_MA,
-                )
-            ),
-            "cycle_count": int(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "cough_machine",
-                    "inputs",
-                    "drying",
-                    "cycle_count",
-                    default=DEFAULT_CLEAN_CYCLE_COUNT,
-                )
-            ),
-        },
-    }
-
-    cleaning_inputs = cough_machine_inputs["cleaning"]
-    if cleaning_inputs["clean_pressure_bar"] < 0 or cleaning_inputs["clean_pressure_bar"] > MAX_PRESSURE_BAR:
-        raise ValueError(
-            f"Config [devices.cough_machine.inputs.cleaning].clean_pressure_bar must be between 0 and {MAX_PRESSURE_BAR} bar."
-        )
-    if cleaning_inputs["valve_open_duration_s"] <= 0:
-        raise ValueError(
-            "Config [devices.cough_machine.inputs.cleaning].valve_open_duration_s must be > 0."
-        )
-    if cleaning_inputs["dry_pressure_bar"] is not None and (
-        cleaning_inputs["dry_pressure_bar"] < 0 or cleaning_inputs["dry_pressure_bar"] > MAX_PRESSURE_BAR
-    ):
-        raise ValueError(
-            f"Config [devices.cough_machine.inputs.cleaning].dry_pressure_bar must be between 0 and {MAX_PRESSURE_BAR} bar."
-        )
-    if cleaning_inputs["dry_duration_s"] < 0:
-        raise ValueError(
-            "Config [devices.cough_machine.inputs.cleaning].dry_duration_s must be >= 0."
-        )
-    if cleaning_inputs["dry_valve_current_ma"] <= 0:
-        raise ValueError(
-            "Config [devices.cough_machine.inputs.cleaning].dry_valve_current_ma must be > 0."
-        )
-    if cleaning_inputs["cycle_count"] < 0:
-        raise ValueError(
-            "Config [devices.cough_machine.inputs.cleaning].cycle_count must be >= 0."
-        )
-
-    drying = cough_machine_inputs["drying"]
-    if drying["clean_pressure_bar"] < 0 or drying["clean_pressure_bar"] > MAX_PRESSURE_BAR:
-        raise ValueError(
-            f"Config [devices.cough_machine.inputs.drying].clean_pressure_bar must be between 0 and {MAX_PRESSURE_BAR} bar."
-        )
-    if drying["valve_open_duration_s"] <= 0:
-        raise ValueError(
-            "Config [devices.cough_machine.inputs.drying].valve_open_duration_s must be > 0."
-        )
-    if drying["dry_pressure_bar"] is not None and (
-        drying["dry_pressure_bar"] < 0 or drying["dry_pressure_bar"] > MAX_PRESSURE_BAR
-    ):
-        raise ValueError(
-            f"Config [devices.cough_machine.inputs.drying].dry_pressure_bar must be between 0 and {MAX_PRESSURE_BAR} bar."
-        )
-    if drying["dry_duration_s"] < 0:
-        raise ValueError(
-            "Config [devices.cough_machine.inputs.drying].dry_duration_s must be >= 0."
-        )
-    if drying["dry_valve_current_ma"] <= 0:
-        raise ValueError(
-            "Config [devices.cough_machine.inputs.drying].dry_valve_current_ma must be > 0."
-        )
-    if drying["cycle_count"] < 0:
-        raise ValueError(
-            "Config [devices.cough_machine.inputs.drying].cycle_count must be >= 0."
-        )
-
-    has_intermediate_diff = (
-        cough_machine_inputs["tank"]["intermediate_diff_bar"] is not None
-    )
-    has_intermediate_time = (
-        cough_machine_inputs["tank"]["intermediate_time_s"] is not None
-    )
-    if has_intermediate_diff != has_intermediate_time:
-        raise ValueError(
-            "Config [devices.cough_machine.inputs.tank] must define both "
-            "intermediate_diff_bar and intermediate_time_s together."
-        )
-
-    nebuliser_inputs = cough_machine_inputs["nebuliser"]
-    if experiment_mode == "piv":
-        if nebuliser_inputs["fill_time_s"] < 0:
-            raise ValueError(
-                "Config [devices.cough_machine.inputs.nebuliser].fill_time_s "
-                "must be >= 0."
-            )
-        if nebuliser_inputs["pressure_bar"] <= 0:
-            raise ValueError(
-                "Config [devices.cough_machine.inputs.nebuliser].pressure_bar "
-                "must be > 0."
-            )
-
-    cough_machine_inputs["wait_before_run_us"] = int(
-        cough_machine_inputs["wait_before_run_ms"] * 1000
-    )
-
-    # ------------------------------------------------------------------
-    # Pump inputs (required in droplet/piv mode only)
-    # ------------------------------------------------------------------
-    pump_required = experiment_mode in PUMP_REQUIRED_MODES
-    if pump_required:
-        syringe_inputs = {
-            "syringe_vendor_code": str(
-                _nested_get(raw, "devices", "pump",
-                            "syringe", "syringe_vendor_code")
-            ),
-            "syringe_volume_mL": float(
-                _nested_get(raw, "devices", "pump",
-                            "syringe", "syringe_volume_mL")
-            ),
-            "syringe_diameter_mm": float(
-                _nested_get(raw, "devices", "pump",
-                            "syringe", "syringe_diameter_mm")
-            ),
-            "syringe_gang": int(
-                _nested_get(raw, "devices", "pump", "syringe", "syringe_gang")
-            ),
-            "syringe_force_percent": float(
-                _nested_get(raw, "devices", "pump", "syringe",
-                            "syringe_force_percent")
-            ),
-        }
-
-        if syringe_inputs["syringe_vendor_code"] is None:
-            raise ValueError(
-                "Config [devices.pump.syringe].vendor_code must be a non-empty string."
-            )
-        if syringe_inputs["syringe_volume_mL"] <= 0:
-            raise ValueError(
-                "Config [devices.pump.syringe].syringe_volume_mL must be > 0."
-            )
-        if syringe_inputs["syringe_diameter_mm"] <= 0:
-            raise ValueError(
-                "Config [devices.pump.syringe].syringe_diameter_mm must be > 0."
-            )
-        if syringe_inputs["syringe_gang"] <= 0 or not isinstance(syringe_inputs["syringe_gang"], int):
-            raise ValueError(
-                "Config [devices.pump.syringe].syringe_gang must be a positive integer."
-            )
-        if syringe_inputs["syringe_force_percent"] <= 0 or syringe_inputs["syringe_force_percent"] > 100 or syringe_inputs["syringe_force_percent"] % 10 != 0:
-            raise ValueError(
-                "Config [devices.pump.syringe].syringe_force_percent must be a percentage between 0 and 100."
-                " It must be a multiple of 10."
-            )
-    else:
-        syringe_inputs = None
-        layer_inputs = None
-        pump_clean_tube = None
-    if experiment_mode == "film":
-        layer_inputs = {
-            "film_settling_time_s": int(
-                _nested_get(raw, "devices", "pump",
-                            "layer", "film_settling_time_s")
-            ),
-            "infuse_volume_ml": float(
-                _nested_get(raw, "devices", "pump",
-                            "layer", "infuse_volume_ml")
-            ),
-            "infuse_rate_ml_min": float(
-                _nested_get(raw, "devices", "pump",
-                            "layer", "infuse_rate_ml_min")
-            ),
-            "withdraw_volume_ml": float(
-                _nested_get(raw, "devices", "pump",
-                            "layer", "withdraw_volume_ml")
-            ),
-            "withdraw_rate_ml_min": float(
-                _nested_get(raw, "devices", "pump",
-                            "layer", "withdraw_rate_ml_min")
-            ),
-        }
-
-        pump_clean_tube = {
-            "volume_ml_layer": _optional_float(
-                _nested_get(raw, "devices", "pump",
-                            "clean_tube", "volume_ml_layer")
-            ),
-            "rate_ml_min_layer": _optional_float(
-                _nested_get(raw, "devices", "pump",
-                            "clean_tube", "rate_ml_min_layer")
-            ),
-            "volume_ml_repetition": _optional_float(
-                _nested_get(raw, "devices", "pump",
-                            "clean_tube", "volume_ml_repetition")
-            ),
-            "rate_ml_min_repetition": _optional_float(
-                _nested_get(raw, "devices", "pump", "clean_tube",
-                            "rate_ml_min_repetition")
-            ),
-            "repetitions": _required_non_negative_int(
-                _nested_get(raw, "devices", "pump",
-                            "clean_tube", "repetitions"),
-                default=0,
-            ),
-        }
-
-        if pump_clean_tube["volume_ml_layer"] is not None and pump_clean_tube["volume_ml_layer"] < 0:
-            raise ValueError(
-                "Config [devices.pump.clean_tube].volume_ml_layer must be >= 0."
-            )
-        if pump_clean_tube["rate_ml_min_layer"] is not None and pump_clean_tube["rate_ml_min_layer"] <= 0:
-            raise ValueError(
-                "Config [devices.pump.clean_tube].rate_ml_min_layer must be > 0."
-            )
-        if pump_clean_tube["volume_ml_repetition"] is not None and pump_clean_tube["volume_ml_repetition"] < 0:
-            raise ValueError(
-                "Config [devices.pump.clean_tube].volume_ml_repetition must be >= 0."
-            )
-        if pump_clean_tube["rate_ml_min_repetition"] is not None and pump_clean_tube["rate_ml_min_repetition"] <= 0:
-            raise ValueError(
-                "Config [devices.pump.clean_tube].rate_ml_min_repetition must be > 0."
-            )
-
-    # if experiment_mode == "droplet":
-    #     if syringe_inputs["pump_rate_ml_per_min"] is None:
-    #         raise ValueError(
-    #             "Config [devices.pump.inputs].pump_rate_ml_per_min must be set "
-    #             "for droplet mode."
-    #         )
-
-    if experiment_mode == "piv":
-        if nebuliser_inputs["pre_run_start_s"] < 0:
-            raise ValueError(
-                "Config [devices.cough_machine.inputs.nebuliser].pre_run_start_s"
-                "must be >= 0."
-            )
-        if nebuliser_inputs["post_run_finish_s"] < 0:
-            raise ValueError(
-                "Config [devices.cough_machine.inputs.nebuliser].post_run_finish_s"
-                "must be >= 0."
-            )
-        if nebuliser_inputs["pressure_bar"] <= 0:
-            raise ValueError(
-                "Config [devices.cough_machine.inputs.nebuliser].pressure_bar "
-                "must be > 0."
-            )
-
-    # ------------------------------------------------------------------
-    # Camera inputs
-    # ------------------------------------------------------------------
-    camera_exposure_us = int(
-        _nested_get(
-            raw,
-            "devices",
-            "camera",
-            "inputs",
-            "camera_exposure_us",
-            default=4000,
-        )
-    )
-    if camera_exposure_us <= 0:
-        raise ValueError(
-            "Config [devices.camera.inputs].camera_exposure_us must be > 0."
-        )
-    camera_flip = _nested_get(raw, "devices", "camera", "inputs", "flip")
-    if camera_flip == "":
-        camera_flip = None
-    live_preview = _nested_get(raw, "devices", "camera", "inputs", "live_preview", default=False)
-    if not isinstance(live_preview, bool):
-        raise ValueError("Config [devices.camera.inputs].live_preview must be a boolean.")
-    camera_inputs = {
-        "camera_exposure_us": camera_exposure_us,
-        "camera_gain_db": validate_gain(
-            _nested_get(raw, "devices", "camera", "inputs", "camera_gain_db")
-        ),
-        "roi": validate_roi(
-            _nested_get(raw, "devices", "camera", "inputs", "roi", default=[0, 0, 0, 0])
-        ),
-        "flip": validate_flip(camera_flip),
-        "live_preview": live_preview,
-        "scale_mm_per_px": _optional_float(
-            _nested_get(raw, "devices", "camera", "inputs", "scale_mm_per_px")
-        ),
-    }
-
-    record_droplet_size_spraytec = bool(cough_inputs["record_droplet_size_spraytec"])
-
-    # OPS recording currently runs only in film mode.
-    ops_inputs = None
-    if cough_inputs["record_droplet_size_ops"] and experiment_mode == "film":
-        raw_ops = _nested_get(raw, "devices", "ops", "inputs")
-        if not isinstance(raw_ops, dict):
-            raise ValueError("Config [devices.ops.inputs] is required when OPS recording is enabled.")
-        position = raw_ops.get("position", "")
-        if not isinstance(position, str):
-            raise ValueError("Config [devices.ops.inputs].position must be a string.")
-        boundaries = validate_bin_boundaries(raw_ops.get("bin_boundaries_um"))
-        try:
-            pre_run_s = float(raw_ops["pre_run_s"])
-            post_run_s = float(raw_ops["post_run_s"])
-            alarm_threshold = float(raw_ops["alarm_threshold"])
-        except (KeyError, TypeError, ValueError) as exc:
-            raise ValueError("Invalid or missing [devices.ops.inputs] settings.") from exc
-        if not all(math.isfinite(value) and value >= 0 for value in (pre_run_s, post_run_s)):
-            raise ValueError("OPS pre_run_s and post_run_s must be finite and non-negative.")
-        if pre_run_s + post_run_s >= MAX_RECORDING_S:
-            raise ValueError("OPS pre- and post-run durations must total less than the recording limit.")
-        if not math.isfinite(alarm_threshold) or not 0 <= alarm_threshold <= 10000:
-            raise ValueError("OPS alarm_threshold must be between 0 and 10000 particles/cm3.")
-        ops_inputs = {
-            "position": position.strip(),
-            "bin_boundaries_um": boundaries,
-            "alarm_threshold": alarm_threshold,
-            "pre_run_s": pre_run_s,
-            "post_run_s": post_run_s,
-        }
-
-    # ------------------------------------------------------------------
-    # Vertical stage inputs
-    # ------------------------------------------------------------------
-    vertical_stage_inputs = {
-        "tolerance_mm": float(
-            _nested_get(
-                raw,
-                "devices",
-                "vertical_stage",
-                "inputs",
-                "tolerance_mm",
-                default=0.3,
-            )
-        ),
-        "timeout_s": float(
-            _nested_get(
-                raw,
-                "devices",
-                "vertical_stage",
-                "inputs",
-                "timeout_s",
-                default=30.0,
-            )
-        ),
-        "poll_interval_s": float(
-            _nested_get(
-                raw,
-                "devices",
-                "vertical_stage",
-                "inputs",
-                "poll_interval_s",
-                default=0.2,
-            )
-        ),
-    }
-    if vertical_stage_inputs["tolerance_mm"] < 0:
-        raise ValueError(
-            "Config [devices.vertical_stage.inputs].tolerance_mm must be >= 0."
-        )
-    if vertical_stage_inputs["timeout_s"] <= 0:
-        raise ValueError(
-            "Config [devices.vertical_stage.inputs].timeout_s must be > 0."
-        )
-    if vertical_stage_inputs["poll_interval_s"] <= 0:
-        raise ValueError(
-            "Config [devices.vertical_stage.inputs].poll_interval_s must be > 0."
-        )
-
-    # ------------------------------------------------------------------
-    # SprayTec inputs (validated only when enabled)
-    # ------------------------------------------------------------------
-    spraytec_inputs = {
-        "append_file_path": _normalize_optional_path_string(
-            _nested_get(raw, "devices", "spraytec",
-                        "inputs", "append_file_path")
-        ),
-        "tcm_trachea_bottom_z_mm": _optional_float(
-            _nested_get(raw, "devices", "spraytec",
-                        "inputs", "tcm_trachea_bottom_z_mm")
-        ),
-        "tcm_trachea_height_mm": _optional_float(
-            _nested_get(raw, "devices", "spraytec",
-                        "inputs", "tcm_trachea_height_mm")
-        ),
-        "lift_zero_z_mm": _optional_float(
-            _nested_get(raw, "devices", "spraytec", "inputs", "lift_zero_z_mm")
-        ),
-        "spraytec_to_lift_z_mm": _optional_float(
-            _nested_get(raw, "devices", "spraytec",
-                        "inputs", "spraytec_to_lift_z_mm")
-        ),
-        "tcm_trachea_exit_to_ref_x_mm": _optional_float(
-            _nested_get(raw, "devices", "spraytec", "inputs",
-                        "tcm_trachea_exit_to_ref_x_mm")
-        ),
-        "tcm_trachea_exit_to_ref_y_mm": _optional_float(
-            _nested_get(raw, "devices", "spraytec", "inputs",
-                        "tcm_trachea_exit_to_ref_y_mm")
-        ),
-        "spraytec_to_ref_x_mm": _optional_float(
-            _nested_get(raw, "devices", "spraytec",
-                        "inputs", "spraytec_to_ref_x_mm")
-        ),
-        "spraytec_to_ref_y_mm": _optional_float(
-            _nested_get(raw, "devices", "spraytec",
-                        "inputs", "spraytec_to_ref_y_mm")
-        ),
-        "stage_pos_x_zero_mm": _optional_float(
-            _nested_get(raw, "devices", "spraytec",
-                        "inputs", "stage_pos_x_zero_mm")
-        ),
-        "stage_pos_y_zero_mm": _optional_float(
-            _nested_get(raw, "devices", "spraytec",
-                        "inputs", "stage_pos_y_zero_mm")
-        ),
-        "table_height_mm": _optional_float(
-            _nested_get(raw, "devices", "spraytec",
-                        "inputs", "table_height_mm")
-        ),
-        "position": {
-            "spraytec_target_z_mm": _optional_float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "spraytec",
-                    "inputs",
-                    "position",
-                    "spraytec_target_z_mm",
-                    default=_nested_get(
-                        raw,
-                        "devices",
-                        "spraytec",
-                        "inputs",
-                        "spraytec_target_z_mm",
-                    ),
-                )
-            ),
-            "stage_pos_x_mm": _optional_float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "spraytec",
-                    "inputs",
-                    "position",
-                    "stage_pos_x_mm",
-                    default=_nested_get(
-                        raw,
-                        "devices",
-                        "spraytec",
-                        "inputs",
-                        "stage_pos_x_mm",
-                    ),
-                )
-            ),
-            "stage_pos_y_mm": _optional_float(
-                _nested_get(
-                    raw,
-                    "devices",
-                    "spraytec",
-                    "inputs",
-                    "position",
-                    "stage_pos_y_mm",
-                    default=_nested_get(
-                        raw,
-                        "devices",
-                        "spraytec",
-                        "inputs",
-                        "stage_pos_y_mm",
-                    ),
-                )
-            ),
-        },
-    }
-
-    if not record_droplet_size_spraytec:
-        spraytec_inputs = {
-            "append_file_path": None,
-            "tcm_trachea_bottom_z_mm": None,
-            "tcm_trachea_height_mm": None,
-            "lift_zero_z_mm": None,
-            "spraytec_to_lift_z_mm": None,
-            "tcm_trachea_exit_to_ref_x_mm": None,
-            "tcm_trachea_exit_to_ref_y_mm": None,
-            "spraytec_to_ref_x_mm": None,
-            "spraytec_to_ref_y_mm": None,
-            "stage_pos_x_zero_mm": None,
-            "stage_pos_y_zero_mm": None,
-            "table_height_mm": None,
-            "position": {
-                "spraytec_target_z_mm": None,
-                "stage_pos_x_mm": None,
-                "stage_pos_y_mm": None,
-            },
-        }
-    else:
-        required_spraytec_keys = [
-            "tcm_trachea_bottom_z_mm",
-            "tcm_trachea_height_mm",
-            "lift_zero_z_mm",
-            "spraytec_to_lift_z_mm",
-            "tcm_trachea_exit_to_ref_x_mm",
-            "tcm_trachea_exit_to_ref_y_mm",
-            "spraytec_to_ref_x_mm",
-            "spraytec_to_ref_y_mm",
-            "stage_pos_x_zero_mm",
-            "stage_pos_y_zero_mm",
-            "table_height_mm",
-        ]
-        missing = [
-            key
-            for key in required_spraytec_keys
-            if spraytec_inputs.get(key) is None
-        ]
-        if missing:
-            missing_str = ", ".join(missing)
-            raise ValueError(
-                "SprayTec is enabled, but required fields are empty in "
-                f"[devices.spraytec.inputs]: {missing_str}"
-            )
-
-    return {
-        "experiment": {
-            "name": experiment_name,
-            "mode": experiment_mode,
-            "series_directory": Path(series_directory) if series_directory else None,
-            "save_data": save_data,
-            "config_file_path": config_file,
-        },
-        "inputs": {
-            "cough": cough_inputs,
-        },
-        "devices": {
-            "cough_machine": {
-                "inputs": cough_machine_inputs,
-            },
-            "pump": {
-                "required": pump_required,
-                "syringe": syringe_inputs,
-                "layer": layer_inputs,
-                "clean_tube": pump_clean_tube,
-            },
-            "camera": {
-                "inputs": camera_inputs,
-            },
-            "vertical_stage": {
-                "inputs": vertical_stage_inputs,
-            },
-            "spraytec": {
-                "enabled": record_droplet_size_spraytec,
-                "inputs": spraytec_inputs,
-            },
-            "ops": {
-                "enabled": bool(cough_inputs["record_droplet_size_ops"]) and experiment_mode == "film",
-                "inputs": ops_inputs,
-            },
-        },
-    }
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Generate a documented experiment config template.")
+    parser.add_argument("output", type=Path, help="New TOML file to create (existing files are not overwritten).")
+    args = parser.parse_args()
+    with args.output.open("x", encoding="utf-8") as file:
+        file.write(render_config_template())

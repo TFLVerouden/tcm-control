@@ -539,9 +539,12 @@ class SyringePump(PoFSerialDevice):
             self._log_error(str(exc))
             raise
 
-    def clean_tubes(self, volume_ml_layer: float, rate_ml_min_layer: float, volume_ml_repetition: float, rate_ml_min_repetition: float, repetitions: int) -> None:
+    def clean_tubes(self, volume_ml_layer: float, rate_ml_min_layer: float, volume_ml_repetition: float | None, rate_ml_min_repetition: float | None, repetitions: int) -> None:
         """Clean the tubes by performing repeated infuse/withdraw cycles."""
         try:
+            if repetitions > 0 and (volume_ml_repetition is None or rate_ml_min_repetition is None):
+                raise ValueError("Repetition volume and rate are required when cleaning repetitions are enabled.")
+
             # Initial infusion to create fluid layer
             self.infuse(
                 volume_ml=volume_ml_layer,
@@ -550,6 +553,7 @@ class SyringePump(PoFSerialDevice):
 
             # Seesaw fluid back and forth through tubes to clean them
             if repetitions > 0:
+                assert volume_ml_repetition is not None and rate_ml_min_repetition is not None
                 for _ in range(repetitions):
                     self.withdraw(
                         volume_ml=volume_ml_repetition,

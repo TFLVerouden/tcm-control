@@ -71,10 +71,10 @@ def main() -> int:
         with metadata_path.open("r", encoding="utf-8") as fh:
             payload = json.load(fh)
 
-        start_text = payload.get("time", {}).get(
+        start_text = payload.get("runtime", {}).get("time", {}).get(
             "start") if isinstance(payload, dict) else None
         if not isinstance(start_text, str):
-            print(f"Could not read time.start from: {metadata_path}")
+            print(f"Could not read runtime.time.start from: {metadata_path}")
             return 1
 
         try:
