@@ -52,7 +52,9 @@ and checking for a PHD Ultra version response; discovery may open and probe
 other serial ports. The last successful port is saved in `connections.ini`.
 The software checks the pump address without changing it and stops setup if
 the address is not 0. Syringe dimensions and force remain configured in the
-experiment TOML.
+experiment TOML. If one or more syringe properties are omitted in a film
+configuration, startup prompts for a profile from `syringes.toml`; the selected
+profile fills only the omitted properties.
 
 Commands use carriage-return termination. Quick Start mode is needed for
 parameter commands; after using the touchscreen, communication may need to be

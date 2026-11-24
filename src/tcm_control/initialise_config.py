@@ -176,6 +176,47 @@ class Syringe(Settings):
         return value
 
 
+def _prompt_syringe_profile(syringe: Syringe, contexts: set[str]) -> None:
+    """Fill unspecified film syringe settings from a selectable profile."""
+    if "film" not in contexts or all(
+            getattr(syringe, name) is not None for name in Syringe.model_fields):
+        return
+
+    lookup_path = (
+        Path(__file__).resolve().parent
+        / "devices" / "lookup_tables" / "syringes.toml"
+    )
+    profiles = tomllib.loads(lookup_path.read_text(encoding="utf-8"))["profiles"]
+    profile_items = list(profiles.items())
+
+    print("Syringe settings are incomplete. Select a syringe profile:")
+    for index, (name, profile) in enumerate(profile_items, start=1):
+        print(
+            f"  {index}. {name}: {profile['vendor_code']} "
+            f"{profile['volume_ml']:g} mL, {profile['diameter_mm']:g} mm, "
+            f"gang {profile['gang']}, force {profile['force_percent']:g}%"
+        )
+    selection = prompt_input(
+        "Profile number (fills only unspecified syringe settings): ",
+        value_type="int", min_value=1, max_value=len(profile_items),
+    )
+    profile = profile_items[selection - 1][1]
+    profile_values = {
+        name: profile[key]
+        for name, key in (
+            ("syringe_vendor_code", "vendor_code"),
+            ("syringe_volume_mL", "volume_ml"),
+            ("syringe_diameter_mm", "diameter_mm"),
+            ("syringe_gang", "gang"),
+            ("syringe_force_percent", "force_percent"),
+        )
+        if getattr(syringe, name) is None
+    }
+    updated = Syringe.model_validate({**syringe.model_dump(), **profile_values})
+    for name in Syringe.model_fields:
+        setattr(syringe, name, getattr(updated, name))
+
+
 class Layer(Settings):
     film_settling_time_s: Annotated[int, Field(ge=0)] | None = setting(
         "Film settling time in seconds.", required_for="film")
@@ -460,6 +501,7 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
             contexts.add("ops")
         if config.devices.spraytec.enabled:
             contexts.add("spraytec")
+    _prompt_syringe_profile(config.devices.syringe_pump, contexts)
     _prompt_required(config, contexts)
 
     if config.experiment.save_data:

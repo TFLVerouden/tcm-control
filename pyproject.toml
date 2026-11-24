@@ -43,4 +43,9 @@ where = ["src"]
 include = ["tcm_control*"]
 
 [tool.setuptools.package-data]
-tcm_control = ["flow_curves/*.csv", "config/*.toml", "devices/lookup_tables/*.csv"]
+tcm_control = [
+  "flow_curves/*.csv",
+  "config/*.toml",
+  "devices/lookup_tables/*.csv",
+  "devices/lookup_tables/*.toml",
+]
