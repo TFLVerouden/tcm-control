@@ -224,24 +224,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         # Program the fixed pre-run wait into the cough machine controller
         tcm.set_wait_us(wait_us=cough_machine_inputs["wait_before_run_us"])
 
-        # Set tank pressure
-        tank_inputs = cough_machine_inputs["tank"]
-        tcm.set_pressure(
-            tank_inputs["pressure_bar"],
-            timeout_s=tank_inputs["settling_time_s"],
-            avg_window_s=tank_inputs["avg_window_s"],
-            tolerance_bar=tank_inputs["tolerance_bar"],
-            poll_interval_s=tank_inputs["poll_interval_s"],
-            interm_press_diff_bar=tank_inputs["intermediate_diff_bar"],
-            interm_press_time_s=tank_inputs["intermediate_time_s"],
-        )
-        # Record the averaging window actually used by the controller helper
-        if tank_inputs["settling_time_s"] <= tank_inputs["avg_window_s"]:
-            tank_inputs["avg_window_s"] = tank_inputs["settling_time_s"] / 2
-
         # In film mode, set up the camera and pump
-        pump = None
-        camera = None
         if experiment_mode == "film":
             # The camera output directory is changed to the current run below
             camera_inputs = config["devices"]["camera"]
@@ -317,6 +300,21 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             prompt_yes_no(
                 "Press ENTER to confirm that SprayTec SOP is waiting for a trigger...",
                 default=True)
+
+        # Set tank pressure after connecting all other devices
+        tank_inputs = cough_machine_inputs["tank"]
+        tcm.set_pressure(
+            tank_inputs["pressure_bar"],
+            timeout_s=tank_inputs["settling_time_s"],
+            avg_window_s=tank_inputs["avg_window_s"],
+            tolerance_bar=tank_inputs["tolerance_bar"],
+            poll_interval_s=tank_inputs["poll_interval_s"],
+            interm_press_diff_bar=tank_inputs["intermediate_diff_bar"],
+            interm_press_time_s=tank_inputs["intermediate_time_s"],
+        )
+        # Record the averaging window actually used by the controller helper
+        if tank_inputs["settling_time_s"] <= tank_inputs["avg_window_s"]:
+            tank_inputs["avg_window_s"] = tank_inputs["settling_time_s"] / 2
 
         # Save resolved setup values before starting the first run
         if output_dir is not None:
