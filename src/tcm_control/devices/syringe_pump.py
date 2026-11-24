@@ -106,6 +106,23 @@ class SyringePump(PoFSerialDevice):
             self.disconnect()
             raise
 
+    def metadata(self) -> dict:
+        """Return connection details and effective pump control settings."""
+        return {
+            "port": self.port,
+            "baudrate": self.baudrate,
+            "timeout_s": self.timeout_s,
+            "pump_address": self.pump_address,
+            "settings": {
+                "rate_unit": self.rate_unit,
+                "volume_unit": self.volume_unit,
+                "status_poll_s": self.status_poll_s,
+                "phase_timeout_s": self.phase_timeout_s,
+                "command_delay_s": self.command_delay_s,
+                "connection_settle_s": CONNECTION_SETTLE_S,
+            },
+        }
+
     def infuse(self, volume_ml: float, rate_ml_min: float, wait_for_completion: bool = True, *, update: Callable[[], None] | None = None) -> bool:
         return self._run_phase(
             action_verb="infusing",

@@ -349,13 +349,13 @@ def build_run_metadata(
     time_finish: str | None = None, temperature_start: float | None = None,
     humidity_start: float | None = None, temperature_finish: float | None = None,
     humidity_finish: float | None = None, comments: str | None = None,
-    pump: Any = None, ops: Any = None, vertical_stage: Any = None,
+    pump: Any = None, camera: Any = None, ops: Any = None,
+    spraytec: Any = None, vertical_stage: Any = None,
     spraytec_x_mm: float | None = None, spraytec_y_mm: float | None = None,
     spraytec_z_mm: float | None = None, spraytec_audit_path: Path | None = None,
     spraytec_laser_intensity: float | None = None, stage_pos_z_mm: float | None = None,
 ) -> dict[str, Any]:
     """Combine the complete resolved configuration with runtime-only facts."""
-    stage_settings = getattr(vertical_stage, "serial_settings", {})
     return {
         "schema_version": 1,
         "configuration": config,
@@ -369,23 +369,12 @@ def build_run_metadata(
             },
             "comments": comments,
             "devices": {
-                "cough_machine": {
-                    "name": tcm.name,
-                    "protocol_version": getattr(tcm, "protocol_version", None),
-                    "connection": {
-                        "port": getattr(getattr(tcm, "ser", None), "port", None),
-                        "baudrate": tcm.serial_settings.get("baudrate"),
-                        "timeout_s": tcm.serial_settings.get("timeout"),
-                    },
-                },
-                "pump": {
-                    "port": getattr(pump, "port", None),
-                    "baudrate": getattr(pump, "baudrate", None),
-                    "timeout_s": getattr(pump, "timeout_s", None),
-                    "pump_address": getattr(pump, "pump_address", None),
-                },
+                "cough_machine": tcm.metadata(),
+                "pump": pump.metadata() if pump is not None else None,
+                "camera": camera.metadata() if camera is not None else None,
                 "ops": ops.metadata() if ops is not None else None,
                 "spraytec": {
+                    **(spraytec.metadata() if spraytec is not None else {}),
                     "measurement_position_mm": {
                         "x": spraytec_x_mm, "y": spraytec_y_mm, "z": spraytec_z_mm,
                     },
@@ -393,13 +382,7 @@ def build_run_metadata(
                     "audit_csv": spraytec_audit_path,
                     "laser_intensity": spraytec_laser_intensity,
                 },
-                "vertical_stage": {
-                    "name": getattr(vertical_stage, "name", None),
-                    "port": getattr(getattr(vertical_stage, "ser", None), "port", None),
-                    "baudrate": stage_settings.get("baudrate"),
-                    "timeout_s": stage_settings.get("timeout"),
-                    "lift_pos_z_mm": stage_settings.get("lift_pos_z_mm"),
-                },
+                "vertical_stage": vertical_stage.metadata() if vertical_stage is not None else None,
             },
         },
     }

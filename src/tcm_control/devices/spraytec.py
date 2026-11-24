@@ -87,6 +87,15 @@ class SprayTec:
         self.audit_path: Path | None = None
         self.last_listed_runs: list[dict[str, str]] = []
 
+    def metadata(self) -> dict:
+        """Return the append-file handling settings used by this helper."""
+        return {
+            "settings": {
+                "max_append_file_size_bytes": self.max_append_file_size_bytes,
+                "offer_archive_if_large": self.offer_archive_if_large,
+            },
+        }
+
     def resolve_append_file_path(
         self,
         append_file_path: str | Path | None = None,

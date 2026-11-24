@@ -438,7 +438,7 @@ class RunOutputTests(unittest.TestCase):
             logger = load_module("_test_logger", "src/tcm_control/logger.py")
             config = {"devices": {"ops": {"pre_run_s": 10}}, "geometry": {"ops": {"position": "Beside the trachea"}}}
             values = dict(time_start="start", time_finish="finish", output_dir=Path("."),
-                          tcm=fake_module(name="fake", serial_settings={}),
+                          tcm=fake_module(metadata=lambda: {"name": "fake"}),
                           temperature_start=18, temperature_finish=19, humidity_start=30, humidity_finish=50)
             metadata = logger.build_run_metadata(config, **values)
             measurements = metadata["runtime"]["measurements"]

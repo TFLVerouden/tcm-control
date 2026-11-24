@@ -88,6 +88,16 @@ class Camera:
         self._gain_db = self._clamp_gain(
             gain_db) if gain_db is not None else None
 
+    def metadata(self) -> dict:
+        """Return camera limits used to clamp configured exposure and gain."""
+        return {
+            "limits": {
+                "min_exposure_us": self.MIN_EXPOSURE_US,
+                "max_exposure_us": self.MAX_EXPOSURE_US,
+                "max_gain_db": self.MAX_GAIN_DB,
+            },
+        }
+
     @staticmethod
     def _clamp_exposure(exposure_us: int) -> int:
         if exposure_us < Camera.MIN_EXPOSURE_US or exposure_us > Camera.MAX_EXPOSURE_US:

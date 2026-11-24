@@ -27,6 +27,18 @@ class VerticalStage(PoFSerialDevice):
             boot_drain_s=boot_drain_s,
             **kwargs,
         )
+        self._last_move_settings: dict[str, float | bool] | None = None
+
+    def metadata(self) -> dict:
+        """Return connection details and the settings used for the last move."""
+        return {
+            "name": self.name,
+            "port": self.ser.port,
+            "baudrate": self.serial_settings.get("baudrate"),
+            "timeout_s": self.serial_settings.get("timeout"),
+            "lift_pos_z_mm": self.serial_settings.get("lift_pos_z_mm"),
+            "move_settings": self._last_move_settings,
+        }
 
     def get_lift_height(
         self, *, echo: Optional[bool] = None, timeout: float = 2.0
@@ -66,6 +78,13 @@ class VerticalStage(PoFSerialDevice):
         if poll_interval_s <= 0:
             raise ValueError("poll_interval_s must be > 0")
 
+        # Save the actual parameters, including any caller overrides
+        self._last_move_settings = {
+            "wait_for_target": wait_for_target,
+            "tolerance_mm": tolerance_mm,
+            "timeout_s": timeout_s,
+            "poll_interval_s": poll_interval_s,
+        }
         cmd = f"m{float(height_mm):.3f}"
         self._query_and_drain(cmd, echo=echo, extra_timeout=0.4)
 

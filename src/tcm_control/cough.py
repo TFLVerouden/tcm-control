@@ -239,6 +239,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
         # In film mode, set up the camera and pump
         pump = None
+        camera = None
         if experiment_mode == "film":
             # The camera output directory is changed to the current run below
             camera_inputs = config["devices"]["camera"]
@@ -319,7 +320,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         if output_dir is not None:
             logger.write_run_metadata(output_dir, logger.build_run_metadata(
                 config, time_start=time_start, output_dir=output_dir, tcm=tcm,
-                pump=pump, ops=ops, vertical_stage=vertical_stage,
+                pump=pump, camera=camera, ops=ops, spraytec=spraytec,
+                vertical_stage=vertical_stage,
                 spraytec_x_mm=spraytec_x_mm, spraytec_y_mm=spraytec_y_mm,
                 spraytec_z_mm=spraytec_z_mm, spraytec_laser_intensity=spraytec_laser_intensity,
                 stage_pos_z_mm=stage_pos_z_mm,
@@ -766,7 +768,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 comments=comments,
                 tcm=tcm,
                 pump=pump,
+                camera=camera,
                 ops=ops,
+                spraytec=spraytec,
                 spraytec_x_mm=spraytec_x_mm,
                 spraytec_y_mm=spraytec_y_mm,
                 spraytec_z_mm=spraytec_z_mm,

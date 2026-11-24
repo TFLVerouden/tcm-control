@@ -79,6 +79,7 @@ class CoughMachine(PoFSerialDevice):
         self._dataset_loaded = False
         self._flowcurve_csv_path: Optional[Path] = None
         self._fan_speed: float = self.FAN_SPEED_DEFAULT
+        self._cleaning_settling_settings: dict[str, float] | None = None
 
         # Set debug mode on device if requested
         self._set_debug(debug)
@@ -144,6 +145,25 @@ class CoughMachine(PoFSerialDevice):
     def protocol_version(self) -> Optional[int]:
         """Negotiated MCU protocol version for this connection."""
         return self._protocol_version
+
+    def metadata(self) -> dict:
+        """Return connection details and operational settings used by the host."""
+        return {
+            "name": self.name,
+            "protocol_version": self.protocol_version,
+            "connection": {
+                "port": self.ser.port,
+                "baudrate": self.serial_settings.get("baudrate"),
+                "timeout_s": self.serial_settings.get("timeout"),
+            },
+            "settings": {
+                "max_pressure_bar": MAX_PRESSURE_BAR,
+                "fan_speed_off": self.FAN_SPEED_OFF,
+                "fan_speed_max": self.FAN_SPEED_MAX,
+                "fan_speed_default": self.FAN_SPEED_DEFAULT,
+                "cleaning_settling": self._cleaning_settling_settings,
+            },
+        }
 
     def _assert_protocol_compatibility(self, *, echo: Optional[bool] = None) -> None:
         try:
@@ -429,6 +449,15 @@ class CoughMachine(PoFSerialDevice):
         elif dry_pressure_bar < 0 or dry_pressure_bar > MAX_PRESSURE_BAR:
             raise ValueError(
                 f"dry_pressure_bar must be between 0 and {MAX_PRESSURE_BAR} bar")
+
+        # Record the effective settling parameters rather than just their defaults
+        self._cleaning_settling_settings = {
+            "timeout_s": settle_timeout_s,
+            "avg_window_s": (settle_timeout_s / 2 if settle_timeout_s <= settle_avg_window_s
+                             else settle_avg_window_s),
+            "tolerance_bar": settle_tolerance_bar,
+            "poll_interval_s": settle_poll_interval_s,
+        }
 
         # Nothing to do: no cleaning cycles requested and no drying duration set.
         if clean_cycle_count == 0 and dry_duration_s == 0:

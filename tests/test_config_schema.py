@@ -18,10 +18,11 @@ from tcm_control.initialise_config import (
     resolve_tube_cleaning,
 )
 from tcm_control.devices.camera import DEFAULT_SCALE_MM_PER_PX
+from tcm_control.devices.spraytec import SprayTec
 from tcm_control.devices.vertical_stage import (
     DEFAULT_POLL_INTERVAL_S, DEFAULT_TIMEOUT_S, DEFAULT_TOLERANCE_MM, VerticalStage,
 )
-from tcm_control.logger import write_run_metadata
+from tcm_control.logger import build_run_metadata, write_run_metadata
 from tcm_control.user_input import set_spraytec_pos
 
 
@@ -62,6 +63,23 @@ pre_run_s = "unused"
             config = self.load(text)
         self.assertEqual(prompt.call_count, 2)
         self.assertEqual(config["run"]["tank"]["pressure_bar"], 2.5)
+
+    def test_camera_scale_in_saved_metadata_uses_default_or_override(self):
+        class MetadataSource:
+            def metadata(self):
+                return {}
+
+        base = '[experiment]\nmode = "piv"\nseries_directory = "None"\n[run.tank]\npressure_bar = 2\n'
+        for camera_section, expected in (("", DEFAULT_SCALE_MM_PER_PX),
+                                         ("\n[devices.camera]\nscale_mm_per_px = 0.02\n", 0.02)):
+            config = self.load(base + camera_section)
+            with tempfile.TemporaryDirectory() as tmp:
+                directory = Path(tmp)
+                metadata = build_run_metadata(config, time_start="start", output_dir=directory,
+                                              tcm=MetadataSource())
+                write_run_metadata(directory, metadata)
+                saved = json.loads((directory / "metadata.json").read_text(encoding="utf-8"))
+                self.assertEqual(saved["configuration"]["devices"]["camera"]["scale_mm_per_px"], expected)
 
     def test_missing_series_directory_is_selected(self):
         text = '[experiment]\nmode = "piv"\n[run.tank]\npressure_bar = 2\n'
@@ -238,6 +256,35 @@ withdraw_rate_ml_min = 5
             saved = json.loads((directory / "metadata.json").read_text(encoding="utf-8"))
             self.assertEqual(saved, {"status": "completed", "path": str(directory)})
             self.assertFalse((directory / ".metadata.json.tmp").exists())
+
+    def test_device_metadata_is_included_in_snapshots(self):
+        class MetadataSource:
+            def __init__(self, value):
+                self.value = value
+
+            def metadata(self):
+                return {"settings": {"value": self.value}}
+
+        tcm = MetadataSource("tcm")
+        stage = MetadataSource("stage")
+        camera = MetadataSource("camera")
+        pump = MetadataSource("pump")
+        spraytec = SprayTec(max_append_file_size_bytes=123, offer_archive_if_large=False)
+        metadata = build_run_metadata(
+            {}, time_start="start", output_dir=Path("."), tcm=tcm,
+            pump=pump, camera=camera, vertical_stage=stage, spraytec=spraytec,
+            spraytec_x_mm=5,
+        )
+        devices = metadata["runtime"]["devices"]
+        self.assertEqual(devices["cough_machine"]["settings"]["value"], "tcm")
+        self.assertEqual(devices["vertical_stage"]["settings"]["value"], "stage")
+        self.assertEqual(devices["camera"]["settings"]["value"], "camera")
+        self.assertEqual(devices["pump"]["settings"]["value"], "pump")
+        self.assertEqual(devices["spraytec"]["settings"], {
+            "max_append_file_size_bytes": 123, "offer_archive_if_large": False,
+        })
+        self.assertEqual(devices["spraytec"]["measurement_position_mm"]["x"], 5)
+        self.assertIsNone(devices["ops"])
 
 
 if __name__ == "__main__":

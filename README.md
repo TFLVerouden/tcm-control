@@ -67,6 +67,10 @@ Metadata has `schema_version`, `configuration` (resolved settings) and
 `runtime` (measurements, device details and experiment status). It is written
 when the experiment directory is created, after device setup, and on successful
 completion; interrupted experiments may retain an `in_progress` snapshot.
+Device `metadata()` methods contribute operational settings such as pump
+timings and the vertical stage's last move parameters. Settings for devices not
+used by the run are not reported as active; cleaning settling parameters appear
+after cleaning has been attempted. Configured values remain in `configuration`.
 For direct device use, `read_temperature_humidity(save_csv=path)` saves the
 reading in the same CSV format; omit `save_csv` to read without saving.
 
