@@ -37,11 +37,11 @@ def plot_run_log(
     # Read the run log and extract metadata and data columns
     run_log = read_run_log(run_log_path)
     if len(run_log) == 6:
-        (trigger_t0_us, run_nr, time_us, sol_valve_action,
+        (trigger_t0_us, _, time_us, sol_valve_action,
          prop_valve_ma, press_bar) = run_log
         req_flow_lps = None
     else:
-        (trigger_t0_us, run_nr, time_us, sol_valve_action, req_flow_lps,
+        (trigger_t0_us, _, time_us, sol_valve_action, req_flow_lps,
          prop_valve_ma, press_bar) = run_log
 
     # Process the time column to be relative to the trigger time and convert to milliseconds
@@ -119,10 +119,9 @@ def plot_run_log(
     append_unit_to_last_ticklabel(ax1, axis="x", unit="ms")
     plot_path: Path | None = None
 
-    # Export to pdf in experiment directory/processed
+    # Export to pdf in experiment directory
     if experiment_dir is not None:
-        processed_dir = get_processed_dir(Path(experiment_dir))
-        plot_path = processed_dir / f"pressure_valve_timing_run{run_nr}.pdf"
+        plot_path = experiment_dir / f"pressure_and_valve_timing.pdf"
         fig.savefig(plot_path)
         print(f"Plot saved to {plot_path}")
 
@@ -184,12 +183,16 @@ def _read_run_log4(run_log_path: Path) -> tuple[
         raise ValueError(f"Missing 'trigger_t0_us' in run log: {run_log_path}")
 
     if any(len(row) != 4 for row in data_rows):
-        raise ValueError(f"Expected four data columns in run log: {run_log_path}")
+        raise ValueError(
+            f"Expected four data columns in run log: {run_log_path}")
 
     time_us = np.asarray([int(row[0]) for row in data_rows], dtype=np.int64)
-    sol_valve_action = np.asarray([int(row[1]) for row in data_rows], dtype=np.int8)
-    prop_valve_ma = np.asarray([float(row[2]) for row in data_rows], dtype=np.float64)
-    press_bar = np.asarray([float(row[3]) for row in data_rows], dtype=np.float64)
+    sol_valve_action = np.asarray([int(row[1])
+                                  for row in data_rows], dtype=np.int8)
+    prop_valve_ma = np.asarray([float(row[2])
+                               for row in data_rows], dtype=np.float64)
+    press_bar = np.asarray([float(row[3])
+                           for row in data_rows], dtype=np.float64)
 
     return (
         trigger_t0_us,
@@ -219,7 +222,8 @@ def _read_run_log5(run_log_path: Path) -> tuple[
         raise ValueError(f"Missing 'trigger_t0_us' in run log: {run_log_path}")
 
     if any(len(row) != 5 for row in data_rows):
-        raise ValueError(f"Expected five data columns in run log: {run_log_path}")
+        raise ValueError(
+            f"Expected five data columns in run log: {run_log_path}")
 
     return (
         trigger_t0_us,
