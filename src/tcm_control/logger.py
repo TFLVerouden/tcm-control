@@ -13,9 +13,6 @@ from typing import Any, TextIO
 from tcm_utils.io_utils import create_timestamped_filename, save_metadata_json
 from tcm_utils.time_utils import timestamp_str, timestamp_from_file
 
-from tcm_control import liquid_film
-
-
 RUN_LOGS_SUBDIR = "run_logs"
 CONSOLE_LOGS_SUBDIR = "host_console_logs"
 
@@ -372,6 +369,9 @@ def build_run_metadata(
     spraytec_laser_intensity: float | None = None, stage_pos_z_mm: float | None = None,
 ) -> dict[str, Any]:
     """Combine the complete resolved configuration with runtime-only facts."""
+    # Device modules import logger, so defer this device-dependent module.
+    from tcm_control import liquid_film
+
     return {
         "schema_version": 1,
         "configuration": config,
@@ -395,10 +395,6 @@ def build_run_metadata(
                         liquid_film.FILM_HEIGHT_RIGHTMOST_WIDTH_PX,
                     "CONTACT_ANGLE_FIT_WIDTH_PX":
                         liquid_film.CONTACT_ANGLE_FIT_WIDTH_PX,
-                    "REFERENCE_LINE_DASH_LENGTH_PX":
-                        liquid_film.REFERENCE_LINE_DASH_LENGTH_PX,
-                    "REFERENCE_LINE_GAP_LENGTH_PX":
-                        liquid_film.REFERENCE_LINE_GAP_LENGTH_PX,
                 },
             },
             "devices": {

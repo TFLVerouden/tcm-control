@@ -1,7 +1,6 @@
 from .base_serial import PoFSerialDevice
 from .cough_machine import CoughMachine
 from .vertical_stage import VerticalStage
-# from .syringe_pump import SyringePump
 from .syringe_pump import SyringePump
 from .ops import OpticalParticleSizer
 from .spraytec import SprayTec
