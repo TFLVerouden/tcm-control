@@ -128,7 +128,7 @@ nr_droplets_to_skip_before_recording = 0  # optional; default: 0
     # Camera calibration in mm per pixel.
     scale_mm_per_px = 0.01614443137990558  # optional; default: 0.01614443137990558
     # Show the live film preview.
-    live_preview = false  # optional; default: true
+    live_preview = true  # optional; default: true
 
     [devices.spraytec]
     # Enable SprayTec recording in film mode.

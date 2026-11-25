@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from contextlib import contextmanager
+import math
 import time
 import tomllib
 
@@ -12,6 +13,7 @@ from tcm_control.devices.camera import Camera
 from tcm_control.devices.cough_machine import CoughMachine
 from tcm_control.devices.syringe_pump import SyringePump
 from tcm_control.liquid_film import measure_film_frame
+from tcm_utils.io_utils import make_minimal_progress_bar
 
 
 def take_snapshot(
@@ -62,9 +64,11 @@ class LayerPreview:
         self.plate_measurement = plate_measurement
         self.scale_mm_per_px = scale_mm_per_px
         self.active = False
+        self._initial_size_pending = False
 
     def open(self) -> None:
         cv2.namedWindow(self.WINDOW, cv2.WINDOW_NORMAL)
+        self._initial_size_pending = True
         self.active = True
         self.tcm.set_light(1.0)
 
@@ -100,6 +104,10 @@ class LayerPreview:
             cv2.putText(display, f"Measurement unavailable: {exc}", (10, 25),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 1)
         cv2.imshow(self.WINDOW, display)
+        if self._initial_size_pending:
+            height, width = display.shape[:2]
+            cv2.resizeWindow(self.WINDOW, width, height)
+            self._initial_size_pending = False
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
             self.close()
@@ -129,14 +137,26 @@ def layer_preview(camera: Camera, tcm: CoughMachine,
 
 
 def wait_with_preview(wait_s: float, preview: LayerPreview) -> None:
-    """Continue refreshing the preview during the final settling period."""
-    print("Waiting for layer to settle...")
-    end = time.monotonic() + wait_s
-    while time.monotonic() < end:
-        preview.update()
-        remaining = end - time.monotonic()
-        if remaining > 0:
-            time.sleep(min(0.1, remaining))
+    """Refresh the preview and show progress during settling."""
+    if wait_s <= 0:
+        return
+
+    total_s = math.ceil(wait_s)
+    start = time.monotonic()
+    with make_minimal_progress_bar(
+        total=total_s, label="Waiting for layer to settle...", unit_label="s"
+    ) as pbar:
+        while time.monotonic() - start < wait_s:
+            preview.update()
+            elapsed = time.monotonic() - start
+            elapsed_whole_s = int(min(total_s, elapsed))
+            if elapsed_whole_s > pbar.n:
+                pbar.update(elapsed_whole_s - pbar.n)
+            remaining = wait_s - elapsed
+            if remaining > 0:
+                time.sleep(min(0.1, remaining))
+        if pbar.n < total_s:
+            pbar.update(total_s - pbar.n)
 
 
 if __name__ == "__main__":

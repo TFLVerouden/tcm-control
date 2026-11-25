@@ -479,8 +479,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                                     print(
                                         f"Warning: Failed to stop syringe pump: {exc}")
                                 raise
-                            wait_with_preview(
-                                layer_inputs["film_settling_time_s"], preview)
 
                     # Or just make a layer
                     else:
