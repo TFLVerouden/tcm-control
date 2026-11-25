@@ -83,6 +83,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         raise ValueError(
             "OPS recording requires an experiment output directory.")
 
+    fan_off = config["run"]["fan_off_during_experiment"]
+
     # --------------------------------------------------------------------------
     # 2) Make connections to external devices
     # --------------------------------------------------------------------------
@@ -91,7 +93,13 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     cough_inputs = config["run"]
     tcm = CoughMachine(debug=cough_inputs["debug_mode"])
 
-    # Register devices so interrupt cleanup can stop them.
+    # If set up, turn off fan during experiment to prevent extra airflow
+    if fan_off:
+        print("Turning off electronics box fan during experiment")
+        tcm.set_fan_speed(CoughMachine.FAN_SPEED_OFF)
+    else:
+        tcm.set_fan_speed(CoughMachine.FAN_SPEED_DEFAULT)
+
     set_active_tcm(tcm)
 
     # Vertical stage is only needed when SprayTec measurements are enabled.
@@ -292,7 +300,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         # ======================================================================
 
         # Clear memory before starting the experiment; turn off fan
-        tcm.set_fan_speed(CoughMachine.FAN_SPEED_OFF)
         tcm.clear_memory()
 
         # Load flow curve
@@ -733,6 +740,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         # ------------------------------------------------------------------
         # 6) Finalize run and write (meta)data
         # ------------------------------------------------------------------
+        # During cleanup, just to be sure, get rid of excess heat
         tcm.set_fan_speed(CoughMachine.FAN_SPEED_MAX)
         if save_data:
             assert output_dir is not None

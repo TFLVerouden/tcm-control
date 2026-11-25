@@ -10,6 +10,8 @@ series_directory =  "C:\\Data\\Tests" # optional; see description
 [run]
 # Enable cough-machine debug mode.
 debug_mode = false  # optional; default: false
+# Turn off electronics box fan during the experiment.
+fan_off_during_experiment = false  # optional; default: true
 # Number of coughs in the experiment.
 nr_runs = 1  # optional; default: 1
 # Wait between runs in seconds.

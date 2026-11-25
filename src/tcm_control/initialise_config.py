@@ -72,6 +72,8 @@ class Experiment(Settings):
 class Run(Settings):
     debug_mode: StrictBool = setting(
         "Enable cough-machine debug mode.", default=False)
+    fan_off_during_experiment: StrictBool = setting(
+        "Turn off fan in electronics box during the experiment.", default=True)
     nr_runs: int = setting("Number of coughs in the experiment.", default=1)
     multi_run_interval_s: float = setting(
         "Wait between runs in seconds.", default=0.0)

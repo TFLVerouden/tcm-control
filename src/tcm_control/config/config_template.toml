@@ -11,6 +11,8 @@ save_data = true  # optional; default: true
 [run]
 # Enable cough-machine debug mode.
 debug_mode = false  # optional; default: false
+# Turn off fan in electronics box during the experiment.
+fan_off_during_experiment = true  # optional; default: true
 # Number of coughs in the experiment.
 nr_runs = 1  # optional; default: 1
 # Wait between runs in seconds.
