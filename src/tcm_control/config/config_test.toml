@@ -1,10 +1,11 @@
 [experiment]
 # Experiment name; leave empty to be prompted when saving (optional).
-name = "Test" # optional; see description
+name = "Test"
 # Experiment mode: "film", "piv" or "droplet".
-mode = "film" # prompted when required
+mode = "film"
 # Save experiment data to disk.
-save_data = true # optional; default: true
+save_data = true
+# Series directory; leave empty to select one.
 series_directory =  "C:\\Data\\Tests" # optional; see description
 
 [run]
@@ -35,9 +36,9 @@ wait_before_run_ms = 0.0  # optional; default: 0.0
     # Pressure polling interval in seconds.
     poll_interval_s = 0.2  # optional; default: 0.2
     # Intermediate pressure difference in bar; set together with intermediate_time_s.
-    intermediate_diff_bar = -0.1 # optional; see description
+    # intermediate_diff_bar = -0.1 # optional; see description
     # Intermediate pressure hold time in seconds; set together with intermediate_diff_bar.
-    intermediate_time_s = 2.0 # optional; see description
+    # intermediate_time_s = 2.0 # optional; see description
 
     [run.cleaning]
     # Cleaning pressure in bar.
