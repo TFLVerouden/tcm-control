@@ -114,18 +114,20 @@ nr_droplets_to_skip_before_recording = 0  # optional; default: 0
     syringe_force_percent = 100 # prompted when required
 
     [devices.camera]
+    # Cough machine LED lamp brightness (between 0 and 1), default 1.0.
+    led_brightness = 1.0  # optional; default: 1.0
     # Camera exposure in microseconds.
-    camera_exposure_us = 4000  # optional; default: 4000
+    camera_exposure_us = 1000  # optional; default: 4000
     # Camera gain in dB; omit to leave unchanged.
     # camera_gain_db =  # optional; see description
     # ROI [y_start, y_end, x_start, x_end]; end 0 means full extent.
-    roi = [0, 0, 0, 0]  # optional; default: [0, 0, 0, 0]
+    roi = [512, 0, 0, 0]  # optional; default: [0, 0, 0, 0]
     # Camera flip; empty disables it.
     flip = "vertical"  # optional; default: "vertical"
     # Camera calibration in mm per pixel.
     scale_mm_per_px = 0.01614443137990558  # optional; default: 0.01614443137990558
     # Show the live film preview.
-    live_preview = true  # optional; default: true
+    live_preview = false  # optional; default: true
 
     [devices.spraytec]
     # Enable SprayTec recording in film mode.

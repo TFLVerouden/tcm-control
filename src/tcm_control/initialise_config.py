@@ -255,10 +255,12 @@ class PIV(Settings):
 
 
 class CameraInputs(Settings):
+    led_brightness: Positive | None = setting(
+        "Cough machine LED lamp brightness (between 0 and 1), default 1.0.", default=1.0)
     camera_exposure_us: Annotated[int, Field(gt=0)] = setting(
         "Camera exposure in microseconds.", default=4000)
     camera_gain_db: float | None = setting(
-        "Camera gain in dB; omit to leave unchanged.")
+        "Camera gain in dB; default is 0.0.", default=0.0)
     roi: tuple[int, int, int, int] = setting(
         "ROI [y_start, y_end, x_start, x_end]; end 0 means full extent.", default=(0, 0, 0, 0))
     flip: Literal["vertical", "horizontal", "both"] | None = setting(

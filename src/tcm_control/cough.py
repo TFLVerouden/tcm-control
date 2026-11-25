@@ -204,6 +204,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             roi=camera_inputs["roi"],
                             flip=camera_inputs["flip"],
                             gain_db=camera_inputs["camera_gain_db"])
+            camera.open()
             # Record any camera values clamped to device limits
             camera_inputs["camera_exposure_us"] = camera.exposure_us
             camera_inputs["camera_gain_db"] = camera.gain_db
@@ -439,6 +440,10 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"],
                     )
 
+                # Assert the camera is assigned
+                assert camera is not None, "Camera must be initialized in film mode"
+
+                # RUNS =========================================================
                 # Execute repeated runs
                 for run_idx in range(cough_inputs["nr_runs"]):
                     # Create the folder for this run and direct its images there
@@ -449,15 +454,15 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         camera_output_dir = run_dir / "camera"
                         camera.output_dir = camera_output_dir
 
-                    # Initial picture
-                    background_path = take_snapshot(
-                        camera, tcm, filename=f"run{run_idx + 1}_background")
+                    # Empty channel "background" picture
+                    empty_channel_image_path = take_snapshot(
+                        camera, tcm, filename="empty_channel")
                     live_preview = camera_inputs.get("live_preview", False)
                     if camera_output_dir is not None or live_preview:
                         plate_measurement = measure_plate_height(
-                            background_path)
+                            empty_channel_image_path)
 
-                    # Make a layer
+                    # Make a layer with live preview
                     if live_preview and pump is not None:
                         with layer_preview(camera, tcm, plate_measurement,
                                            camera_inputs["scale_mm_per_px"]) as preview:
@@ -479,6 +484,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                                 raise
                             wait_with_preview(
                                 layer_inputs["film_settling_time_s"], preview)
+
+                    # Or just make a layer
                     else:
                         if pump is not None:
                             pump.make_layer(
@@ -494,11 +501,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         )
 
                     # Take a picture of the layer
-                    thin_film_path = take_snapshot(
+                    final_film_image_path = take_snapshot(
                         camera, tcm, filename=f"run{run_idx + 1}_thin_film")
                     if camera_output_dir is not None:
                         film_height_mm, film_error_mm, contact_angle_deg, film_level_px = measure_film_properties(
-                            thin_film_path, plate_measurement,
+                            final_film_image_path, plate_measurement,
                             camera_inputs["scale_mm_per_px"], camera_output_dir)
                         plate_height_px, plate_std_px, _, _, _ = plate_measurement
                         film_measurement = {

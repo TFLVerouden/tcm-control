@@ -28,7 +28,7 @@ def take_snapshot(
         camera: Camera device to use for snapshot.
         tcm: Cough machine instance for light control.
         filename: Optional filename for the saved image.
-        brightness: Brightness level (default: 1.0). Currently unused.
+        brightness: Brightness level (default: 1.0).
 
     Returns:
         Path to the saved image file.
@@ -67,7 +67,8 @@ class LayerPreview:
         if not self.active:
             return
         try:
-            visible = cv2.getWindowProperty(self.WINDOW, cv2.WND_PROP_VISIBLE) >= 1
+            visible = cv2.getWindowProperty(
+                self.WINDOW, cv2.WND_PROP_VISIBLE) >= 1
         except cv2.error as exc:
             print(f"Preview window is unavailable: {exc}")
             visible = False
@@ -78,7 +79,8 @@ class LayerPreview:
         if frame.dtype == np.uint16:
             frame = (frame >> 8).astype(np.uint8)
         if frame.dtype != np.uint8 or frame.ndim not in (2, 3):
-            raise ValueError(f"Unsupported preview frame: {frame.dtype}, shape {frame.shape}")
+            raise ValueError(
+                f"Unsupported preview frame: {frame.dtype}, shape {frame.shape}")
         if frame.ndim == 3 and frame.shape[2] == 3:
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         elif frame.ndim == 3 and frame.shape[2] == 4:
@@ -86,7 +88,8 @@ class LayerPreview:
         elif frame.ndim == 3:
             raise ValueError(f"Unsupported preview frame shape: {frame.shape}")
         try:
-            _, display = measure_film_frame(frame, self.plate_measurement, self.scale_mm_per_px)
+            _, display = measure_film_frame(
+                frame, self.plate_measurement, self.scale_mm_per_px)
         except ValueError as exc:
             display = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
             cv2.putText(display, f"Measurement unavailable: {exc}", (10, 25),

@@ -74,9 +74,6 @@ class Camera:
             if output_dir is not None
             else ask_directory(key="tcm_camera_output_dir", title="Select output directory for camera snapshot")
         )
-        if self.output_dir is None:
-            raise RuntimeError(
-                "No output directory selected for camera snapshot.")
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self._cam = xiapi.Camera()
@@ -197,7 +194,7 @@ class Camera:
         # Save image
         if output_path is None:
             timestamp = timestamp_str()
-            name = f"{filename}_{timestamp}" if filename else timestamp
+            name = f"{timestamp}_{filename}" if filename else timestamp
             save_path = self.output_dir / f"{name}.tif"
         else:
             save_path = Path(output_path)

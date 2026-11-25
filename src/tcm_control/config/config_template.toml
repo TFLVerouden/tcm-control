@@ -115,10 +115,12 @@ nr_droplets_to_skip_before_recording = 0  # optional; default: 0
     # syringe_force_percent =  # prompted when required
 
     [devices.camera]
+    # Cough machine LED lamp brightness (between 0 and 1), default 1.0.
+    led_brightness = 1.0  # optional; default: 1.0
     # Camera exposure in microseconds.
     camera_exposure_us = 4000  # optional; default: 4000
-    # Camera gain in dB; omit to leave unchanged.
-    # camera_gain_db =  # optional; see description
+    # Camera gain in dB; default is 0.0.
+    camera_gain_db = 0.0  # optional; default: 0.0
     # ROI [y_start, y_end, x_start, x_end]; end 0 means full extent.
     roi = [0, 0, 0, 0]  # optional; default: [0, 0, 0, 0]
     # Camera flip; empty disables it.
