@@ -398,40 +398,41 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 # PREPARATIONS =================================================
                 # Explicitly require operator confirmation of syringe being filled
                 layer_inputs = config["film"]["layer"]
-                confirm_syringe_filled = prompt_yes_no(
+                if not prompt_yes_no(
                     "Press ENTER to confirm the syringe is filled with > "
                     f"{layer_inputs['infuse_volume_ml']} mL...",
                     default=True,
-                )
-                if not confirm_syringe_filled:
+                ):
                     print("Aborted.")
                     exit(1)
 
                 # Ask for cleaning protocol
-                confirm_cleaning = prompt_yes_no(
-                    "Do you want the tubes to be cleaned y/n ?",
-                    default=False)
-                if confirm_cleaning:
+                if config["film"]["clean_tube"]["repetitions"] > 0 and prompt_yes_no(
+                    "Clean the tubes before starting the experiment? (press ENTER to confirm, type 'n' to skip)",
+                        default=True) and pump is not None:
                     if pump is not None:
+
                         # Resolve tube-cleaning settings only when cleaning is selected
                         cleaning_tube_inputs = resolve_tube_cleaning(
                             config["film"]["clean_tube"])
                         config["film"]["clean_tube"] = cleaning_tube_inputs
+
+                        # Clean the tubes
                         pump.clean_tubes(volume_ml_layer=cleaning_tube_inputs["volume_ml_layer"],
                                          rate_ml_min_layer=cleaning_tube_inputs["rate_ml_min_layer"],
                                          volume_ml_repetition=cleaning_tube_inputs["volume_ml_repetition"],
                                          rate_ml_min_repetition=cleaning_tube_inputs["rate_ml_min_repetition"],
                                          repetitions=cleaning_tube_inputs["repetitions"])
 
-                    # Clean the channel afterwards
-                    tcm.clean(
-                        clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
-                        clean_valve_open_duration_s=cleaning_inputs["valve_open_duration_s"],
-                        clean_cycle_count=cleaning_inputs["cycle_count"],
-                        dry_pressure_bar=cleaning_inputs["dry_pressure_bar"],
-                        dry_duration_s=cleaning_inputs["dry_duration_s"],
-                        dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"],
-                    )
+                        # Clean the channel afterwards
+                        tcm.clean(
+                            clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
+                            clean_valve_open_duration_s=cleaning_inputs["valve_open_duration_s"],
+                            clean_cycle_count=cleaning_inputs["cycle_count"],
+                            dry_pressure_bar=cleaning_inputs["dry_pressure_bar"],
+                            dry_duration_s=cleaning_inputs["dry_duration_s"],
+                            dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"],
+                        )
 
                 # Assert the camera is assigned
                 assert camera is not None, "Camera must be initialized in film mode"
