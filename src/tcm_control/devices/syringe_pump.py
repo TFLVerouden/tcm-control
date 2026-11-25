@@ -99,10 +99,12 @@ class SyringePump(PoFSerialDevice):
     def metadata(self) -> dict:
         """Return connection details and effective pump control settings."""
         return {
-            "port": self.port,
-            "baudrate": self.baudrate,
-            "timeout_s": self.timeout_s,
             "pump_address": self.pump_address,
+            "connection": {
+                "port": self.port,
+                "baudrate": self.baudrate,
+                "timeout_s": self.timeout_s,
+            },
             "settings": {
                 "rate_unit": self.rate_unit,
                 "volume_unit": self.volume_unit,
