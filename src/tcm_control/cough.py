@@ -502,7 +502,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             camera_inputs["scale_mm_per_px"], camera_output_dir)
                         plate_height_px, plate_std_px, _, _, _ = plate_measurement
                         film_measurement = {
-                            "run_nr": run_idx + 1,
+                            "time": timestamp_str(),
                             "plate_height_px": plate_height_px,
                             "plate_height_std_px": plate_std_px,
                             "film_level_px": film_level_px,
@@ -523,7 +523,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         # Ask user to start the experiment
                         ask_start_confirmation(experiment_name=experiment_name)
 
-                        # Record temperature and humidity
+                        # Record temperature and humidity at the start of the series of runs
                         temperature_start, humidity_start = tcm.read_temperature_humidity(
                             show_reading=True,
                         )
@@ -551,10 +551,12 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         countdown_beep()
 
                         # Record the ambient conditions immediately before the cough
-                        tcm.read_temperature_humidity(
+                        temperature, humidity = tcm.read_temperature_humidity(
                             show_reading=True,
-                            save_csv=run_dir / "temperature_humidity.csv" if run_dir else None,
                         )
+                        if run_dir is not None:
+                            logger.write_ambient_measurement(
+                                run_dir, temperature, humidity)
 
                         # Start run, wait to finish, collect OPS data and receive run log
                         if ops is not None:
@@ -681,10 +683,12 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                                 float(nebuliser_inputs["pre_run_start_s"]))
 
                         # Record the ambient conditions immediately before the cough
-                        tcm.read_temperature_humidity(
+                        temperature, humidity = tcm.read_temperature_humidity(
                             show_reading=True,
-                            save_csv=run_dir / "temperature_humidity.csv" if run_dir is not None else None,
                         )
+                        if run_dir is not None:
+                            logger.write_ambient_measurement(
+                                run_dir, temperature, humidity)
 
                         # Start the run
                         tcm.start_run()

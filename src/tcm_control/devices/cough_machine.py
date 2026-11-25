@@ -672,13 +672,11 @@ class CoughMachine(PoFSerialDevice):
 
     def read_temperature_humidity(
         self, *, echo: Optional[bool] = None, show_reading: bool = False,
-        save_csv: str | Path | None = None,
     ) -> tuple[Optional[float], Optional[float]]:
         """Read temperature and humidity using `T?`.
 
         Parses replies formatted like `T<degC> H<%RH>` and returns `(temp, hum)`.
         When `show_reading` is True, prints the values or a warning if unavailable.
-        When `save_csv` is provided, saves the values to that CSV path.
         """
         # Query and parse the sensor without treating an invalid reply as a reading
         reply, _lines = self._query_and_drain(
@@ -699,14 +697,6 @@ class CoughMachine(PoFSerialDevice):
             else:
                 print(
                     f"{self.name} temperature: {temp:.1f} °C, rel. humidity: {hum:.1f}%")
-
-        # Save an empty CSV field for each unavailable reading
-        if save_csv is not None:
-            with Path(save_csv).open("w", newline="", encoding="utf-8") as file:
-                writer = csv.writer(file)
-                writer.writerow(
-                    ["temperature_degC", "relative_humidity_percent"])
-                writer.writerow([temp, hum])
 
         return temp, hum
 

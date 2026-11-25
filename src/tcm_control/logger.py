@@ -72,6 +72,18 @@ def write_film_measurement(run_dir: Path, measurement: dict[str, int | float]) -
         writer.writerow(measurement)
 
 
+def write_ambient_measurement(
+    run_dir: Path, temperature_degC: float | None, relative_humidity_percent: float | None
+) -> None:
+    """Save the ambient conditions in the run directory, empty if unavailable."""
+    with (run_dir / "temperature_humidity.csv").open("w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        writer.writerow(
+            ["time", "temperature_degC", "relative_humidity_percent"])
+        writer.writerow(
+            [timestamp_str(), temperature_degC, relative_humidity_percent])
+
+
 def latest_experiment_display_name(series_directory: Path) -> str | None:
     """Return a display name for the newest experiment folder, if any."""
     try:
