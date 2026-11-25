@@ -11,7 +11,7 @@ import numpy as np
 from tcm_control.devices.camera import Camera
 from tcm_control.devices.cough_machine import CoughMachine
 from tcm_control.devices.syringe_pump import SyringePump
-from tcm_control.processing.determine_film_height import measure_film_frame
+from tcm_control.liquid_film import measure_film_frame
 
 
 def take_snapshot(

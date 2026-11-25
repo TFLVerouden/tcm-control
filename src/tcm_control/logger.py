@@ -13,7 +13,7 @@ from typing import Any, TextIO
 from tcm_utils.io_utils import create_timestamped_filename, save_metadata_json
 from tcm_utils.time_utils import timestamp_str, timestamp_from_file
 
-from tcm_control.processing import determine_film_height
+from tcm_control import liquid_film
 
 
 RUN_LOGS_SUBDIR = "run_logs"
@@ -386,19 +386,19 @@ def build_run_metadata(
             "comments": comments,
             "processing": {
                 "film_height": {
-                    "IMAGE_CROP_LEFT": determine_film_height.IMAGE_CROP_LEFT,
-                    "CANNY_THR1": determine_film_height.CANNY_THR1,
-                    "CANNY_THR2": determine_film_height.CANNY_THR2,
+                    "IMAGE_CROP_LEFT": liquid_film.IMAGE_CROP_LEFT,
+                    "CANNY_THR1": liquid_film.CANNY_THR1,
+                    "CANNY_THR2": liquid_film.CANNY_THR2,
                     "PLATE_HEIGHT_CROSSING_TOLERANCE_PX":
-                        determine_film_height.PLATE_HEIGHT_CROSSING_TOLERANCE_PX,
+                        liquid_film.PLATE_HEIGHT_CROSSING_TOLERANCE_PX,
                     "FILM_HEIGHT_RIGHTMOST_WIDTH_PX":
-                        determine_film_height.FILM_HEIGHT_RIGHTMOST_WIDTH_PX,
+                        liquid_film.FILM_HEIGHT_RIGHTMOST_WIDTH_PX,
                     "CONTACT_ANGLE_FIT_WIDTH_PX":
-                        determine_film_height.CONTACT_ANGLE_FIT_WIDTH_PX,
+                        liquid_film.CONTACT_ANGLE_FIT_WIDTH_PX,
                     "REFERENCE_LINE_DASH_LENGTH_PX":
-                        determine_film_height.REFERENCE_LINE_DASH_LENGTH_PX,
+                        liquid_film.REFERENCE_LINE_DASH_LENGTH_PX,
                     "REFERENCE_LINE_GAP_LENGTH_PX":
-                        determine_film_height.REFERENCE_LINE_GAP_LENGTH_PX,
+                        liquid_film.REFERENCE_LINE_GAP_LENGTH_PX,
                 },
             },
             "devices": {

@@ -1,12 +1,24 @@
-"""Film height measurement from camera images."""
+"""Create liquid films and measure their height from camera images."""
+
+from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 
+from tcm_control.devices.camera import Camera
+from tcm_control.devices.cough_machine import CoughMachine
+from tcm_control.devices.syringe_pump import SyringePump
+from tcm_utils.io_utils import wait_with_progress
+
+if TYPE_CHECKING:
+    from tcm_control.imaging import LayerPreview
+
+
 # Film-height detection settings. Adjust these values to match the camera image.
-IMAGE_CROP_LEFT = 120  # Ignore left-edge artifacts when measuring plate height.
+IMAGE_CROP_LEFT = 120
 CANNY_THR1 = 0  # Lower threshold for Canny edge detection.
 CANNY_THR2 = 255  # Upper threshold for Canny edge detection.
 PLATE_HEIGHT_CROSSING_TOLERANCE_PX = 1  # Allowed vertical distance from plate.
@@ -78,7 +90,8 @@ def measure_film_frame(
         or not np.isfinite(scale_mm_per_px)
         or scale_mm_per_px <= 0
     ):
-        raise ValueError("Camera scale_mm_per_px must be a positive finite value")
+        raise ValueError(
+            "Camera scale_mm_per_px must be a positive finite value")
     plate_height, plate_std, plate_x, plate_y, plate_shape = plate_measurement
     if original_image.shape != plate_shape:
         raise ValueError(
@@ -108,7 +121,8 @@ def measure_film_frame(
     height_start_x = image_width - FILM_HEIGHT_RIGHTMOST_WIDTH_PX
     height_mask = rim_x >= height_start_x
     if not np.any(height_mask):
-        raise ValueError("No contour points in the configured film-height range")
+        raise ValueError(
+            "No contour points in the configured film-height range")
     film_height_px = float(np.mean(rim_y[height_mask]))
     thickness_mm = (film_height_px - plate_height) * scale_mm_per_px
     thickness_error_mm = plate_std * scale_mm_per_px
@@ -122,7 +136,8 @@ def measure_film_frame(
     fit_x = rim_x[fit_mask]
     fit_y = rim_y[fit_mask]
     if fit_x.size < 2:
-        raise ValueError("Not enough contour points to determine contact angle")
+        raise ValueError(
+            "Not enough contour points to determine contact angle")
     slope, intercept = np.polyfit(fit_x, fit_y, 1)
     contact_angle_deg = float(np.degrees(np.arctan(abs(slope))))
 
@@ -189,7 +204,6 @@ def measure_film_frame(
     return (thickness_mm, thickness_error_mm, contact_angle_deg, film_height_px), visualization
 
 
-
 def measure_plate_height(
     background_path: Path,
 ) -> tuple[float, float, np.ndarray, np.ndarray, tuple[int, int]]:
@@ -238,32 +252,98 @@ def measure_plate_height(
     plate_height = float(np.mean(top_y))
     plate_std = float(np.std(top_y))
 
+    # Warn if the standard deviation is large, which may indicate a dirty plate
+    if plate_std > 1.0:
+        print(
+            f"Warning: Detected plate height has a large standard deviation "
+            f"of {plate_std:.2f} px, which may indicate a dirty or uneven plate."
+        )
+
     return plate_height, plate_std, top_x, top_y, (image_height, image_width)
+
+
+def make_liquid_film(
+    pump: SyringePump,
+    camera: Camera,
+    tcm: CoughMachine,
+    infuse_volume_ml: float,
+    infuse_rate_ml_min: float,
+    withdraw_volume_ml: float,
+    withdraw_rate_ml_min: float,
+    settling_time_s: float,
+    *,
+    filename_prefix: str = "film",
+    preview: LayerPreview | None = None,
+) -> None:
+    """Infuse, settle and withdraw, saving a snapshot after each step."""
+    from tcm_control.imaging import take_snapshot, wait_with_preview
+
+    update = preview.update if preview is not None else None
+
+    # Helper function to create snapshot with specific name
+    def snapshot(step: str) -> None:
+        take_snapshot(
+            camera, tcm, filename=f"{filename_prefix}_after_{step}",
+            leave_light_on=preview is not None and preview.active,
+        )
+
+    # Infuse
+    if not pump.infuse(
+        volume_ml=infuse_volume_ml,
+        rate_ml_min=infuse_rate_ml_min,
+        update=update,
+    ):
+        raise RuntimeError("Layer creation aborted: infusion failed.")
+    snapshot("infusion")
+
+    # Wait for layer to settle
+    if preview is None:
+        wait_with_progress(wait_s=settling_time_s,
+                           label="Waiting for layer to settle...",
+                           )
+    else:
+        wait_with_preview(settling_time_s, preview)
+    snapshot("settling")
+
+    # Withdraw
+    if not pump.withdraw(
+        volume_ml=withdraw_volume_ml,
+        rate_ml_min=withdraw_rate_ml_min,
+        update=update,
+    ):
+        raise RuntimeError("Layer creation aborted: withdrawal failed.")
+    snapshot("withdrawal")
+
+    # Settle again
+    if preview is None:
+        wait_with_progress(wait_s=settling_time_s,
+                           label="Waiting for layer to settle...",
+                           )
+    else:
+        wait_with_preview(settling_time_s, preview)
 
 
 if __name__ == "__main__":
     from tcm_control.devices.camera import DEFAULT_SCALE_MM_PER_PX
-    # Example usage: measure film height from captured images
+
     output_dir = Path(
         r"/Users/tommieverouden/Developer/twente-cough-machine/control/temp"
     )
-
-    # Step 1: Determine baseline plate height from background image
     background_path = Path(
         r"/Users/tommieverouden/Developer/twente-cough-machine/control/temp/empty_261123_154407.tif"
     )
     plate_measurement = measure_plate_height(background_path)
     plate_height_px, plate_std_px, _, _, _ = plate_measurement
-    print(f"Determined plate height: {plate_height_px:.1f} +/- {plate_std_px:.1f} px")
+    print(
+        f"Determined plate height: {plate_height_px:.1f} +/- {plate_std_px:.1f} px")
 
-    # Step 2: Measure film height from image with film layer
     image_path = Path(
         r"/Users/tommieverouden/Developer/twente-cough-machine/control/temp/infuse_4mL.tif"
     )
-    # Use the same camera calibration as the experiment configuration.
     scale_mm_per_px = DEFAULT_SCALE_MM_PER_PX
     film_height_mm, film_error_mm, contact_angle_deg, film_level_px = measure_film_properties(
         image_path, plate_measurement, scale_mm_per_px, output_dir)
     print(f"Determined film level: {film_level_px:.2f} px")
-    print(f"Determined film height: {film_height_mm:.3f} +/- {film_error_mm:.3f} mm")
+    print(
+        f"Determined film height: {film_height_mm:.3f} +/- {film_error_mm:.3f} mm")
     print(f"Determined contact angle: {contact_angle_deg:.2f} deg")

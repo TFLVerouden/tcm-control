@@ -14,10 +14,10 @@ from tcm_control.interrupt_handling import (
     set_active_pump,
     set_active_tcm,
 )
-from tcm_control.processing.run_log_processing import plot_run_log
+from tcm_control.post_processing.run_log_processing import plot_run_log
 from tcm_control.imaging import layer_preview, take_snapshot, wait_with_preview
-from tcm_control.liquid_film_creation import make_liquid_film
-from tcm_control.processing.determine_film_height import (
+from tcm_control.liquid_film import (
+    make_liquid_film,
     measure_film_properties,
     measure_plate_height,
 )

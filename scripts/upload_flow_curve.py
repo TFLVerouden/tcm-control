@@ -1,5 +1,5 @@
 from tcm_control.devices import CoughMachine
-from tcm_control.processing.run_log_processing import plot_run_log
+from tcm_control.post_processing.run_log_processing import plot_run_log
 from pathlib import Path
 
 
