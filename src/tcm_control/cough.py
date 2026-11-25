@@ -188,7 +188,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         if output_dir is not None:
             logger.write_run_metadata(
                 output_dir, logger.build_run_metadata(
-                    config, time_start=time_start, output_dir=output_dir, tcm=tcm))
+                    config, time_start=time_start, output_dir=output_dir, tcm=tcm),
+                title="Initial run metadata snapshot",)
 
         # ----------------------------------------------------------------------
         # 4) Set up external device connections

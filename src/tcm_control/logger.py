@@ -344,7 +344,9 @@ def _to_jsonable(value: Any) -> Any:
 def write_run_metadata(
         experiment_dir: Path,
         meta: dict[str, Any],
-        filename: str = "metadata.json") -> Path:
+        filename: str = "metadata.json",
+        title: str = "Run metadata"
+) -> Path:
     """Write the final experiment metadata payload to disk as JSON."""
     file_path = experiment_dir / filename
     # Replace the previous snapshot only after the new JSON is complete
@@ -354,7 +356,7 @@ def write_run_metadata(
         temp_path.replace(file_path)
     finally:
         temp_path.unlink(missing_ok=True)
-    print(f"Run metadata saved to {file_path}")
+    print(f"{title} saved to {file_path}")
     return file_path
 
 
