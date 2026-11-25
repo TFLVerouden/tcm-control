@@ -217,7 +217,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                                syringe_inputs["syringe_gang"],
                                syringe_inputs["syringe_force_percent"])
 
-            # set_active_pump(pump)
+            set_active_pump(pump)
 
         # Connect to OPS when specified
         ops_inputs = config["devices"]["ops"]
@@ -815,20 +815,30 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         # Release every device and the console log even if one release fails.
         # The cough machine stays open: interrupt cleanup still needs it.
         try:
-            for name, device, release in (
-                ("OPS", ops, lambda: ops.close()),
-                ("camera", camera, lambda: camera.close()),
-                ("vertical stage", vertical_stage,
-                 lambda: vertical_stage.close(ignore_exceptions=True)),
-                # stop() halts the motor, then closes the serial port
-                ("syringe pump", pump, lambda: pump.stop()),
-            ):
-                if device is None:
-                    continue
+            if ops is not None:
                 try:
-                    release()
+                    ops.close()
                 except Exception as exc:
-                    print(f"Warning: Failed to release {name}: {exc}")
+                    print(f"Warning: Failed to release OPS: {exc}")
+
+            if camera is not None:
+                try:
+                    camera.close()
+                except Exception as exc:
+                    print(f"Warning: Failed to release camera: {exc}")
+
+            if vertical_stage is not None:
+                try:
+                    vertical_stage.close(ignore_exceptions=True)
+                except Exception as exc:
+                    print(f"Warning: Failed to release vertical stage: {exc}")
+
+            if pump is not None:
+                try:
+                    # stop() halts the motor, then closes the serial port
+                    pump.stop()
+                except Exception as exc:
+                    print(f"Warning: Failed to release syringe pump: {exc}")
         finally:
             console_log.close()
 
