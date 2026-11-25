@@ -19,16 +19,20 @@ def take_snapshot(
     tcm: CoughMachine,
     filename: str | None = None,
     brightness: float = 1.0,
+    *,
+    leave_light_on: bool = False,
 ) -> Path:
     """Capture a camera snapshot with lighting control.
 
-    Temporarily enables lighting, takes a snapshot, then disables lighting.
+    Enables lighting, takes a snapshot, then disables lighting unless requested
+    otherwise (for example, while a live preview is active).
 
     Args:
         camera: Camera device to use for snapshot.
         tcm: Cough machine instance for light control.
         filename: Optional filename for the saved image.
         brightness: Brightness level (default: 1.0).
+        leave_light_on: Leave lighting enabled after the snapshot.
 
     Returns:
         Path to the saved image file.
@@ -40,7 +44,8 @@ def take_snapshot(
         image_path = camera.snapshot(filename=filename)
         print(f"Saved image to: {image_path}")
     finally:
-        tcm.set_light(0)
+        if not leave_light_on:
+            tcm.set_light(0)
     return image_path
 
 
@@ -149,39 +154,3 @@ if __name__ == "__main__":
         filename="withdraw_40s",
         brightness=1.0
     )
-
-    # specs_path = Path("src/tcm_control/config/config_layer.toml")
-    # config: dict = {}
-    # if specs_path.exists():
-    #     config = tomllib.load(specs_path.open("rb"))
-
-    # syringe_inputs = config["devices"]["syringe_pump"]
-    # layer = config["film"]["layer"]
-    # clean_tube = config["film"]["clean_tube"]
-
-    # pump = SyringePump(syringe_inputs["syringe_vendor_code"],
-    #                    syringe_inputs["syringe_volume_mL"],
-    #                    syringe_inputs["syringe_diameter_mm"],
-    #                    syringe_inputs["syringe_gang"],
-    #                    syringe_inputs["syringe_force_percent"])
-
-    # # pump.make_layer(infuse_volume_ml=layer["infuse_volume_ml"],
-    # #                 infuse_rate_ml_min=layer["infuse_rate_ml_min"],
-    # #                 withdraw_volume_ml=layer["withdraw_volume_ml"],
-    # #                 withdraw_rate_ml_min=layer["withdraw_rate_ml_min"],
-    # #                 settling_time_s=layer["film_settling_time_s"])
-
-    # pump.clean_tubes(volume_ml_layer=clean_tube["volume_ml_layer"],
-    #                  rate_ml_min_layer=clean_tube["rate_ml_min_layer"],
-    #                  volume_ml_repetition=clean_tube["volume_ml_repetition"],
-    #                  rate_ml_min_repetition=clean_tube["rate_ml_min_repetition"],
-    #                  repetitions=clean_tube["repetitions"])
-
-    # # Clean channel
-    # # tcm = CoughMachine()
-    # # tcm.clean(clean_pressure_bar=5, valve_open_duration_s=1, cycle_count=1)
-
-    # # camera = Camera()
-    # # tcm = CoughMachine()
-
-    # # take_snapshot(camera, tcm, filename="test_snapshot.png", brightness=1.0)

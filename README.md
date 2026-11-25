@@ -207,6 +207,9 @@ to `false` to disable the local window during
 film infusion, withdrawal and settling. The light stays on while the window is
 open when the preview is enabled. Close the window or press `q` to continue without the preview. The
 background and final snapshots and saved final measurement are unchanged.
+During layer creation, additional TIFF snapshots are saved after infusion,
+after the intermediate settling period, and after withdrawal, whether or not
+live preview is enabled. They use the camera's current output directory.
 Live thickness and contact angle use the background plate and camera scale;
 they are provisional and may be unavailable or inaccurate while the contour
 is forming. Preview frames are not saved. A desktop display is required.

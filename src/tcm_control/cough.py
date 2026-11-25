@@ -16,6 +16,7 @@ from tcm_control.interrupt_handling import (
 )
 from tcm_control.processing.run_log_processing import plot_run_log
 from tcm_control.imaging import layer_preview, take_snapshot, wait_with_preview
+from tcm_control.liquid_film_creation import make_liquid_film
 from tcm_control.processing.determine_film_height import (
     measure_film_properties,
     measure_plate_height,
@@ -451,7 +452,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     # Empty channel "background" picture
                     empty_channel_image_path = take_snapshot(
                         camera, tcm, filename="empty_channel")
-                    live_preview = camera_inputs.get("live_preview", False)
+                    live_preview = camera_inputs["live_preview"]
                     if camera_output_dir is not None or live_preview:
                         plate_measurement = measure_plate_height(
                             empty_channel_image_path)
@@ -461,13 +462,14 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         with layer_preview(camera, tcm, plate_measurement,
                                            camera_inputs["scale_mm_per_px"]) as preview:
                             try:
-                                pump.make_layer(
+                                make_liquid_film(
+                                    pump, camera, tcm,
                                     infuse_volume_ml=layer_inputs["infuse_volume_ml"],
                                     infuse_rate_ml_min=layer_inputs["infuse_rate_ml_min"],
                                     withdraw_volume_ml=layer_inputs["withdraw_volume_ml"],
                                     withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"],
                                     settling_time_s=layer_inputs["film_settling_time_s"],
-                                    update=preview.update,
+                                    preview=preview,
                                 )
                             except BaseException:
                                 try:
@@ -482,21 +484,18 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     # Or just make a layer
                     else:
                         if pump is not None:
-                            pump.make_layer(
+                            make_liquid_film(
+                                pump, camera, tcm,
                                 infuse_volume_ml=layer_inputs["infuse_volume_ml"],
                                 infuse_rate_ml_min=layer_inputs["infuse_rate_ml_min"],
                                 withdraw_volume_ml=layer_inputs["withdraw_volume_ml"],
                                 withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"],
                                 settling_time_s=layer_inputs["film_settling_time_s"],
                             )
-                        wait_with_progress(
-                            wait_s=layer_inputs["film_settling_time_s"],
-                            label="Waiting for layer to settle...",
-                        )
 
                     # Take a picture of the layer
                     final_film_image_path = take_snapshot(
-                        camera, tcm, filename=f"run{run_idx + 1}_thin_film")
+                        camera, tcm, filename=f"final_film")
                     if camera_output_dir is not None:
                         film_height_mm, film_error_mm, contact_angle_deg, film_level_px = measure_film_properties(
                             final_film_image_path, plate_measurement,
@@ -599,10 +598,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"],
                     )
 
-                    # Image the channel after cleaning
-                    # TODO: Put run number first
-                    _ = take_snapshot(
-                        camera, tcm, filename="cleaned_run")
+                    # Image the channel after cleaning only if cycle count > 0
+                    if cleaning_inputs["cycle_count"] > 0:
+                        take_snapshot(camera, tcm, filename="cleaned_channel")
 
             case "piv":
                 # ------------------------------------------------------------------

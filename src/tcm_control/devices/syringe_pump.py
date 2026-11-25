@@ -524,30 +524,6 @@ class SyringePump(PoFSerialDevice):
             if settle_s > 0:
                 time.sleep(settle_s)
 
-    def make_layer(self, infuse_volume_ml: float, infuse_rate_ml_min: float, withdraw_volume_ml: float, withdraw_rate_ml_min: float, settling_time_s: float, *, update: Callable[[], None] | None = None) -> None:
-        """Create a thin film layer using the syringe pump."""
-        try:
-            # Infuse fluid to create the layer
-
-            self.infuse(
-                volume_ml=infuse_volume_ml,
-                rate_ml_min=infuse_rate_ml_min,
-                update=update,
-            )
-
-            # Allow the pump system and fluid to relax
-            self._wait_with_updates(settling_time_s, update)
-
-            # Partially withdraw to create a thin film layer
-            self.withdraw(
-                volume_ml=withdraw_volume_ml,
-                rate_ml_min=withdraw_rate_ml_min,
-                update=update,
-            )
-        except Exception as exc:
-            self._log_error(str(exc))
-            raise
-
     def clean_tubes(self, volume_ml_layer: float, rate_ml_min_layer: float, volume_ml_repetition: float | None, rate_ml_min_repetition: float | None, repetitions: int) -> None:
         """Clean the tubes by performing repeated infuse/withdraw cycles."""
         try:
@@ -587,29 +563,3 @@ class SyringePump(PoFSerialDevice):
         except Exception as exc:
             self._log_error(str(exc))
             raise
-
-
-def main() -> None:
-    pump = SyringePump(
-        syringe_vendor_code="hm2",
-        syringe_volume_mL=100.0,
-        syringe_diameter_mm=32.573,
-        syringe_gang=1,
-        syringe_force_percent=100,
-        baudrate=115200,
-        debug=True,
-    )
-    try:
-        pump.make_layer(
-            infuse_volume_ml=3.5,
-            infuse_rate_ml_min=15,
-            withdraw_volume_ml=2.5,
-            withdraw_rate_ml_min=5,
-            settling_time_s=30,
-        )
-    finally:
-        pump.disconnect()
-
-
-if __name__ == "__main__":
-    main()
