@@ -13,6 +13,8 @@ from typing import Any, TextIO
 from tcm_utils.io_utils import create_timestamped_filename, save_metadata_json
 from tcm_utils.time_utils import timestamp_str, timestamp_from_file
 
+from tcm_control.processing import determine_film_height
+
 
 RUN_LOGS_SUBDIR = "run_logs"
 CONSOLE_LOGS_SUBDIR = "host_console_logs"
@@ -368,6 +370,23 @@ def build_run_metadata(
                 "humidity": {"start": humidity_start, "finish": humidity_finish},
             },
             "comments": comments,
+            "processing": {
+                "film_height": {
+                    "IMAGE_CROP_LEFT": determine_film_height.IMAGE_CROP_LEFT,
+                    "CANNY_THR1": determine_film_height.CANNY_THR1,
+                    "CANNY_THR2": determine_film_height.CANNY_THR2,
+                    "PLATE_HEIGHT_CROSSING_TOLERANCE_PX":
+                        determine_film_height.PLATE_HEIGHT_CROSSING_TOLERANCE_PX,
+                    "FILM_HEIGHT_RIGHTMOST_WIDTH_PX":
+                        determine_film_height.FILM_HEIGHT_RIGHTMOST_WIDTH_PX,
+                    "CONTACT_ANGLE_FIT_WIDTH_PX":
+                        determine_film_height.CONTACT_ANGLE_FIT_WIDTH_PX,
+                    "REFERENCE_LINE_DASH_LENGTH_PX":
+                        determine_film_height.REFERENCE_LINE_DASH_LENGTH_PX,
+                    "REFERENCE_LINE_GAP_LENGTH_PX":
+                        determine_film_height.REFERENCE_LINE_GAP_LENGTH_PX,
+                },
+            },
             "devices": {
                 "cough_machine": tcm.metadata(),
                 "pump": pump.metadata() if pump is not None else None,
