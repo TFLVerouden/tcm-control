@@ -98,7 +98,8 @@ class LayerPreview:
             raise ValueError(f"Unsupported preview frame shape: {frame.shape}")
         try:
             _, display = measure_film_frame(
-                frame, self.plate_measurement, self.scale_mm_per_px)
+                frame, self.plate_measurement, self.scale_mm_per_px,
+                show_binarised=False)
         except ValueError as exc:
             display = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
             cv2.putText(display, f"Measurement unavailable: {exc}", (10, 25),
