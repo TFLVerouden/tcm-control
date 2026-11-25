@@ -71,11 +71,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     # Load the experiment config from the TOML file and validate it
     config = load_experiment_config(config_path)
 
-    # Default to saving unless config explicitly disables it
-    save_data = bool(config["experiment"].get("save_data", True))
-
     # Cache the selected mode for the central match/case branch below
     experiment_mode = config["experiment"]["mode"]
+    save_data = config["experiment"]["save_data"]
 
     record_droplet_size_spraytec = config["devices"]["spraytec"]["enabled"]
     record_droplet_size_ops = config["devices"]["ops"]["enabled"]
@@ -85,8 +83,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
     fan_off = config["run"]["fan_off_during_experiment"]
 
+    # Cleaning settings
+    cleaning_inputs = config["run"]["cleaning"]
+
     # --------------------------------------------------------------------------
-    # 2) Make connections to external devices
+    # 2) Make connection to cough machine
     # --------------------------------------------------------------------------
 
     # Initialise cough machine
@@ -100,11 +101,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     else:
         tcm.set_fan_speed(CoughMachine.FAN_SPEED_DEFAULT)
 
+    # Register device so interrupt cleanup can stop it
     set_active_tcm(tcm)
-
-    # Vertical stage is only needed when SprayTec measurements are enabled.
-    # if record_droplet_size_spraytec:
-    #     vertical_stage = VerticalStage()
 
     # --------------------------------------------------------------------------
     # 3) Set up experiment directory and logging
@@ -181,20 +179,21 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
     pump = None
     camera = None
     vertical_stage = None
+
+    # Enter the main experiment try/finally block to ensure cleanup occurs even if an error occurs
     try:
-        # Persist an initial snapshot in case the experiment is interrupted
+
+        # Persist an initial metadata snapshot in case experiment is interrupted
         if output_dir is not None:
             logger.write_run_metadata(
                 output_dir, logger.build_run_metadata(
                     config, time_start=time_start, output_dir=output_dir, tcm=tcm))
 
-        # --------------------------------------------------------------
-        # 4) Set up devices and resolve run geometry
-        # ======================================================================
-        # External Device Connections
-        # ======================================================================
+        # ----------------------------------------------------------------------
+        # 4) Set up external device connections
+        # ----------------------------------------------------------------------
 
-        # Film mode: camera and syringe pump
+        # Connect to camera in film mode only
         if experiment_mode == "film":
             # The camera output directory is changed to the current run below
             camera_inputs = config["devices"]["camera"]
@@ -209,7 +208,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             camera_inputs["camera_exposure_us"] = camera.exposure_us
             camera_inputs["camera_gain_db"] = camera.gain_db
 
-            # TODO: Set up pump in droplet mode too
+        # Connect to syringe pump in film and droplet modes
+        if experiment_mode in ["film", "droplet"]:
             syringe_inputs = config["devices"]["syringe_pump"]
             pump = SyringePump(syringe_inputs["syringe_vendor_code"],
                                syringe_inputs["syringe_volume_mL"],
@@ -219,20 +219,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
             # set_active_pump(pump)
 
-        # # In droplet and PIV modes, set up the pump
-        # if experiment_mode in ["droplet", "piv"]:
-        #     pump = SyringePump(
-        #         syringe_volume_ml=pump_inputs["syringe_volume_ml"],
-        #         syringe_diameter_mm=pump_inputs["syringe_diameter_mm"],
-        #     )
-        # pump = SyringePump2(pump_inputs)
-
-        #     # Register pump so interrupt cleanup can call stop() on it
-        #     set_active_pump(pump)
-
-        # Optional: Optical Particle Sizer (OPS) for droplet measurement
+        # Connect to OPS when specified
         ops_inputs = config["devices"]["ops"]
-        if record_droplet_size_ops and experiment_mode == "film":
+        if record_droplet_size_ops:
             assert ops_inputs is not None
             ops = OpticalParticleSizer(
                 bin_boundaries_um=ops_inputs["bin_boundaries_um"],
@@ -243,7 +232,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             )
             config["geometry"]["ops"]["position"] = ops_position
 
-        # Optional: SprayTec setup and geometry resolution
+        # Set up SprayTec and position if enabled
         vertical_stage = None
         spraytec = None
         spraytec_x_mm = spraytec_y_mm = spraytec_z_mm = None
@@ -296,9 +285,9 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 "Press ENTER to confirm that SprayTec SOP is waiting for a trigger...",
                 default=True)
 
-        # ======================================================================
-        # TCM Configuration (after all external devices are connected)
-        # ======================================================================
+        # ----------------------------------------------------------------------
+        # 5) Configure cough machine
+        # ----------------------------------------------------------------------
 
         # Clear memory before starting the experiment; turn off fan
         tcm.clear_memory()
@@ -344,12 +333,14 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
 
         # Track run folders and cleaning settings shared by film and PIV modes
         run_dirs: list[Path] = []
-        cleaning_inputs = cough_machine_inputs["cleaning"]
+
+        # Protocols for each mode
         match experiment_mode:
             case "droplet":
-                # ------------------------------------------------------------------
-                # 5A) Droplet atomisation mode
-                # ------------------------------------------------------------------
+                # --------------------------------------------------------------
+                # 6A) Droplet atomisation mode
+                # --------------------------------------------------------------
+
                 raise NotImplementedError("W.I.P.")
 
                 #     assert pump is not None
@@ -400,9 +391,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 #             )
 
             case "film":
-                # ------------------------------------------------------
-                # 5B) Film atomisation mode
-                # ------------------------------------------------------
+                # --------------------------------------------------------------
+                # 6B) Film atomisation mode
+                # --------------------------------------------------------------
+
+                # PREPARATIONS =================================================
                 # Explicitly require operator confirmation of syringe being filled
                 layer_inputs = config["film"]["layer"]
                 confirm_syringe_filled = prompt_yes_no(
@@ -544,7 +537,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                                 "confirm_before_starting_next_run"
                             ],
                         )
-
+                    # Start OPS recording
                     if ops is not None:
                         assert run_dir is not None and ops_inputs is not None
                         ops.start_recording(run_dir)
@@ -563,6 +556,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             save_csv=run_dir / "temperature_humidity.csv" if run_dir else None,
                         )
 
+                        # Start run, wait to finish, collect OPS data and receive run log
                         if ops is not None:
                             assert ops_inputs is not None
                             ops.check_recording()
@@ -585,6 +579,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         if ops is not None:
                             ops.stop_if_recording()
 
+                    # POST-RUN =================================================
                     # Plot run log
                     if save_data and run_log_path is not None:
                         plot_run_log(

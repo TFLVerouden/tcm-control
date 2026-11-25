@@ -188,7 +188,8 @@ def _prompt_syringe_profile(syringe: Syringe, contexts: set[str]) -> None:
         Path(__file__).resolve().parent
         / "devices" / "lookup_tables" / "syringes.toml"
     )
-    profiles = tomllib.loads(lookup_path.read_text(encoding="utf-8"))["profiles"]
+    profiles = tomllib.loads(
+        lookup_path.read_text(encoding="utf-8"))["profiles"]
     profile_items = list(profiles.items())
 
     print("Syringe settings are incomplete. Select a syringe profile:")
@@ -214,7 +215,8 @@ def _prompt_syringe_profile(syringe: Syringe, contexts: set[str]) -> None:
         )
         if getattr(syringe, name) is None
     }
-    updated = Syringe.model_validate({**syringe.model_dump(), **profile_values})
+    updated = Syringe.model_validate(
+        {**syringe.model_dump(), **profile_values})
     for name in Syringe.model_fields:
         setattr(syringe, name, getattr(updated, name))
 
