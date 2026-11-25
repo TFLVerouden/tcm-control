@@ -170,6 +170,12 @@ To generate a separate template without overwriting an existing file:
 python -m tcm_control.initialise_config path/to/new_config.toml
 ```
 
+To create a config without comments, run
+`python -m tcm_control.config.generate_empty_config` and enter a filename. It
+is saved in the config directory, with `.toml` added if needed. The template
+preserves defaults and sections, writes unset fields as empty strings, and does
+not overwrite an existing file.
+
 Missing tank pressure and other required values are prompted only when needed.
 Leave the series directory empty to select it, or set it to `"None"` to disable
 saving. If tube cleaning is selected, missing cleaning volumes and rates are

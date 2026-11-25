@@ -523,8 +523,8 @@ def load_experiment_config(config_path: Path | str | None = None) -> dict[str, A
     return result
 
 
-def render_config_template() -> str:
-    """Generate a documented TOML template from the field definitions."""
+def render_config_template(*, include_comments: bool = True) -> str:
+    """Generate a TOML template from the field definitions."""
     lines: list[str] = []
 
     def render(model: type[Settings], section: str, description: str | None = None) -> None:
@@ -533,22 +533,28 @@ def render_config_template() -> str:
                   if not isinstance(field.annotation, type) or not issubclass(field.annotation, Settings)]
         indent = "    " * section.count(".")
         lines.append(f"{indent}[{section}]")
-        if description:
+        if description and include_comments:
             lines.append(f"{indent}# {description}")
         if leaves:
             for name, field in leaves:
-                lines.append(f"{indent}# {field.description}")
+                if include_comments:
+                    lines.append(f"{indent}# {field.description}")
                 value = field.get_default(call_default_factory=True)
                 if value is None:
-                    extra = field.json_schema_extra
-                    required_for = extra.get("required_for") if isinstance(
-                        extra, dict) else None
-                    note = "prompted when required" if required_for else "optional; see description"
-                    lines.append(f"{indent}# {name} =  # {note}")
+                    if include_comments:
+                        extra = field.json_schema_extra
+                        required_for = extra.get("required_for") if isinstance(
+                            extra, dict) else None
+                        note = "prompted when required" if required_for else "optional; see description"
+                        lines.append(f"{indent}# {name} =  # {note}")
+                    else:
+                        lines.append(f'{indent}{name} = ""')
                 else:
                     default = json.dumps(value)
-                    lines.append(
-                        f"{indent}{name} = {default}  # optional; default: {default}")
+                    line = f"{indent}{name} = {default}"
+                    if include_comments:
+                        line += f"  # optional; default: {default}"
+                    lines.append(line)
         lines.append("")
         for name, field in fields.items():
             if isinstance(field.annotation, type) and issubclass(field.annotation, Settings):
