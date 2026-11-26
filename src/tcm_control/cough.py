@@ -15,11 +15,11 @@ from tcm_control.interrupt_handling import (
     set_active_tcm,
 )
 from tcm_control.post_processing.run_log_processing import plot_run_log
-from tcm_control.imaging import layer_preview, take_snapshot, wait_with_preview
+from tcm_control.imaging import layer_preview, take_snapshot
 from tcm_control.liquid_film import (
     make_liquid_film,
-    measure_film_properties,
     measure_plate_height,
+    record_film_measurement,
 )
 from tcm_control.tube_cleaning import clean_tubes
 from tcm_control.user_input import (
@@ -447,57 +447,47 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     empty_channel_image_path = take_snapshot(
                         camera, tcm, filename="empty_channel")
                     live_preview = camera_inputs["live_preview"]
+                    plate_measurement = None
                     if camera_output_dir is not None or live_preview:
                         plate_measurement = measure_plate_height(
                             empty_channel_image_path)
 
-                    # Make a layer with live preview
-                    if live_preview and pump is not None:
-                        with layer_preview(camera, tcm, plate_measurement,
-                                           camera_inputs["scale_mm_per_px"]) as preview:
+                    # Make a layer, optionally showing a live preview
+                    with layer_preview(
+                        camera, tcm, plate_measurement,
+                        camera_inputs["scale_mm_per_px"], enabled=live_preview,
+                    ) as preview:
+                        try:
+                            make_liquid_film(
+                                pump, camera, tcm,
+                                infuse_volume_ml=layer_inputs["infuse_volume_ml"],
+                                infuse_rate_ml_min=layer_inputs["infuse_rate_ml_min"],
+                                withdraw_volume_ml=layer_inputs["withdraw_volume_ml"],
+                                withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"],
+                                settling_time_s=layer_inputs["film_settling_time_s"],
+                                preview=preview,
+                            )
+                        except BaseException:
                             try:
-                                make_liquid_film(
-                                    pump, camera, tcm,
-                                    infuse_volume_ml=layer_inputs["infuse_volume_ml"],
-                                    infuse_rate_ml_min=layer_inputs["infuse_rate_ml_min"],
-                                    withdraw_volume_ml=layer_inputs["withdraw_volume_ml"],
-                                    withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"],
-                                    settling_time_s=layer_inputs["film_settling_time_s"],
-                                    preview=preview,
-                                )
-                            except BaseException:
-                                try:
-                                    pump.stop()
-                                except Exception as exc:
-                                    print(
-                                        f"Warning: Failed to stop syringe pump: {exc}")
-                                raise
+                                pump.stop()
+                            except Exception as exc:
+                                print(
+                                    f"Warning: Failed to stop syringe pump: {exc}")
+                            raise
 
                     # Take a picture of the layer
                     final_film_image_path = take_snapshot(
                         camera, tcm, filename=f"final_film")
-                    if camera_output_dir is not None:
-                        # TODO: Report on edge detection method/algorithm choices in metadata
-                        film_height_mm, film_error_mm, contact_angle_deg, film_level_px = measure_film_properties(
-                            final_film_image_path, plate_measurement,
-                            camera_inputs["scale_mm_per_px"], camera_output_dir)
-                        plate_height_px, plate_std_px, *_ = plate_measurement
-                        film_measurement = {
-                            "time": timestamp_str(),
-                            "plate_height_px": plate_height_px,
-                            "plate_height_std_px": plate_std_px,
-                            "film_level_px": film_level_px,
-                            "film_height_mm": film_height_mm,
-                            "film_height_error_mm": film_error_mm,
-                            "contact_angle_deg": contact_angle_deg,
-                        }
-                        # Save the individual measurement alongside the images
-                        assert run_dir is not None
-                        logger.write_film_measurement(
-                            run_dir, film_measurement)
+                    assert plate_measurement is not None
+                    assert run_dir is not None
+                    film_height_mm, film_error_mm, contact_angle_deg, film_level_px = record_film_measurement(
+                        run_dir, empty_channel_image_path, final_film_image_path,
+                        plate_measurement, camera_inputs["scale_mm_per_px"])
+                    if film_height_mm is None or contact_angle_deg is None:
+                        print("Film measurement failed, check images and logs")
+                    else:
                         print(
-                            f"Film height (mm): {film_height_mm:.3f} ± {film_error_mm:.3f}")
-                        print(f"Contact angle (deg): {contact_angle_deg:.2f}")
+                            f"Film height (mm): {film_height_mm:.3f} ± {film_error_mm:.3f}; contact angle (deg): {contact_angle_deg:.2f}")
 
                     # Wait between coughs if needed
                     if run_idx == 0:

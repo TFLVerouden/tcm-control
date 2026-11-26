@@ -104,7 +104,14 @@ For direct device use, `read_temperature_humidity(save_csv=path)` saves the
 reading in the same CSV format; omit `save_csv` to read without saving.
 
 Film runs also contain camera images and `film_measurement.csv`, and OPS data
-when OPS recording is enabled. Automatic OPS plotting is deferred. Film
+when OPS recording is enabled. The film CSV records paths relative to its run
+folder for the background, original film and processed images, the plate and
+film-level standard deviations, the combined film-height error, the contact
+method, and any measurement failure messages. The height error combines plate
+and film-level standard deviations in quadrature; it does not include camera
+scale uncertainty. Contact-angle uncertainty is not calculated. Algorithm
+settings and detection choices are recorded under `runtime.processing.film_height`
+in `metadata.json`. Automatic OPS plotting is deferred. Film
 measurements are no longer duplicated in the experiment metadata. SprayTec
 measurements are exported after the experiment and matched
 chronologically to run folders only if the counts agree and the timestamps
@@ -205,7 +212,7 @@ end in `.tif` or `.tiff`.
 Live preview defaults to enabled. Set `[devices.camera].live_preview`
 to `false` to disable the local window during
 film infusion, withdrawal and settling. The light stays on while the window is
-open when the preview is enabled. Close the window or press `q` to continue without the preview. The
+open when the preview is enabled. Close the window or press `Esc` to continue without the preview. The
 background and final snapshots and saved final measurement are unchanged.
 During layer creation, additional TIFF snapshots are saved after infusion,
 after the intermediate settling period, and after withdrawal, whether or not
@@ -213,6 +220,17 @@ live preview is enabled. They use the camera's current output directory.
 Live thickness and contact angle use the background plate and camera scale;
 they are provisional and may be unavailable or inaccurate while the contour
 is forming. Preview frames are not saved. A desktop display is required.
+
+Film height is averaged around the highest contour point. The averaging range
+is shifted at image edges and must contain a contour point in every column.
+`FILM_HEIGHT_AVERAGE_WIDTH_PX` in `src/tcm_control/liquid_film.py` sets the
+width (256 by default) and is saved in run metadata.
+The processed image shows the standard deviation of both the plate and film
+levels in pixels. The thickness error is their root sum square, scaled to mm;
+it assumes independent level errors and excludes calibration uncertainty.
+If either measurement fails, the other is still recorded; unavailable values
+are left blank in the measurement CSV. Final measurements emit warnings,
+while live preview does not.
 Omit `scale_mm_per_px` to use the camera module's default calibration.
 
 

@@ -12,10 +12,12 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from skimage.filters import threshold_minimum
 
+from tcm_control import logger
 from tcm_control.devices.camera import Camera, validate_roi
 from tcm_control.devices.cough_machine import CoughMachine
 from tcm_control.devices.syringe_pump import SyringePump
 from tcm_utils.io_utils import wait_with_progress
+from tcm_utils.time_utils import timestamp_str
 
 if TYPE_CHECKING:
     from tcm_control.imaging import LayerPreview
@@ -31,10 +33,12 @@ CONTACT_POINT_ROI = (256, -64, 12, 640)
 # Suppress differences near the dark background.
 PLATE_BACKGROUND_EXTENSION_PX = 1
 CONTACT_ANGLE_FIT_WIDTH_PX = 6  # Fit window extends this far right of contact.
+PLATE_STD_WARNING_PX = 2.0
 
 PlateMeasurement = tuple[
     float, float, np.ndarray, np.ndarray, tuple[int, int], np.ndarray
 ]
+FilmMeasurement = tuple[float | None, float | None, float | None, float | None]
 
 
 @lru_cache(maxsize=2)
@@ -124,6 +128,55 @@ def make_liquid_film(
 # Film measurement
 # ------------------------------------------------------------------------------
 
+def record_film_measurement(
+    run_dir: Path,
+    background_image_path: Path,
+    film_image_path: Path,
+    plate_measurement: PlateMeasurement,
+    scale_mm_per_px: float | None,
+) -> FilmMeasurement:
+    """Measure a saved film image and record its results and diagnostics."""
+    plate_height_px, plate_std_px, *_ = plate_measurement
+    details: dict[str, float | str] = {}
+    measurement: dict[str, int | float | str | None] = {
+        "time": timestamp_str(),
+        "background_image": str(background_image_path.relative_to(run_dir)),
+        "original_image": str(film_image_path.relative_to(run_dir)),
+        "processed_image": None,
+        "plate_height_px": plate_height_px,
+        "plate_height_std_px": plate_std_px,
+        "film_level_px": None,
+        "film_level_std_px": None,
+        "film_height_mm": None,
+        "film_height_error_mm": None,
+        "contact_angle_deg": None,
+        "contact_method": None,
+        "film_height_failure": None,
+        "contact_angle_failure": None,
+        "measurement_failure": None,
+    }
+    try:
+        result = measure_film_properties(
+            film_image_path, plate_measurement, scale_mm_per_px, run_dir,
+            details=details)
+    except (OSError, ValueError, RuntimeError, cv2.error) as exc:
+        measurement.update(details)
+        measurement["measurement_failure"] = str(exc)
+        logger.write_film_measurement(run_dir, measurement)
+        raise
+    film_height_mm, film_error_mm, contact_angle_deg, film_level_px = result
+    measurement.update({
+        "processed_image": f"{film_image_path.stem}_processed.png",
+        "film_level_px": film_level_px,
+        "film_height_mm": film_height_mm,
+        "film_height_error_mm": film_error_mm,
+        "contact_angle_deg": contact_angle_deg,
+        **details,
+    })
+    logger.write_film_measurement(run_dir, measurement)
+    return result
+
+
 def measure_plate_height(
     background_path: Path,
 ) -> PlateMeasurement:
@@ -174,7 +227,7 @@ def measure_plate_height(
     plate_std = float(np.std(included_y))
 
     # Warn if the standard deviation is large, which may indicate a dirty plate
-    if plate_std > 2.0:
+    if plate_std > PLATE_STD_WARNING_PX:
         print(
             f"Warning: Detected plate height has a large standard deviation "
             f"of {plate_std:.2f} px, which may indicate a dirty or uneven plate."
@@ -193,8 +246,9 @@ def measure_film_properties(
     output_dir: Path,
     *,
     roi: tuple[int, int, int, int] = CONTACT_POINT_ROI,
-) -> tuple[float, float, float, float]:
-    """Determine film thickness, its plate-derived error, and contact angle.
+    details: dict[str, float | str] | None = None,
+) -> FilmMeasurement:
+    """Determine film thickness, its combined error, and contact angle.
 
     Args:
         image_path: Path to the camera image file.
@@ -205,16 +259,19 @@ def measure_film_properties(
         roi: Contact search area (y_start, y_end, x_start, x_end), in
             unflipped image coordinates. An end of zero means the image extent;
             a negative end is an offset from that extent.
+        details: Optional destination for measurement diagnostics.
 
     Returns:
-        Film thickness and plate-derived standard deviation in mm, acute
-        contact angle in degrees, and mean film level in pixels.
+        Film thickness and root-sum-square plate and film standard deviation
+        in mm, acute contact angle in degrees, and mean film level in pixels.
+        Unavailable measurements are None.
     """
     original_image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
     if original_image is None:
         raise FileNotFoundError(f"Image not found at path: {image_path}")
     measurement, visualization = measure_film_frame(
-        original_image, plate_measurement, scale_mm_per_px, roi=roi)
+        original_image, plate_measurement, scale_mm_per_px, roi=roi,
+        warn_on_failure=True, details=details)
     visualization_path = output_dir / f"{image_path.stem}_processed.png"
     if not cv2.imwrite(str(visualization_path), visualization):
         raise OSError(f"Failed to save visualization to: {visualization_path}")
@@ -230,13 +287,19 @@ def measure_film_frame(
     roi: tuple[int, int, int, int] = CONTACT_POINT_ROI,
     warn_on_failure: bool = False,
     details: dict[str, float | str] | None = None,
+) -> tuple[FilmMeasurement, np.ndarray]:
     """Measure and annotate an 8-bit grayscale frame without saving it.
 
     The measurement uses the background-subtracted binary frame. The ROI uses
     unflipped image coordinates (y_start, y_end, x_start, x_end); zero ends
     mean the image extent and negative ends are offsets from it. Annotations
     are drawn on the subtracted frame, or on the original for the live preview.
+    Detection failures return None for the affected values; set warn_on_failure
+    to report them for a saved measurement.
     """
+    # 1. Validate calibration, image dimensions and contact-search ROI.
+    if details is not None:
+        details.clear()
     if (
         scale_mm_per_px is None
         or not np.isfinite(scale_mm_per_px)
@@ -252,11 +315,14 @@ def measure_film_frame(
             f"plate image shape {plate_shape}"
         )
     image_height, image_width = original_image.shape
-    y_start, y_end, x_start, x_end = resolve_contact_roi(
-        roi, original_image.shape)
+    y_start, y_end, x_start, x_end = validate_roi(roi)
+    y_end = image_height if y_end == 0 else image_height + y_end if y_end < 0 else y_end
+    x_end = image_width if x_end == 0 else image_width + x_end if x_end < 0 else x_end
+    if not (0 <= y_start < y_end <= image_height and 0 <= x_start < x_end <= image_width):
+        raise ValueError(
+            f"ROI {roi} is empty or out of bounds for image size {image_height}x{image_width}.")
 
-    # Erode the bright background to extend dark plate features by the
-    # configured distance, suppressing residual edges from small shifts.
+    # 2. Extend dark plate features, subtract the background and detect the rim.
     extension = PLATE_BACKGROUND_EXTENSION_PX
     if extension < 0:
         raise ValueError("Plate background extension must not be negative")
@@ -279,7 +345,7 @@ def measure_film_frame(
             detection_error = "No film edge pixels detected"
             rim_x = rim_y = np.array([], dtype=np.int32)
 
-    # Restrict candidate rim points in the original, unflipped image space.
+    # 3. Restrict contact candidates using the unflipped image coordinates.
     original_y = image_height - 1 - rim_y
     in_roi = (
         (rim_x >= x_start) & (rim_x < x_end)
@@ -289,13 +355,28 @@ def measure_film_frame(
     try:
         if detection_error:
             raise ValueError(detection_error)
-        film_height_px, film_std_px, _, _ = (
-            measure_film_height(rim_x, rim_y, image_width)
-        )
+        # 4. Average the complete window around the rightmost highest rim point.
+        average_width = FILM_HEIGHT_AVERAGE_WIDTH_PX
+        if not 1 <= average_width <= image_width:
+            raise ValueError(
+                "Film-height averaging width must fit in the image")
+        if rim_y.size == 0:
+            raise ValueError("No contour points for film-height measurement")
+        peak_x = int(np.max(rim_x[rim_y == np.max(rim_y)]))
+        start = max(0, min(peak_x - average_width //
+                    2, image_width - average_width))
+        end = start + average_width
+        values = rim_y[(rim_x >= start) & (rim_x < end)]
+        if values.size != average_width:
+            raise ValueError(
+                "Incomplete contour in the film-height averaging range")
+        film_height_px, film_std_px = float(
+            np.mean(values)), float(np.std(values))
         if details is not None:
             details["film_level_std_px"] = film_std_px
         thickness_mm = (film_height_px - plate_height) * scale_mm_per_px
-        thickness_error_mm = float(np.hypot(plate_std, film_std_px)) * scale_mm_per_px
+        thickness_error_mm = float(
+            np.hypot(plate_std, film_std_px)) * scale_mm_per_px
     except ValueError as exc:
         if details is not None:
             details["film_height_failure"] = str(exc)
@@ -308,9 +389,50 @@ def measure_film_frame(
     try:
         if detection_error:
             raise ValueError(detection_error)
-        contact_x, extrapolated_fit = find_contact_point(
-            rim_x[in_roi], rim_y[in_roi], plate_height, plate_x, plate_y,
-            details=details)
+        # 5. Find the rightmost crossing of the mean plate level or plate rim.
+        contact_rim_x, contact_rim_y = rim_x[in_roi], rim_y[in_roi]
+        if contact_rim_x.size == 0:
+            raise ValueError("No contour points in the contact search range")
+        tolerance = PLATE_HEIGHT_CROSSING_TOLERANCE_PX
+        hits = np.flatnonzero(
+            np.abs(contact_rim_y - plate_height) <= tolerance)
+        extrapolated_fit = None
+        if hits.size:
+            contact_x = int(np.max(contact_rim_x[hits]))
+            if details is not None:
+                details["contact_method"] = "mean_plate_level"
+        else:
+            _, film_indices, plate_indices = np.intersect1d(
+                contact_rim_x, plate_x, assume_unique=True, return_indices=True
+            )
+            hits = np.flatnonzero(
+                np.abs(contact_rim_y[film_indices] -
+                       plate_y[plate_indices]) <= tolerance
+            )
+            if hits.size:
+                contact_x = int(np.max(contact_rim_x[film_indices[hits]]))
+                if details is not None:
+                    details["contact_method"] = "plate_rim"
+            else:
+                # Extrapolate the lowest visible contour to the mean plate level.
+                # The intersection is deliberately not constrained to the ROI.
+                start_x = contact_rim_x[int(np.argmin(contact_rim_y))]
+                window = (contact_rim_x >= start_x) & (
+                    contact_rim_x <= start_x + CONTACT_ANGLE_FIT_WIDTH_PX)
+                if np.count_nonzero(window) < 2:
+                    raise ValueError(
+                        "Not enough contour points to extrapolate contact")
+                slope, intercept = np.polyfit(
+                    contact_rim_x[window], contact_rim_y[window], 1)
+                if np.isclose(slope, 0):
+                    raise ValueError(
+                        "Cannot extrapolate a flat contour to the plate")
+                contact_x = int(round((plate_height - intercept) / slope))
+                extrapolated_fit = (slope, intercept)
+                if details is not None:
+                    details["contact_method"] = "extrapolation"
+
+        # 6. Fit the local contour (or reuse the extrapolation) for the angle.
         if extrapolated_fit is not None:
             contact_y = image_height - 1 - int(round(plate_height))
         else:
@@ -336,6 +458,7 @@ def measure_film_frame(
         if warn_on_failure:
             print(f"Warning: Contact angle measurement failed: {exc}")
 
+    # 7. Draw annotations in the original image orientation.
     # Draw annotations on the unflipped source image so the output has the
     # same orientation and pixel dimensions as the camera image.
     visualization = cv2.cvtColor(
@@ -464,63 +587,6 @@ def measure_film_frame(
         np.asarray(visualization_rgb), cv2.COLOR_RGB2BGR
     )
     return (thickness_mm, thickness_error_mm, contact_angle_deg, film_height_px), visualization
-
-
-def find_contact_point(
-    rim_x: np.ndarray,
-    rim_y: np.ndarray,
-    plate_height: float,
-    plate_x: np.ndarray,
-    plate_y: np.ndarray,
-) -> tuple[int, tuple[float, float] | None]:
-    """Find a rightmost plate crossing, or extrapolate the lowest film rim."""
-    if rim_x.size == 0:
-        raise ValueError("No contour points in the contact search range")
-
-    # Prefer the rightmost film point near the mean plate level.
-    tolerance = PLATE_HEIGHT_CROSSING_TOLERANCE_PX
-    hits = np.flatnonzero(np.abs(rim_y - plate_height) <= tolerance)
-    if hits.size:
-        return int(np.max(rim_x[hits])), None
-
-    # If the mean is not reached, compare only columns present in both rims.
-    _, film_indices, plate_indices = np.intersect1d(
-        rim_x, plate_x, assume_unique=True, return_indices=True
-    )
-    hits = np.flatnonzero(
-        np.abs(rim_y[film_indices] - plate_y[plate_indices]) <= tolerance
-    )
-    if hits.size:
-        return int(np.max(rim_x[film_indices[hits]])), None
-
-    # Fit the lowest visible portion and extrapolate to the mean plate level.
-    # The fitted intersection is deliberately not constrained to the ROI.
-    start_x = rim_x[int(np.argmin(rim_y))]
-    window = (rim_x >= start_x) & (
-        rim_x <= start_x + CONTACT_ANGLE_FIT_WIDTH_PX)
-    if np.count_nonzero(window) < 2:
-        raise ValueError("Not enough contour points to extrapolate contact")
-    slope, intercept = np.polyfit(rim_x[window], rim_y[window], 1)
-    if np.isclose(slope, 0):
-        raise ValueError("Cannot extrapolate a flat contour to the plate")
-    return int(round((plate_height - intercept) / slope)), (slope, intercept)
-
-
-def resolve_contact_roi(
-    roi: tuple[int, int, int, int],
-    shape: tuple[int, int],
-) -> tuple[int, int, int, int]:
-    """Resolve and validate a contact ROI using the camera ROI convention."""
-    y_start, y_end, x_start, x_end = validate_roi(roi)
-    height, width = shape
-
-    # A zero end means the full extent; a negative end counts from that extent.
-    y_end = height if y_end == 0 else height + y_end if y_end < 0 else y_end
-    x_end = width if x_end == 0 else width + x_end if x_end < 0 else x_end
-    if not (0 <= y_start < y_end <= height and 0 <= x_start < x_end <= width):
-        raise ValueError(
-            f"ROI {roi} is empty or out of bounds for image size {height}x{width}.")
-    return y_start, y_end, x_start, x_end
 
 
 def binarise_image(image: np.ndarray) -> np.ndarray:
