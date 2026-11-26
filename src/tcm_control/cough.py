@@ -14,7 +14,7 @@ from tcm_control.interrupt_handling import (
     set_active_pump,
     set_active_tcm,
 )
-from tcm_control.post_processing.run_log_processing import plot_run_log
+from tcm_control.post_processing.run_log_processing import plot_run_log, plot_cough_machine_timing
 from tcm_control.imaging import layer_preview, take_snapshot, wait_with_preview
 from tcm_control.liquid_film import (
     make_liquid_film,
@@ -33,6 +33,7 @@ from tcm_utils.io_utils import (
     prompt_yes_no,
     wait_with_progress,
     beep,
+    export_all_pdfs_to_pngs_in_directory,
 )
 from tcm_utils.time_utils import timestamp_str
 from tcm_utils.io_utils import countdown_beep
@@ -584,6 +585,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     # Plot run log
                     if save_data and run_log_path is not None:
                         plot_run_log(
+                            run_log_path=run_log_path,
+                            experiment_dir=run_dir,
+                            show=False,
+                        )
+                        plot_cough_machine_timing(
                             run_log_path=run_log_path,
                             experiment_dir=run_dir,
                             show=False,
