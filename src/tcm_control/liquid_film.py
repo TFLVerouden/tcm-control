@@ -25,9 +25,9 @@ IMAGE_CROP_LEFT = 120
 CANNY_THR1 = 0  # Lower threshold for Canny edge detection.
 CANNY_THR2 = 255  # Upper threshold for Canny edge detection.
 PLATE_HEIGHT_CROSSING_TOLERANCE_PX = 1  # Allowed vertical distance from plate.
-FILM_HEIGHT_RIGHTMOST_WIDTH_PX = 256  # Width used to average film height.
+FILM_HEIGHT_AVERAGE_WIDTH_PX = 256  # Number of columns used for film height.
 # Image coordinates: y_start, y_end, x_start, x_end.
-CONTACT_POINT_ROI = (256, -64, 12, 512)
+CONTACT_POINT_ROI = (256, -64, 12, 640)
 # Suppress differences near the dark background.
 PLATE_BACKGROUND_EXTENSION_PX = 1
 CONTACT_ANGLE_FIT_WIDTH_PX = 6  # Fit window extends this far right of contact.
@@ -73,6 +73,10 @@ def make_liquid_film(
         )
 
     # Infuse
+    print(
+        f"Infusing {infuse_volume_ml} mL at {infuse_rate_ml_min} mL/min to create fluid layer")
+    if preview is not None:
+        preview.set_phase("infusion")
     if not pump.infuse(
         volume_ml=infuse_volume_ml,
         rate_ml_min=infuse_rate_ml_min,
@@ -224,7 +228,8 @@ def measure_film_frame(
     *,
     show_binarised: bool = True,
     roi: tuple[int, int, int, int] = CONTACT_POINT_ROI,
-) -> tuple[tuple[float, float, float, float], np.ndarray]:
+    warn_on_failure: bool = False,
+    details: dict[str, float | str] | None = None,
     """Measure and annotate an 8-bit grayscale frame without saving it.
 
     The measurement uses the background-subtracted binary frame. The ROI uses
@@ -246,7 +251,6 @@ def measure_film_frame(
             f"Film image shape {original_image.shape} does not match "
             f"plate image shape {plate_shape}"
         )
-    binary_image = binarise_image(original_image)
     image_height, image_width = original_image.shape
     y_start, y_end, x_start, x_end = resolve_contact_roi(
         roi, original_image.shape)
@@ -258,15 +262,22 @@ def measure_film_frame(
         raise ValueError("Plate background extension must not be negative")
     kernel = np.ones((2 * extension + 1, 2 * extension + 1), dtype=np.uint8)
     extended_background = cv2.erode(binary_background, kernel)
-    subtracted = cv2.subtract(extended_background, binary_image)
-    image = subtracted[::-1, :]
-
-    # Detect the upper film rim from the background-subtracted image.
-    edge_map = cv2.Canny(image, CANNY_THR1, CANNY_THR2)
-    edge_y, edge_x = np.where(edge_map != 0)
-    if edge_x.size == 0:
-        raise ValueError("No film-height edge pixels detected")
-    rim_x, rim_y = detect_film_rim(edge_x, edge_y)
+    detection_error = None
+    try:
+        binary_image = binarise_image(original_image)
+    except RuntimeError as exc:
+        detection_error = f"Image thresholding failed: {exc}"
+        subtracted = None
+        rim_x = rim_y = np.array([], dtype=np.int32)
+    else:
+        subtracted = cv2.subtract(extended_background, binary_image)
+        edge_map = cv2.Canny(subtracted[::-1, :], CANNY_THR1, CANNY_THR2)
+        edge_y, edge_x = np.where(edge_map != 0)
+        if edge_x.size:
+            rim_x, rim_y = detect_film_rim(edge_x, edge_y)
+        else:
+            detection_error = "No film edge pixels detected"
+            rim_x = rim_y = np.array([], dtype=np.int32)
 
     # Restrict candidate rim points in the original, unflipped image space.
     original_y = image_height - 1 - rim_y
@@ -274,96 +285,115 @@ def measure_film_frame(
         (rim_x >= x_start) & (rim_x < x_end)
         & (original_y >= y_start) & (original_y < y_end)
     )
-    contact_x, extrapolated_fit = find_contact_point(
-        rim_x[in_roi], rim_y[in_roi], plate_height, plate_x, plate_y)
-
-    # Average the detected rim points in the rightmost configured columns.
-    height_start_x = image_width - FILM_HEIGHT_RIGHTMOST_WIDTH_PX
-    height_mask = rim_x >= height_start_x
-    if not np.any(height_mask):
-        raise ValueError(
-            "No contour points in the configured film-height range")
-    film_height_px = float(np.mean(rim_y[height_mask]))
-    thickness_mm = (film_height_px - plate_height) * scale_mm_per_px
-    thickness_error_mm = plate_std * scale_mm_per_px
-
-    # Fit the contour to the right of contact and convert its slope to an
-    # acute angle relative to the horizontal plate.
-    if extrapolated_fit is not None:
-        slope, intercept = extrapolated_fit
-    else:
-        fit_mask = (
-            (rim_x >= contact_x)
-            & (rim_x <= contact_x + CONTACT_ANGLE_FIT_WIDTH_PX)
+    film_height_px = film_std_px = thickness_mm = thickness_error_mm = None
+    try:
+        if detection_error:
+            raise ValueError(detection_error)
+        film_height_px, film_std_px, _, _ = (
+            measure_film_height(rim_x, rim_y, image_width)
         )
-        fit_x = rim_x[fit_mask]
-        fit_y = rim_y[fit_mask]
-        if fit_x.size < 2:
-            raise ValueError(
-                "Not enough contour points to determine contact angle")
-        slope, intercept = np.polyfit(fit_x, fit_y, 1)
-    contact_angle_deg = float(np.degrees(np.arctan(abs(slope))))
+        if details is not None:
+            details["film_level_std_px"] = film_std_px
+        thickness_mm = (film_height_px - plate_height) * scale_mm_per_px
+        thickness_error_mm = float(np.hypot(plate_std, film_std_px)) * scale_mm_per_px
+    except ValueError as exc:
+        if details is not None:
+            details["film_height_failure"] = str(exc)
+        if warn_on_failure:
+            print(f"Warning: Film thickness measurement failed: {exc}")
+
+    contact_x = contact_angle_deg = None
+    contact_y = None
+    fit = None
+    try:
+        if detection_error:
+            raise ValueError(detection_error)
+        contact_x, extrapolated_fit = find_contact_point(
+            rim_x[in_roi], rim_y[in_roi], plate_height, plate_x, plate_y,
+            details=details)
+        if extrapolated_fit is not None:
+            contact_y = image_height - 1 - int(round(plate_height))
+        else:
+            contact_y = image_height - 1 - int(rim_y[rim_x == contact_x][0])
+        if extrapolated_fit is not None:
+            slope, intercept = extrapolated_fit
+        else:
+            fit_mask = (
+                (rim_x >= contact_x)
+                & (rim_x <= contact_x + CONTACT_ANGLE_FIT_WIDTH_PX)
+            )
+            fit_x = rim_x[fit_mask]
+            fit_y = rim_y[fit_mask]
+            if fit_x.size < 2:
+                raise ValueError(
+                    "Not enough contour points to determine contact angle")
+            slope, intercept = np.polyfit(fit_x, fit_y, 1)
+        fit = (slope, intercept)
+        contact_angle_deg = float(np.degrees(np.arctan(abs(slope))))
+    except ValueError as exc:
+        if details is not None:
+            details["contact_angle_failure"] = str(exc)
+        if warn_on_failure:
+            print(f"Warning: Contact angle measurement failed: {exc}")
 
     # Draw annotations on the unflipped source image so the output has the
     # same orientation and pixel dimensions as the camera image.
     visualization = cv2.cvtColor(
-        subtracted if show_binarised else original_image, cv2.COLOR_GRAY2BGR
+        subtracted if show_binarised and subtracted is not None else original_image,
+        cv2.COLOR_GRAY2BGR
     )
 
     # Draw the full film rim in blue and the measured plate rim in green.
-    rim_points = np.column_stack(
-        (rim_x, image.shape[0] - 1 - rim_y)
-    ).astype(np.int32).reshape((-1, 1, 2))
-    cv2.polylines(
-        visualization, [rim_points], False, (255, 0, 0), 1, cv2.LINE_8
-    )
+    if rim_x.size:
+        rim_points = np.column_stack(
+            (rim_x, image_height - 1 - rim_y)
+        ).astype(np.int32).reshape((-1, 1, 2))
+        cv2.polylines(
+            visualization, [rim_points], False, (255, 0, 0), 1, cv2.LINE_8
+        )
     plate_points = np.column_stack(
-        (plate_x, image.shape[0] - 1 - plate_y)
+        (plate_x, image_height - 1 - plate_y)
     ).astype(np.int32).reshape((-1, 1, 2))
     cv2.polylines(
         visualization, [plate_points], False, (0, 255, 0), 1, cv2.LINE_8
     )
 
-    # Draw dashed white lines at the mean plate and film levels.
-    plate_level_y = image.shape[0] - 1 - int(round(plate_height))
-    film_level_y = image.shape[0] - 1 - int(round(film_height_px))
-
+    # Show the plate baseline as dashes and the mean film level as a solid line.
+    plate_level_y = image_height - 1 - int(round(plate_height))
     dash_length_px = 10
     dash_gap_px = 5
+    for x in range(0, image_width, dash_length_px + dash_gap_px):
+        cv2.line(
+            visualization, (x, plate_level_y),
+            (min(x + dash_length_px - 1, image_width - 1), plate_level_y),
+            (255, 255, 255), 1, cv2.LINE_8,
+        )
+    if film_height_px is not None:
+        film_level_y = image_height - 1 - int(round(film_height_px))
+        cv2.line(
+            visualization, (0, film_level_y),
+            (image_width - 1, film_level_y), (255, 255, 0), 1, cv2.LINE_8,
+        )
 
-    for level_y, start_x in (
-        (plate_level_y, 0),
-        (film_level_y, max(0, height_start_x)),
-    ):
-        for x in range(
-            start_x, image_width,
-            dash_length_px + dash_gap_px,
-        ):
-            cv2.line(
-                visualization, (x, level_y),
-                (min(x + dash_length_px - 1, image_width - 1), level_y),
-                (255, 255, 255), 1, cv2.LINE_8,
-            )
+    # Show the angle fit and mark the contact position down to the image edge.
+    if fit is not None:
+        slope, intercept = fit
+        fit_y_left = image_height - 1 - int(round(intercept))
+        fit_y_right = image_height - 1 - int(
+            round(slope * (image_width - 1) + intercept)
+        )
+        cv2.line(
+            visualization, (0, fit_y_left), (image_width - 1, fit_y_right),
+            (0, 0, 255), 1, cv2.LINE_8,
+        )
+    if contact_x is not None and contact_y is not None:
+        cv2.line(
+            visualization, (contact_x, contact_y), (contact_x,
+                                                    image_height - 1),
+            (0, 255, 255), 1, cv2.LINE_8,
+        )
 
-    # Extend the fitted contact-angle line to the image boundaries. OpenCV
-    # clips its endpoints where the line intersects the top or bottom edge.
-    fit_y_left = image.shape[0] - 1 - int(round(intercept))
-    fit_y_right = image.shape[0] - 1 - int(
-        round(slope * (image_width - 1) + intercept)
-    )
-    cv2.line(
-        visualization, (0, fit_y_left), (image_width - 1, fit_y_right),
-        (0, 0, 255), 1, cv2.LINE_8,
-    )
-
-    # Show pixel levels, the plate's standard deviation, thickness in mm and
-    # the contact angle. The error represents only variation in the plate rim.
-    labels = (
-        f"Plate: {plate_height:.2f} ± {plate_std:.2f} px",
-        f"Film level: {film_height_px:.2f} px",
-        f"Film thickness: {thickness_mm:.3f} ± {thickness_error_mm:.3f} mm",
-        f"Contact angle: {contact_angle_deg:.1f} deg",
-    )
+    # The ROI is shown only in saved images, not the live preview.
     if show_binarised:
         grey = (128, 128, 128)
         cv2.rectangle(
@@ -371,16 +401,24 @@ def measure_film_frame(
             grey, 1, cv2.LINE_8,
         )
 
+    # Keep summary labels in fixed positions.
+    labels = (
+        (f"Film thickness: {thickness_mm:.3f} ± {thickness_error_mm:.3f} mm"
+         if thickness_mm is not None and thickness_error_mm is not None
+         else "Film thickness: -"),
+        (f"Contact angle: {contact_angle_deg:.1f} deg"
+         if contact_angle_deg is not None else "Contact angle: -"),
+    )
     # Outline the labels so they remain legible on either black or white.
     text_color = (255, 255, 255) if show_binarised else (255, 255, 0)
     visualization_rgb = Image.fromarray(
         cv2.cvtColor(visualization, cv2.COLOR_BGR2RGB)
     )
     draw = ImageDraw.Draw(visualization_rgb)
-    label_font = _film_label_font(18)
+    label_font = _film_label_font(24)
     for line, label in enumerate(labels):
         draw.text(
-            (10, 25 + line * 25),
+            (16, 32 + line * 32),
             label,
             font=label_font,
             fill=text_color,
@@ -388,14 +426,36 @@ def measure_film_frame(
             stroke_fill=(0, 0, 0),
             anchor="ls",
         )
+    # Position pixel labels beside their respective reference lines.
+    level_font = _film_label_font(18)
+    line_label_gap_px = 8
+    draw.text(
+        (image_width - 1, plate_level_y + line_label_gap_px),
+        f"{plate_height:.2f} ± {plate_std:.2f} px",
+        font=level_font, fill=text_color, stroke_width=2,
+        stroke_fill=(0, 0, 0), anchor="rt",
+    )
+    if film_height_px is not None and film_std_px is not None:
+        draw.text(
+            (image_width - 1, film_level_y - line_label_gap_px),
+            f"{film_height_px:.2f} ± {film_std_px:.2f} px",
+            font=level_font, fill=text_color, stroke_width=2,
+            stroke_fill=(0, 0, 0), anchor="rb",
+        )
+    if contact_x is not None:
+        draw.text(
+            (contact_x - line_label_gap_px, image_height - 1 - line_label_gap_px),
+            f"{contact_x} px",
+            font=level_font, fill=text_color, stroke_width=2,
+            stroke_fill=(0, 0, 0), anchor="rb",
+        )
 
-    # Show the search rectangle only on saved processed images. The end
-    # coordinates are exclusive, while OpenCV rectangle endpoints are inclusive.
+    # Label the contact search rectangle on saved images.
     if show_binarised:
         draw.text(
-            (x_start + 2, min(y_start + 15, y_end - 1)),
+            (x_start + 5, min(y_start + 21, y_end - 1)),
             "Contact ROI",
-            font=_film_label_font(12),
+            font=_film_label_font(18),
             fill=(128, 128, 128),
             anchor="ls",
         )
@@ -521,7 +581,10 @@ if __name__ == "__main__":
 
         film_height_mm, film_error_mm, contact_angle_deg, film_level_px = measure_film_properties(
             img_path, plate_measurement, scale_mm_per_px, output_dir)
-        print(f"Determined film level: {film_level_px:.2f} px")
-        print(
-            f"Determined film height: {film_height_mm:.3f} ± {film_error_mm:.3f} mm")
-        print(f"Determined contact angle: {contact_angle_deg:.2f} deg")
+        if film_level_px is not None:
+            print(f"Determined film level: {film_level_px:.2f} px")
+        if film_height_mm is not None and film_error_mm is not None:
+            print(
+                f"Determined film height: {film_height_mm:.3f} ± {film_error_mm:.3f} mm")
+        if contact_angle_deg is not None:
+            print(f"Determined contact angle: {contact_angle_deg:.2f} deg")
