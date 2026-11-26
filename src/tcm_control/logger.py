@@ -46,6 +46,11 @@ def create_experiment_dir(
     return experiment_dir
 
 
+def run_dir_name(run_number: int, nr_runs: int) -> str:
+    """Return the directory name for a run within an experiment."""
+    return "run" if nr_runs == 1 else f"run{run_number}"
+
+
 def create_run_dir(
     experiment_dir: Path | None, run_number: int, nr_runs: int
 ) -> Path | None:
@@ -53,9 +58,7 @@ def create_run_dir(
     if experiment_dir is None:
         return None
 
-    # Use a simple name for a single run and numbered names for multiple runs
-    run_name = "run" if nr_runs == 1 else f"run{run_number}"
-    run_dir = experiment_dir / run_name
+    run_dir = experiment_dir / run_dir_name(run_number, nr_runs)
     run_dir.mkdir()
     return run_dir
 

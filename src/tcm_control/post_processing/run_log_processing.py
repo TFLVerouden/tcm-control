@@ -6,6 +6,7 @@ from tcm_utils.plot_style import (
     use_tcm_poster_style,
     append_unit_to_last_ticklabel,
     add_label,
+    set_grid
 )
 from tcm_utils.cvd_check import set_cvd_friendly_colors, get_color
 
@@ -131,6 +132,60 @@ def plot_run_log(
         plt.close(fig)
 
     return plot_path
+
+
+def plot_cough_machine_timing(
+        run_log_path: Path | None = None,
+        experiment_dir: Path | None = None,
+        *,
+        show: bool = True,
+) -> Path | None:
+    """Check the time between the steps in a run log for consistency."""
+
+    # If no path provided, ask the user to select a run log CSV file.
+    if run_log_path is None:
+        run_log_path = ask_open_file(
+            key="plot_run_log_csv",
+            title="Select run log CSV file",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+        )
+    if run_log_path is None:
+        print("No file selected, aborting.")
+        return None
+
+    run_log_path = Path(run_log_path)
+
+    # Read the run log and extract metadata and data columns
+    run_log = read_run_log(run_log_path)
+    time_us = run_log[2]
+
+    use_tcm_poster_style()
+    set_cvd_friendly_colors()
+
+    # Get the time differences between consecutive steps in the run log,
+    # filter out any below 100 and subtract 1000 to get deviations around the ms
+    # step size
+    time_diffs_us = np.diff(time_us)
+    time_diffs_us = time_diffs_us[time_diffs_us >= 100]
+    time_diffs_us -= 1000
+
+    # Get the absolute max value to centre the x axis
+    max_abs = np.max(np.abs(time_diffs_us))
+
+    # Plot a histogram of the time differences between consecutive steps in the run log
+    plt.figure(figsize=(8, 4))
+    plt.hist(time_diffs_us, bins=100, color="#0072B2", edgecolor="black")
+    plt.title(f"Run {run_log_path.name} timing")
+    plt.xlabel("Deviation from the 1 ms step size (us)")
+    plt.ylabel("Count")
+
+    # Set the x-axis to be centred around 0
+    plt.xlim(-max_abs - 10, max_abs + 10)
+
+    set_grid(plt.gca(), mode="both")
+    plt.show()
+
+    return
 
 
 def _read_run_log_rows(
@@ -270,23 +325,6 @@ def read_run_log(run_log_path: Path) -> tuple[
     raise ValueError(
         f"Expected four or five data columns in run log: {run_log_path}"
     )
-
-
-def check_run_log_timing(run_log_path: Path) -> None:
-    """Check the time between the steps in a run log for consistency."""
-    run_log = read_run_log(run_log_path)
-    time_us = run_log[2]
-
-    # Plot a histogram of the time differences between consecutive steps in the run log
-    time_diffs_us = np.diff(time_us)
-    plt.figure(figsize=(8, 4))
-    plt.hist(time_diffs_us, bins=100, color="#0072B2", edgecolor="black")
-    plt.title(f"Run log {run_log_path.name} timing differences")
-    plt.xlabel("Time difference between steps (us)")
-    plt.ylabel("Count")
-    plt.grid(axis="y", alpha=0.75)
-
-    plt.show()
 
 
 if __name__ == "__main__":

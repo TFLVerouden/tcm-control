@@ -12,11 +12,10 @@ from tcm_utils.file_dialogs import ask_open_file, find_repo_root
 from tcm_utils.io_utils import countdown_beep, make_minimal_progress_bar, beep
 
 from .base_serial import PoFSerialDevice
-from ..logger import copy_flow_curve, create_labeled_csv_filename
+from ..logger import copy_flow_curve, create_labeled_csv_filename, run_dir_name
 
 DEFAULT_FLOWCURVE_DIR = Path(__file__).resolve().parent.parent / "flow_curves"
 DEFAULT_RUN_LOG_DIR = Path(".logs")
-EXPERIMENT_RUN_LOG_SUBDIR = "run_logs"
 MAX_PRESSURE_BAR = 7.2
 # TODO: Adjust these defaults.
 DEFAULT_CLEAN_PRESSURE_BAR = 4.0
@@ -1013,8 +1012,9 @@ class CoughMachine(PoFSerialDevice):
     ) -> list[Path]:
         """Arm droplet-triggered run mode (`D!` or `D! <n>`) and collect run logs.
 
-        For each detected droplet, waits for and captures one streamed run log,
-        then saves all captured logs to disk and returns saved file paths.
+        For each detected droplet, waits for and captures one streamed run log.
+        Saves them in run folders under output_dir (or the default log directory)
+        and returns the saved file paths.
         """
         if nr_runs is not None and int(nr_runs) <= 0:
             raise ValueError("nr_runs must be >= 1 when provided")
@@ -1048,6 +1048,7 @@ class CoughMachine(PoFSerialDevice):
             results,
             output_dir=output_dir,
             run_nr_start=run_nr_start,
+            separate_run_dirs=True,
         )
         return saved_paths
 
@@ -1241,12 +1242,14 @@ class CoughMachine(PoFSerialDevice):
         *,
         run_nr_start: Optional[int] = None,
         output_dir: Optional[str | Path] = None,
+        separate_run_dirs: bool = False,
     ) -> list[Path]:
         """Persist one or more captured run logs as timestamped CSV files.
 
         Accepts either a single run (`list[str]`) or multiple runs
         (`list[list[str]]`). Optionally rewrites `run_nr` rows when
-        `run_nr_start` is provided.
+        `run_nr_start` is provided. If `separate_run_dirs` is true, each
+        log is saved in its own run folder under `output_dir`.
         """
         # Save either one run log (list[str]) or multiple logs (list[list[str]]) as CSV files.
         repo_root = find_repo_root()
@@ -1262,7 +1265,6 @@ class CoughMachine(PoFSerialDevice):
             if not target_dir.is_absolute():
                 target_dir = repo_root / target_dir
             target_dir = target_dir.resolve()
-            target_dir = target_dir / EXPERIMENT_RUN_LOG_SUBDIR
 
         normalized_logs: list[list[str]] = []
         if isinstance(logs, list) and logs:
@@ -1284,8 +1286,6 @@ class CoughMachine(PoFSerialDevice):
         if not normalized_logs:
             return []
 
-        target_dir.mkdir(parents=True, exist_ok=True)
-
         timestamp = time.strftime("%y%m%d_%H%M%S")
         saved_paths: list[Path] = []
 
@@ -1303,7 +1303,12 @@ class CoughMachine(PoFSerialDevice):
                 timestamp=timestamp,
             )
 
-            filepath = target_dir / filename
+            log_dir = target_dir
+            if separate_run_dirs:
+                run_number = idx if run_nr_start is None else run_nr_start + idx - 1
+                log_dir = target_dir / run_dir_name(run_number, len(normalized_logs))
+            log_dir.mkdir(parents=True, exist_ok=True)
+            filepath = log_dir / filename
             with open(filepath, "w", encoding="utf-8", newline="") as handle:
                 for row in rows:
                     if run_nr_start is not None and row.startswith("run_nr"):

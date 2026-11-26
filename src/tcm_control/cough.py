@@ -14,8 +14,9 @@ from tcm_control.interrupt_handling import (
     set_active_pump,
     set_active_tcm,
 )
-from tcm_control.post_processing.run_log_processing import plot_run_log
-from tcm_control.imaging import layer_preview, take_snapshot
+
+from tcm_control.post_processing.run_log_processing import plot_run_log, plot_cough_machine_timing
+from tcm_control.imaging import layer_preview, take_snapshot, 
 from tcm_control.liquid_film import (
     make_liquid_film,
     measure_plate_height,
@@ -34,6 +35,7 @@ from tcm_utils.io_utils import (
     prompt_yes_no,
     wait_with_progress,
     beep,
+    export_all_pdfs_to_pngs_in_directory,
 )
 from tcm_utils.time_utils import timestamp_str
 from tcm_utils.io_utils import countdown_beep
@@ -219,7 +221,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                                syringe_inputs["syringe_diameter_mm"],
                                syringe_inputs["syringe_gang"],
                                syringe_inputs["syringe_force_percent"])
-
             set_active_pump(pump)
 
         # Connect to OPS when specified
@@ -560,6 +561,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             experiment_dir=run_dir,
                             show=False,
                         )
+                        plot_cough_machine_timing(
+                            run_log_path=run_log_path,
+                            experiment_dir=run_dir,
+                            show=False,
+                        )
 
                     # Clean the channel
                     tcm.clean(
@@ -718,6 +724,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         # ------------------------------------------------------------------
         # During cleanup, just to be sure, get rid of excess heat
         tcm.set_fan_speed(CoughMachine.FAN_SPEED_MAX)
+
         if save_data:
             assert output_dir is not None
 
@@ -774,8 +781,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             logger.write_run_metadata(
                 experiment_dir=output_dir, meta=metadata)
 
-            # Reset the fan to original speed
-            tcm.set_fan_speed(CoughMachine.FAN_SPEED_DEFAULT)
+            # Export all pdfs as pngs for convenience
+            export_all_pdfs_to_pngs_in_directory(output_dir)
 
             print("Experiment completed, all data saved to ", output_dir)
             print("Exiting.")
@@ -784,6 +791,10 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
             if not save_data:
                 print("No data was saved (experiment.save_data=false).")
             print("Exiting.")
+
+        # Reset the fan to original speed
+        tcm.set_fan_speed(CoughMachine.FAN_SPEED_DEFAULT)
+
     finally:
         # Release every device and the console log even if one release fails.
         # The cough machine stays open: interrupt cleanup still needs it.
