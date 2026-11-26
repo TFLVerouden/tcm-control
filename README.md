@@ -86,12 +86,33 @@ Set `[devices.spraytec].enabled` and `[devices.ops].enabled` to enable either
 instrument; both default to `false` and are disabled in PIV mode. Older
 recording flags under `[inputs.cough]` are no longer accepted.
 
-Each saved experiment contains `run` for one run, or `run1`, `run2`, etc. for
-multiple runs. Experiment-wide metadata, the config copy, flow curve, comments,
-and console log remain in the experiment folder. Each run folder contains its
-run log and plot, and `temperature_humidity.csv` with the reading taken just
-before the cough. An unavailable sensor value is left empty and a warning is
-printed; the experiment start and finish readings remain in `metadata.json`.
+Each saved experiment contains one folder per run: `run` for a single run, or
+`run1`, `run2`, etc. for multiple runs. The run log CSV and its plot are saved
+directly in that folder (there is no `run_logs` subfolder). For example:
+
+```text
+experiment_dir/
+|-- metadata.json
+|-- run1/
+|   |-- log1_YYMMDD_HHMMSS.csv
+|   |-- pressure_and_valve_timing.pdf
+|   `-- temperature_humidity.csv
+`-- run2/
+    |-- log2_YYMMDD_HHMMSS.csv
+    |-- pressure_and_valve_timing.pdf
+    `-- temperature_humidity.csv
+```
+
+Experiment-wide files such as the config copy, flow curve, comments, and
+console log remain in `experiment_dir`. The example filenames are timestamped;
+the exact run-log names can vary. When calling device methods directly,
+`run()` and `receive_run_log()` save into the `output_dir` you provide.
+`detect_droplets_and_run()` treats `output_dir` as the experiment folder and
+saves a batch into separate `run`/`runN` folders. Droplet experiment mode itself
+is not yet implemented.
+
+An unavailable sensor value is left empty and a warning is printed; the
+experiment start and finish readings remain in `metadata.json`.
 Metadata has `schema_version`, `configuration` (resolved settings) and
 `runtime` (measurements, device details and experiment status). It is written
 when the experiment directory is created, after device setup, and on successful
