@@ -82,6 +82,8 @@ def make_liquid_film(
     snapshot("infusion")
 
     # Wait for layer to settle
+    if preview is not None:
+        preview.set_phase("settling")
     if preview is None:
         wait_with_progress(wait_s=settling_time_s,
                            label="Waiting for layer to settle...",
@@ -91,6 +93,10 @@ def make_liquid_film(
     snapshot("settling")
 
     # Withdraw
+    print(
+        f"Withdrawing {withdraw_volume_ml} mL at {withdraw_rate_ml_min} mL/min to partially remove fluid layer")
+    if preview is not None:
+        preview.set_phase("withdrawal")
     if not pump.withdraw(
         volume_ml=withdraw_volume_ml,
         rate_ml_min=withdraw_rate_ml_min,
@@ -100,6 +106,8 @@ def make_liquid_film(
     snapshot("withdrawal")
 
     # Settle again
+    if preview is not None:
+        preview.set_phase("final settling")
     if preview is None:
         wait_with_progress(wait_s=settling_time_s,
                            label="Waiting for layer to settle...",

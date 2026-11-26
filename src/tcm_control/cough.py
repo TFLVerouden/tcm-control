@@ -473,18 +473,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                                         f"Warning: Failed to stop syringe pump: {exc}")
                                 raise
 
-                    # Or just make a layer
-                    else:
-                        if pump is not None:
-                            make_liquid_film(
-                                pump, camera, tcm,
-                                infuse_volume_ml=layer_inputs["infuse_volume_ml"],
-                                infuse_rate_ml_min=layer_inputs["infuse_rate_ml_min"],
-                                withdraw_volume_ml=layer_inputs["withdraw_volume_ml"],
-                                withdraw_rate_ml_min=layer_inputs["withdraw_rate_ml_min"],
-                                settling_time_s=layer_inputs["film_settling_time_s"],
-                            )
-
                     # Take a picture of the layer
                     final_film_image_path = take_snapshot(
                         camera, tcm, filename=f"final_film")
