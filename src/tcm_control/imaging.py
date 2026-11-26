@@ -12,7 +12,7 @@ import numpy as np
 from tcm_control.devices.camera import Camera
 from tcm_control.devices.cough_machine import CoughMachine
 from tcm_control.devices.syringe_pump import SyringePump
-from tcm_control.liquid_film import measure_film_frame
+from tcm_control.liquid_film import PlateMeasurement, measure_film_frame
 from tcm_utils.io_utils import make_minimal_progress_bar
 
 
@@ -57,7 +57,7 @@ class LayerPreview:
     WINDOW = "Layer formation - provisional measurements (q to close)"
 
     def __init__(self, camera: Camera, tcm: CoughMachine,
-                 plate_measurement: tuple[float, float, np.ndarray, np.ndarray, tuple[int, int]],
+                 plate_measurement: PlateMeasurement,
                  scale_mm_per_px: float | None):
         self.camera = camera
         self.tcm = tcm
@@ -127,7 +127,7 @@ class LayerPreview:
 
 @contextmanager
 def layer_preview(camera: Camera, tcm: CoughMachine,
-                  plate_measurement: tuple[float, float, np.ndarray, np.ndarray, tuple[int, int]],
+                  plate_measurement: PlateMeasurement,
                   scale_mm_per_px: float | None):
     preview = LayerPreview(camera, tcm, plate_measurement, scale_mm_per_px)
     try:

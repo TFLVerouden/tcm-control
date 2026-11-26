@@ -496,10 +496,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     final_film_image_path = take_snapshot(
                         camera, tcm, filename=f"final_film")
                     if camera_output_dir is not None:
+                        # TODO: Report on edge detection method/algorithm choices in metadata
                         film_height_mm, film_error_mm, contact_angle_deg, film_level_px = measure_film_properties(
                             final_film_image_path, plate_measurement,
                             camera_inputs["scale_mm_per_px"], camera_output_dir)
-                        plate_height_px, plate_std_px, _, _, _ = plate_measurement
+                        plate_height_px, plate_std_px, *_ = plate_measurement
                         film_measurement = {
                             "time": timestamp_str(),
                             "plate_height_px": plate_height_px,
@@ -514,7 +515,7 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         logger.write_film_measurement(
                             run_dir, film_measurement)
                         print(
-                            f"Film height (mm): {film_height_mm:.3f} +/- {film_error_mm:.3f}")
+                            f"Film height (mm): {film_height_mm:.3f} ± {film_error_mm:.3f}")
                         print(f"Contact angle (deg): {contact_angle_deg:.2f}")
 
                     # Wait between coughs if needed
