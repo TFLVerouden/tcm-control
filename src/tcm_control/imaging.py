@@ -1,6 +1,7 @@
 """Camera and light control."""
 
 from pathlib import Path
+from collections.abc import Iterator
 from contextlib import contextmanager
 import math
 import time
@@ -12,7 +13,7 @@ import numpy as np
 from tcm_control.devices.camera import Camera
 from tcm_control.devices.cough_machine import CoughMachine
 from tcm_control.devices.syringe_pump import SyringePump
-from tcm_control.liquid_film import measure_film_frame
+from tcm_control.liquid_film import PlateMeasurement, measure_film_frame
 from tcm_utils.io_utils import make_minimal_progress_bar
 
 
@@ -54,10 +55,10 @@ def take_snapshot(
 class LayerPreview:
     """Local, unsaved preview of the layer and its provisional measurements."""
 
-    WINDOW = "Layer formation - provisional measurements (q to close)"
+    WINDOW = "Layer formation"
 
     def __init__(self, camera: Camera, tcm: CoughMachine,
-                 plate_measurement: tuple[float, float, np.ndarray, np.ndarray, tuple[int, int]],
+                 plate_measurement: PlateMeasurement,
                  scale_mm_per_px: float | None):
         self.camera = camera
         self.tcm = tcm
@@ -65,12 +66,20 @@ class LayerPreview:
         self.scale_mm_per_px = scale_mm_per_px
         self.active = False
         self._initial_size_pending = False
+        self.phase = "infusion"
 
     def open(self) -> None:
         cv2.namedWindow(self.WINDOW, cv2.WINDOW_NORMAL)
         self._initial_size_pending = True
         self.active = True
         self.tcm.set_light(1.0)
+        print("Press ESC to close the live view; the process will continue")
+        self.set_phase(self.phase)
+
+    def set_phase(self, phase: str) -> None:
+        self.phase = phase
+        if self.active:
+            cv2.setWindowTitle(self.WINDOW, f"{self.WINDOW} - {phase}")
 
     def update(self) -> None:
         if not self.active:
@@ -98,7 +107,8 @@ class LayerPreview:
             raise ValueError(f"Unsupported preview frame shape: {frame.shape}")
         try:
             _, display = measure_film_frame(
-                frame, self.plate_measurement, self.scale_mm_per_px)
+                frame, self.plate_measurement, self.scale_mm_per_px,
+                show_binarised=False)
         except ValueError as exc:
             display = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
             cv2.putText(display, f"Measurement unavailable: {exc}", (10, 25),
@@ -109,7 +119,7 @@ class LayerPreview:
             cv2.resizeWindow(self.WINDOW, width, height)
             self._initial_size_pending = False
         key = cv2.waitKey(1) & 0xFF
-        if key == ord("q"):
+        if key == 27:
             self.close()
 
     def close(self) -> None:
@@ -126,8 +136,14 @@ class LayerPreview:
 
 @contextmanager
 def layer_preview(camera: Camera, tcm: CoughMachine,
-                  plate_measurement: tuple[float, float, np.ndarray, np.ndarray, tuple[int, int]],
-                  scale_mm_per_px: float | None):
+                  plate_measurement: PlateMeasurement | None,
+                  scale_mm_per_px: float | None, *,
+                  enabled: bool = True) -> Iterator[LayerPreview | None]:
+    if not enabled:
+        yield None
+        return
+    if plate_measurement is None:
+        raise ValueError("A plate measurement is required for live preview.")
     preview = LayerPreview(camera, tcm, plate_measurement, scale_mm_per_px)
     try:
         preview.open()

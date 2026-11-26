@@ -1,10 +1,8 @@
 import re
 import time
 from collections.abc import Callable
-import numpy as np
 
 from tcm_control.devices.base_serial import PoFSerialDevice
-from tcm_utils.io_utils import prompt_yes_no
 
 RATE_UNIT = "m/m"
 VOLUME_UNIT = "m"
@@ -523,43 +521,3 @@ class SyringePump(PoFSerialDevice):
 
             if settle_s > 0:
                 time.sleep(settle_s)
-
-    def clean_tubes(self, volume_ml_layer: float, rate_ml_min_layer: float, volume_ml_repetition: float | None, rate_ml_min_repetition: float | None, repetitions: int) -> None:
-        """Clean the tubes by performing repeated infuse/withdraw cycles."""
-        try:
-            if repetitions > 0 and (volume_ml_repetition is None or rate_ml_min_repetition is None):
-                raise ValueError(
-                    "Repetition volume and rate are required when cleaning repetitions are enabled.")
-
-            # First check whether the syringe has sufficent volume
-            if prompt_yes_no(
-                "Press ENTER to confirm the syringe is filled with > "
-                f"{np.max(volume_ml_layer, volume_ml_repetition)} mL...",
-                default=True,
-            ):
-
-                # Initial infusion to create fluid layer
-                self.infuse(
-                    volume_ml=volume_ml_layer,
-                    rate_ml_min=rate_ml_min_layer
-                )
-
-                # Seesaw fluid back and forth through tubes to clean them
-                if repetitions > 0:
-                    assert volume_ml_repetition is not None and rate_ml_min_repetition is not None
-                    for _ in range(repetitions):
-                        self.withdraw(
-                            volume_ml=volume_ml_repetition,
-                            rate_ml_min=rate_ml_min_repetition
-                        )
-                        self.infuse(
-                            volume_ml=volume_ml_repetition,
-                            rate_ml_min=rate_ml_min_repetition
-                        )
-                else:
-                    self._log_info(
-                        "SyringePump config has no clean_tube steps")
-
-        except Exception as exc:
-            self._log_error(str(exc))
-            raise

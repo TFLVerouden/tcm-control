@@ -13,9 +13,6 @@ from typing import Any, TextIO
 from tcm_utils.io_utils import create_timestamped_filename, save_metadata_json
 from tcm_utils.time_utils import timestamp_str, timestamp_from_file
 
-from tcm_control import liquid_film
-
-
 RUN_LOGS_SUBDIR = "run_logs"
 CONSOLE_LOGS_SUBDIR = "host_console_logs"
 
@@ -66,7 +63,9 @@ def create_run_dir(
     return run_dir
 
 
-def write_film_measurement(run_dir: Path, measurement: dict[str, int | float]) -> None:
+def write_film_measurement(
+    run_dir: Path, measurement: dict[str, int | float | str | None]
+) -> None:
     """Save a single film measurement in its run directory."""
     # Keep column names and values together in the run's CSV
     with (run_dir / "film_measurement.csv").open("w", newline="", encoding="utf-8") as file:
@@ -375,6 +374,9 @@ def build_run_metadata(
     spraytec_laser_intensity: float | None = None, stage_pos_z_mm: float | None = None,
 ) -> dict[str, Any]:
     """Combine the complete resolved configuration with runtime-only facts."""
+    # Device modules import logger, so defer this device-dependent module.
+    from tcm_control import liquid_film
+
     return {
         "schema_version": 1,
         "configuration": config,
@@ -389,19 +391,30 @@ def build_run_metadata(
             "comments": comments,
             "processing": {
                 "film_height": {
-                    "IMAGE_CROP_LEFT": liquid_film.IMAGE_CROP_LEFT,
-                    "CANNY_THR1": liquid_film.CANNY_THR1,
-                    "CANNY_THR2": liquid_film.CANNY_THR2,
-                    "PLATE_HEIGHT_CROSSING_TOLERANCE_PX":
+                    "image_crop_left": liquid_film.IMAGE_CROP_LEFT,
+                    "canny_thr1": liquid_film.CANNY_THR1,
+                    "canny_thr2": liquid_film.CANNY_THR2,
+                    "plate_height_crossing_tolerance_px":
                         liquid_film.PLATE_HEIGHT_CROSSING_TOLERANCE_PX,
-                    "FILM_HEIGHT_RIGHTMOST_WIDTH_PX":
-                        liquid_film.FILM_HEIGHT_RIGHTMOST_WIDTH_PX,
-                    "CONTACT_ANGLE_FIT_WIDTH_PX":
+                    "film_height_average_width_px":
+                        liquid_film.FILM_HEIGHT_AVERAGE_WIDTH_PX,
+                    "contact_angle_fit_width_px":
                         liquid_film.CONTACT_ANGLE_FIT_WIDTH_PX,
-                    "REFERENCE_LINE_DASH_LENGTH_PX":
-                        liquid_film.REFERENCE_LINE_DASH_LENGTH_PX,
-                    "REFERENCE_LINE_GAP_LENGTH_PX":
-                        liquid_film.REFERENCE_LINE_GAP_LENGTH_PX,
+                    "contact_point_roi": liquid_film.CONTACT_POINT_ROI,
+                    "plate_background_extension_px":
+                        liquid_film.PLATE_BACKGROUND_EXTENSION_PX,
+                    "threshold_method": "skimage.filters.threshold_minimum",
+                    "edge_detection": "OpenCV Canny on vertically flipped binary images",
+                    "film_subtraction": "eroded binary background minus binary film image",
+                    "rim_selection": "highest edge pixel per image column",
+                    "plate_height_selection": "mean rim height excluding left crop",
+                    "film_height_selection":
+                        "mean around rightmost highest rim point, with window clipped to image",
+                    "contact_point_selection":
+                        "rightmost near mean plate level, then near plate rim, otherwise extrapolation",
+                    "contact_angle": "acute angle of linear rim fit",
+                    "film_height_error":
+                        "root-sum-square of plate and film rim standard deviations, scaled to mm",
                 },
             },
             "devices": {

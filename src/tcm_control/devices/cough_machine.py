@@ -613,14 +613,6 @@ class CoughMachine(PoFSerialDevice):
         )
         return reply or ""
 
-    def trigger_test(self, *, echo: Optional[bool] = None):
-        """Load the "just_trigger.csv" flow curve and run it to test the trigger output."""
-        test_csv = DEFAULT_FLOWCURVE_DIR / "just_trigger.csv"
-        if not test_csv.exists():
-            raise RuntimeError(f"Test CSV not found at {test_csv}")
-        self.load_flowcurve(csv_path=test_csv, echo=echo)
-        self.run(echo=echo)
-
     def set_light(self, level: float, *, echo: Optional[bool] = None) -> str:
         """Set light brightness using normalized PWM `I <level>`.
 
@@ -1327,3 +1319,9 @@ class CoughMachine(PoFSerialDevice):
         print(f"Saved {len(saved_paths)} run log(s) to {target_dir}")
 
         return saved_paths
+
+
+if __name__ == "__main__":
+    # Open a cough machine instance and go into manual mode
+    tcm = CoughMachine()
+    tcm.manual_mode()
