@@ -16,7 +16,7 @@ from tcm_control.interrupt_handling import (
 )
 
 from tcm_control.post_processing.run_log_processing import plot_run_log, plot_cough_machine_timing
-from tcm_control.imaging import layer_preview, take_snapshot, 
+from tcm_control.imaging import layer_preview, take_snapshot
 from tcm_control.liquid_film import (
     make_liquid_film,
     measure_plate_height,
@@ -648,7 +648,6 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     pump_stopped = False
 
                     # If an error occurs, the nebuliser will always be turned off
-                    # TODO: This should be part of the cough machine cleanup routine
                     try:
 
                         # Optional pre-run pump lead-in time for stable nebulisation
