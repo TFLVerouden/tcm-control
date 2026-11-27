@@ -85,7 +85,7 @@ roi = [0, 0, 0, 0] # y_start, y_end, x_start, x_end; end 0 = full extent
 # Camera flip; empty disables it.
 flip = "vertical" # empty, vertical, horizontal, or both
 # Camera calibration in mm per pixel; omit to use the camera module default.
-# scale_mm_per_px = 0.01614443137990558
+# scale_mm_per_px = 0.016089430575096462
 # Show the live film preview.
 live_preview = true # show an optional local preview while making the layer
 

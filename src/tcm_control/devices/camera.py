@@ -13,7 +13,7 @@ from tcm_utils.time_utils import timestamp_str
 
 
 # TODO: Update this value after the next camera calibration.
-DEFAULT_SCALE_MM_PER_PX = 0.01614443137990558
+DEFAULT_SCALE_MM_PER_PX = 0.016089430575096462
 
 
 def validate_roi(roi: object) -> tuple[int, int, int, int]:
