@@ -490,7 +490,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                     assert run_dir is not None
                     film_height_mm, film_error_mm, contact_angle_deg, film_level_px = record_film_measurement(
                         run_dir, empty_channel_image_path, final_film_image_path,
-                        plate_measurement, camera_inputs["scale_mm_per_px"])
+                        plate_measurement, camera_inputs["scale_mm_per_px"],
+                        processed_image_filename="liquid_film_measurements.png")
                     if film_height_mm is None or contact_angle_deg is None:
                         print("Film measurement failed, check images and logs")
                     else:

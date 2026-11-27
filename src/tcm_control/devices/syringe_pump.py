@@ -113,7 +113,7 @@ class SyringePump(PoFSerialDevice):
             },
         }
 
-    def infuse(self, volume_ml: float, rate_ml_min: float, wait_for_completion: bool = True, *, update: Callable[[], None] | None = None) -> bool:
+    def infuse(self, volume_ml: float, rate_ml_min: float, wait_for_completion: bool = True, *, update: Callable[[], None] | None = None, log_info: bool = True) -> bool:
         return self._run_phase(
             action_verb="infusing",
             phase_name="infusion",
@@ -124,9 +124,10 @@ class SyringePump(PoFSerialDevice):
             expected_prompt=">",
             wait_for_completion=wait_for_completion,
             update=update,
+            log_info=log_info,
         )
 
-    def withdraw(self, volume_ml: float, rate_ml_min: float, wait_for_completion: bool = True, *, update: Callable[[], None] | None = None) -> bool:
+    def withdraw(self, volume_ml: float, rate_ml_min: float, wait_for_completion: bool = True, *, update: Callable[[], None] | None = None, log_info: bool = True) -> bool:
         return self._run_phase(
             action_verb="withdrawing",
             phase_name="withdraw",
@@ -137,6 +138,7 @@ class SyringePump(PoFSerialDevice):
             expected_prompt="<",
             wait_for_completion=wait_for_completion,
             update=update,
+            log_info=log_info,
         )
 
     def _log_info(self, msg: str) -> None:
@@ -361,12 +363,13 @@ class SyringePump(PoFSerialDevice):
         expected_prompt: str,
         wait_for_completion: bool,
         update: Callable[[], None] | None = None,
+        log_info: bool = True,
     ) -> bool:
-        if wait_for_completion:
+        if log_info and wait_for_completion:
             self._log_info(
                 f"SyringePump {action_verb} at {rate_ml_min:g} mL/min to {volume_ml:g} mL target"
             )
-        else:
+        elif log_info:
             self._log_info(
                 f"SyringePump {action_verb} at {rate_ml_min:g} mL/min")
 

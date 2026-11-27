@@ -122,7 +122,7 @@ def plot_run_log(
 
     # Export to pdf in experiment directory
     if experiment_dir is not None:
-        plot_path = experiment_dir / f"pressure_and_valve_timing.pdf"
+        plot_path = experiment_dir / f"pressure_and_valve_in_time.pdf"
         fig.savefig(plot_path)
         print(f"Plot saved to {plot_path}")
 
@@ -173,18 +173,31 @@ def plot_cough_machine_timing(
     max_abs = np.max(np.abs(time_diffs_us))
 
     # Plot a histogram of the time differences between consecutive steps in the run log
-    plt.figure(figsize=(8, 4))
-    plt.hist(time_diffs_us, bins=100, color="#0072B2", edgecolor="black")
-    plt.title(f"Run {run_log_path.name} timing")
-    plt.xlabel("Deviation from the 1 ms step size (us)")
-    plt.ylabel("Count")
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.hist(time_diffs_us, bins=100, color="#0072B2", edgecolor="black")
+    ax.set_title(f"Run {run_log_path.name} timing")
+    ax.set_xlabel("Deviation from the 1 ms step size (us)")
+    ax.set_ylabel("Count")
 
     # Set the x-axis to be centred around 0
-    plt.xlim(-max_abs - 10, max_abs + 10)
+    ax.set_xlim(-max_abs - 10, max_abs + 10)
 
-    set_grid(plt.gca(), mode="both")
-    plt.show()
+    set_grid(ax, mode="both")
 
+    plot_path: Path | None = None
+
+    # Export to pdf in experiment directory
+    if experiment_dir is not None:
+        plot_path = experiment_dir / f"electronics_timing.pdf"
+        fig.savefig(plot_path)
+        print(f"Plot saved to {plot_path}")
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    return plot_path
     return
 
 

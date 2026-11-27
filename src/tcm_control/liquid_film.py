@@ -27,7 +27,7 @@ IMAGE_CROP_LEFT = 120
 CANNY_THR1 = 0  # Lower threshold for Canny edge detection.
 CANNY_THR2 = 255  # Upper threshold for Canny edge detection.
 PLATE_HEIGHT_CROSSING_TOLERANCE_PX = 1  # Allowed vertical distance from plate.
-FILM_HEIGHT_AVERAGE_WIDTH_PX = 256  # Number of columns used for film height.
+FILM_HEIGHT_AVERAGE_WIDTH_PX = 128  # Number of columns used for film height.
 # Image coordinates: y_start, y_end, x_start, x_end.
 CONTACT_POINT_ROI = (256, -64, 12, 640)
 # Suppress differences near the dark background.
@@ -62,6 +62,7 @@ def make_liquid_film(
     settling_time_s: float,
     *,
     filename_prefix: str = "film",
+    save_snapshots: bool = True,
     preview: LayerPreview | None = None,
 ) -> None:
     """Infuse, settle and withdraw, saving a snapshot after each step."""
@@ -71,10 +72,11 @@ def make_liquid_film(
 
     # Helper function to create snapshot with specific name
     def snapshot(step: str) -> None:
-        take_snapshot(
-            camera, tcm, filename=f"{filename_prefix}_after_{step}",
-            leave_light_on=preview is not None and preview.active,
-        )
+        if save_snapshots:
+            take_snapshot(
+                camera, tcm, filename=f"{filename_prefix}_after_{step}",
+                leave_light_on=preview is not None and preview.active,
+            )
 
     # Infuse
     print(
@@ -134,9 +136,13 @@ def record_film_measurement(
     film_image_path: Path,
     plate_measurement: PlateMeasurement,
     scale_mm_per_px: float | None,
+    *,
+    processed_image_filename: str | None = None,
 ) -> FilmMeasurement:
     """Measure a saved film image and record its results and diagnostics."""
     plate_height_px, plate_std_px, *_ = plate_measurement
+    if processed_image_filename is None:
+        processed_image_filename = f"{film_image_path.stem}_processed.png"
     details: dict[str, float | str] = {}
     measurement: dict[str, int | float | str | None] = {
         "time": timestamp_str(),
@@ -158,6 +164,7 @@ def record_film_measurement(
     try:
         result = measure_film_properties(
             film_image_path, plate_measurement, scale_mm_per_px, run_dir,
+            processed_image_filename=processed_image_filename,
             details=details)
     except (OSError, ValueError, RuntimeError, cv2.error) as exc:
         measurement.update(details)
@@ -166,7 +173,7 @@ def record_film_measurement(
         raise
     film_height_mm, film_error_mm, contact_angle_deg, film_level_px = result
     measurement.update({
-        "processed_image": f"{film_image_path.stem}_processed.png",
+        "processed_image": processed_image_filename,
         "film_level_px": film_level_px,
         "film_height_mm": film_height_mm,
         "film_height_error_mm": film_error_mm,
@@ -245,6 +252,7 @@ def measure_film_properties(
     scale_mm_per_px: float | None,
     output_dir: Path,
     *,
+    processed_image_filename: str | None = None,
     roi: tuple[int, int, int, int] = CONTACT_POINT_ROI,
     details: dict[str, float | str] | None = None,
 ) -> FilmMeasurement:
@@ -256,6 +264,8 @@ def measure_film_properties(
             and image dimensions returned by measure_plate_height.
         scale_mm_per_px: Camera calibration in millimetres per pixel.
         output_dir: Directory to save visualization.
+        processed_image_filename: Optional visualization filename. Defaults
+            to the source image stem with a ``_processed.png`` suffix.
         roi: Contact search area (y_start, y_end, x_start, x_end), in
             unflipped image coordinates. An end of zero means the image extent;
             a negative end is an offset from that extent.
@@ -272,7 +282,9 @@ def measure_film_properties(
     measurement, visualization = measure_film_frame(
         original_image, plate_measurement, scale_mm_per_px, roi=roi,
         warn_on_failure=True, details=details)
-    visualization_path = output_dir / f"{image_path.stem}_processed.png"
+    if processed_image_filename is None:
+        processed_image_filename = f"{image_path.stem}_processed.png"
+    visualization_path = output_dir / processed_image_filename
     if not cv2.imwrite(str(visualization_path), visualization):
         raise OSError(f"Failed to save visualization to: {visualization_path}")
     return measurement
@@ -529,7 +541,7 @@ def measure_film_frame(
         (f"Film thickness: {thickness_mm:.3f} ± {thickness_error_mm:.3f} mm"
          if thickness_mm is not None and thickness_error_mm is not None
          else "Film thickness: -"),
-        (f"Contact angle: {contact_angle_deg:.1f} deg"
+        (f"Contact angle: {contact_angle_deg:.1f}°"
          if contact_angle_deg is not None else "Contact angle: -"),
     )
     # Outline the labels so they remain legible on either black or white.

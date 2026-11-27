@@ -44,13 +44,13 @@ wait_before_run_ms = 0.0  # optional; default: 0.0
     # Cleaning pressure in bar.
     clean_pressure_bar = 4.0  # optional; default: 4.0
     # Valve-open duration in seconds.
-    valve_open_duration_s = 2.5  # optional; default: 2.5
+    valve_open_duration_s = 4.0  # optional; default: 2.5
     # Number of cleaning cycles before drying.
-    cycle_count = 0  # optional; default: 0
+    cycle_count = 5  # optional; default: 0
     # Drying pressure in bar; omit to use cleaning pressure.
-    # dry_pressure_bar =  # optional; see description
+    dry_pressure_bar = 2.5 # optional; see description
     # Drying duration in seconds.
-    dry_duration_s = 0.0  # optional; default: 0.0
+    dry_duration_s = 60  # optional; default: 0.0
     # Drying valve current in mA.
     dry_valve_current_ma = 14.0  # optional; default: 14.0
 
@@ -61,25 +61,25 @@ wait_before_run_ms = 0.0  # optional; default: 0.0
     # Film settling time in seconds.
     film_settling_time_s = 30 # prompted when required
     # Volume infused to make the layer in mL.
-    infuse_volume_ml =  3.5 # prompted when required
+    infuse_volume_ml =  4 # prompted when required
     # Layer infusion rate in mL/min.
     infuse_rate_ml_min = 15 # prompted when required
     # Volume withdrawn to make the layer in mL.
-    withdraw_volume_ml = 2.5 # prompted when required
+    withdraw_volume_ml = 3 # prompted when required
     # Layer withdrawal rate in mL/min.
     withdraw_rate_ml_min = 5 # prompted when required
 
     [film.clean_tube]
     # Initial tube-cleaning infusion volume in mL.
-    # volume_ml_layer =  # prompted when required
+    volume_ml_layer = 3 # prompted when required
     # Initial tube-cleaning rate in mL/min.
-    # rate_ml_min_layer =  # prompted when required
+    rate_ml_min_layer = 15 # prompted when required
     # Volume per tube-cleaning repetition in mL.
-    # volume_ml_repetition =  # prompted when required
+    volume_ml_repetition = 0.5 # prompted when required
     # Tube-cleaning repetition rate in mL/min.
-    # rate_ml_min_repetition =  # prompted when required
+    rate_ml_min_repetition = 5 # prompted when required
     # Number of tube-cleaning repetitions.
-    repetitions = 0  # optional; default: 0
+    repetitions = 5  # optional; default: 0
 
 [piv]
 # Settings used in PIV mode.
