@@ -22,7 +22,8 @@ from tcm_control.liquid_film import (
     measure_plate_height,
     record_film_measurement,
 )
-from tcm_control.tube_cleaning import clean_tubes
+from tcm_control.clean_tubes import clean_tubes
+from tcm_control.clean_channel import clean_channel
 from tcm_control.user_input import (
     ask_start_confirmation,
     ask_user_for_comments,
@@ -198,8 +199,11 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
         # 4) Set up external device connections
         # ----------------------------------------------------------------------
 
-        # Connect to camera in film mode only
-        if experiment_mode == "film":
+        # Film uses the camera throughout; PIV uses it for channel inspection.
+        if experiment_mode == "film" or (
+            experiment_mode == "piv"
+            and (cleaning_inputs["cycle_count"] > 0 or cleaning_inputs["dry_duration_s"] > 0)
+        ):
             # The camera output directory is changed to the current run below
             camera_inputs = config["devices"]["camera"]
             camera_output_dir = output_dir
@@ -399,25 +403,19 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                 # 6B) Film atomisation mode
                 # --------------------------------------------------------------
 
+                if camera is None or pump is None:
+                    raise RuntimeError(
+                        "Film mode requires an initialized camera and pump")
+
                 # PREPARATIONS =================================================
-                # Explicitly require operator confirmation of syringe being filled
-                layer_inputs = config["film"]["layer"]
-                if not prompt_yes_no(
-                    "Press ENTER to confirm the syringe is filled with > "
-                    f"{layer_inputs['infuse_volume_ml']} mL...",
-                    default=True,
-                ):
-                    print("Aborted.")
-                    exit(1)
-
-                # Assert the camera and pump are assigned
-                assert camera is not None, "Camera must be initialized in film mode"
-                assert pump is not None, "Pump must be initialized in film mode"
-
                 # Ask for cleaning protocol
+                layer_inputs = config["film"]["layer"]
                 if config["film"]["clean_tube"]["repetitions"] > 0 and prompt_yes_no(
                     "Clean the tubes before starting the experiment? (press ENTER to confirm, type 'n' to skip)",
                         default=True) and pump is not None:
+
+                    # Take a picture before tube cleaning
+                    take_snapshot(camera, tcm, filename="before_tube_cleaning")
 
                     # Resolve tube-cleaning settings only when cleaning is selected
                     cleaning_tube_inputs = resolve_tube_cleaning(
@@ -432,6 +430,15 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         layer_inputs,
                         cleaning_inputs,
                     )
+
+                # Explicitly require operator confirmation of syringe being filled
+                if not prompt_yes_no(
+                    "Press ENTER to confirm the syringe is filled with > "
+                    f"{layer_inputs['infuse_volume_ml']*cough_inputs['nr_runs']} mL...",
+                    default=True,
+                ):
+                    print("Aborted.")
+                    exit(1)
 
                 # RUNS =========================================================
                 # Execute repeated runs
@@ -567,8 +574,13 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             show=False,
                         )
 
+                    # Image the channel after the run
+                    take_snapshot(camera, tcm, filename="after_cough")
+
                     # Clean the channel
-                    tcm.clean(
+                    clean_channel(
+                        tcm,
+                        camera=camera,
                         clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
                         clean_valve_open_duration_s=cleaning_inputs["valve_open_duration_s"],
                         clean_cycle_count=cleaning_inputs["cycle_count"],
@@ -619,6 +631,8 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                         output_dir, run_idx + 1, cough_inputs["nr_runs"])
                     if run_dir is not None:
                         run_dirs.append(run_dir)
+                        if camera is not None:
+                            camera.output_dir = run_dir / "camera"
 
                     # FROM SECOND RUN ONWARDS
                     if run_idx > 0:
@@ -710,13 +724,15 @@ def cough(config_path: Path | str | None = None) -> Optional[Path]:
                             wait_s=5, label="Flushing nebuliser chamber...")
                         tcm.set_nebuliser_pressure(0.0)
 
-                        # Run cleaning routine every cycle
-                        tcm.clean(clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
-                                  clean_valve_open_duration_s=cleaning_inputs["valve_open_duration_s"],
-                                  clean_cycle_count=cleaning_inputs["cycle_count"],
-                                  dry_pressure_bar=cleaning_inputs["dry_pressure_bar"],
-                                  dry_duration_s=cleaning_inputs["dry_duration_s"],
-                                  dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"])
+                        # Run cleaning routine every run
+                        clean_channel(tcm,
+                                      camera=camera,
+                                      clean_pressure_bar=cleaning_inputs["clean_pressure_bar"],
+                                      clean_valve_open_duration_s=cleaning_inputs["valve_open_duration_s"],
+                                      clean_cycle_count=cleaning_inputs["cycle_count"],
+                                      dry_pressure_bar=cleaning_inputs["dry_pressure_bar"],
+                                      dry_duration_s=cleaning_inputs["dry_duration_s"],
+                                      dry_valve_current_ma=cleaning_inputs["dry_valve_current_ma"])
 
         # ------------------------------------------------------------------
         # 6) Finalize run and write (meta)data

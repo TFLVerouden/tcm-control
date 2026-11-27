@@ -9,7 +9,7 @@ except ImportError:
     winsound = None
 
 from tcm_utils.file_dialogs import ask_open_file, find_repo_root
-from tcm_utils.io_utils import countdown_beep, make_minimal_progress_bar, beep
+from tcm_utils.io_utils import make_minimal_progress_bar
 
 from .base_serial import PoFSerialDevice
 from ..logger import copy_flow_curve, create_labeled_csv_filename, run_dir_name
@@ -398,175 +398,6 @@ class CoughMachine(PoFSerialDevice):
             "C", expected="SOLENOID_CLOSED", echo=echo
         )
         return reply or ""
-
-    def clean(
-        self,
-        *,
-        clean_pressure_bar: float = DEFAULT_CLEAN_PRESSURE_BAR,
-        clean_valve_open_duration_s: float = DEFAULT_CLEAN_VALVE_OPEN_DURATION_S,
-        clean_cycle_count: int = DEFAULT_CLEAN_CYCLE_COUNT,
-        dry_pressure_bar: float | None = None,
-        dry_duration_s: float = DEFAULT_CLEAN_DRY_DURATION_S,
-        dry_valve_current_ma: float = DEFAULT_CLEAN_DRY_VALVE_CURRENT_MA,
-        settle_timeout_s: float = DEFAULT_SETTLE_TIMEOUT_S,
-        settle_avg_window_s: float = DEFAULT_SETTLE_AVG_WINDOW_S,
-        settle_tolerance_bar: float = DEFAULT_SETTLE_TOLERANCE_BAR,
-        settle_poll_interval_s: float = DEFAULT_SETTLE_POLL_INTERVAL_S,
-        echo: Optional[bool] = None,
-    ) -> None:
-        """Run a tank/valve cleaning routine and restore prior pressure setpoint.
-
-        The routine repeats:
-        1) set tank pressure to `clean_pressure_bar`
-        2) open the valve for `valve_open_duration_s`
-        3) close the valve and return to the idle valve current
-
-        `cycle_count` may be zero. In that case, cleaning cycles are skipped and
-        only the optional drying phase is executed.
-
-        If `dry_duration_s` is greater than zero, a final drying phase is run at
-        `dry_pressure_bar` when provided, otherwise at `clean_pressure_bar`, with
-        the valve held slightly open at `dry_valve_current_ma` for the requested
-        duration.
-
-        After all cycles (or on failure), the previous pressure setpoint is
-        restored automatically using `set_pressure`. When no host-side
-        setpoint is known, the current sensor readback is used as the fallback
-        restore target.
-        """
-        if clean_pressure_bar < 0 or clean_pressure_bar > MAX_PRESSURE_BAR:
-            raise ValueError(
-                f"pressure_bar must be between 0 and {MAX_PRESSURE_BAR} bar")
-        if clean_valve_open_duration_s <= 0:
-            raise ValueError("valve_open_duration_s must be > 0")
-        if dry_duration_s < 0:
-            raise ValueError("dry_duration_s must be >= 0")
-        if clean_cycle_count < 0:
-            raise ValueError("cycle_count must be >= 0")
-        if dry_pressure_bar is None:
-            dry_pressure_bar = clean_pressure_bar
-        elif dry_pressure_bar < 0 or dry_pressure_bar > MAX_PRESSURE_BAR:
-            raise ValueError(
-                f"dry_pressure_bar must be between 0 and {MAX_PRESSURE_BAR} bar")
-
-        # Record the effective settling parameters rather than just their defaults
-        self._cleaning_settling_settings = {
-            "timeout_s": settle_timeout_s,
-            "avg_window_s": (settle_timeout_s / 2 if settle_timeout_s <= settle_avg_window_s
-                             else settle_avg_window_s),
-            "tolerance_bar": settle_tolerance_bar,
-            "poll_interval_s": settle_poll_interval_s,
-        }
-
-        # Nothing to do: no cleaning cycles requested and no drying duration set.
-        if clean_cycle_count == 0 and dry_duration_s == 0:
-            return
-
-        original_setpoint_bar = self._target_pressure_bar
-        if original_setpoint_bar is None:
-            print(
-                "Warning: No prior pressure setpoint known; will restore to current sensor readback.")
-            original_setpoint_bar = self.read_pressure(echo=False)
-        restore_original_setpoint = original_setpoint_bar is not None
-
-        previous_fan_speed = self._fan_speed
-        self.set_fan_speed(self.FAN_SPEED_MAX, echo=echo)
-
-        try:
-            for cycle_idx in range(1, clean_cycle_count + 1):
-                self.set_pressure(
-                    clean_pressure_bar,
-                    timeout_s=settle_timeout_s,
-                    avg_window_s=settle_avg_window_s,
-                    tolerance_bar=settle_tolerance_bar,
-                    poll_interval_s=settle_poll_interval_s,
-                    status_prefix=(
-                        f"{self.name} cleaning cycle {cycle_idx}/{clean_cycle_count} "
-                        "(pressure"
-                    ),
-                    status_suffix=")",
-                    echo=echo,
-                )
-
-                opening_msg = f"{self.name} cleaning cycle {cycle_idx}/{clean_cycle_count} (opening valves)"
-                pressure_msg_len = len(
-                    f"{self.name} cleaning cycle {cycle_idx}/{clean_cycle_count} "
-                    f"(pressure -.--/{clean_pressure_bar:.2f} bar)"
-                )
-                clear_tail = max(0, pressure_msg_len - len(opening_msg))
-                print(f"\r{opening_msg}{' ' * clear_tail}", end="", flush=True)
-
-                countdown_beep()
-                try:
-                    self.set_valve_current(20, echo=echo)
-                    self.open_solenoid(echo=echo)
-                    time.sleep(clean_valve_open_duration_s)
-                    self.close_solenoid(echo=echo)
-                finally:
-                    self.set_valve_current(12, echo=echo)
-
-            if dry_duration_s > 0:
-                self.set_pressure(
-                    dry_pressure_bar,
-                    timeout_s=settle_timeout_s,
-                    avg_window_s=settle_avg_window_s,
-                    tolerance_bar=settle_tolerance_bar,
-                    poll_interval_s=settle_poll_interval_s,
-                    status_prefix=f"{self.name} drying pressure (pressure",
-                    status_suffix=")",
-                    print_newline_on_exit=False,
-                    echo=echo,
-                )
-                dry_msg = (
-                    f"{self.name} drying at {dry_pressure_bar:.2f} bar "
-                    f"(valve {dry_valve_current_ma:.1f} mA)"
-                )
-                print(f"\r{dry_msg}")
-                self.set_valve_current(dry_valve_current_ma, echo=echo)
-                try:
-                    self.open_solenoid(echo=echo)
-                    wait_step_s = min(settle_poll_interval_s, dry_duration_s)
-                    with make_minimal_progress_bar(
-                        total=dry_duration_s,
-                        label=f"{self.name} drying",
-                        unit_label="s",
-                        postfix_width=20,
-                        leave=False,
-                    ) as pbar:
-                        elapsed_s = 0.0
-                        while elapsed_s < dry_duration_s:
-                            sleep_s = min(
-                                wait_step_s, dry_duration_s - elapsed_s)
-                            time.sleep(sleep_s)
-                            elapsed_s += sleep_s
-
-                            pressure = self.read_pressure(echo=False)
-                            if pressure is None:
-                                pressure_text = "-.-- bar"
-                            else:
-                                pressure_text = f"{pressure:.2f} bar"
-
-                            pbar.update(sleep_s)
-                            pbar.set_postfix_str(f"pressure {pressure_text}")
-                    self.close_solenoid(echo=echo)
-                finally:
-                    self.set_valve_current(12, echo=echo)
-        finally:
-            self.set_fan_speed(previous_fan_speed, echo=echo)
-            if restore_original_setpoint:
-                self.set_pressure(
-                    original_setpoint_bar,
-                    timeout_s=settle_timeout_s,
-                    avg_window_s=settle_avg_window_s,
-                    tolerance_bar=settle_tolerance_bar,
-                    poll_interval_s=settle_poll_interval_s,
-                    status_prefix=f"{self.name} restoring pressure (pressure",
-                    status_suffix=")",
-                    show_status=True,
-                    print_newline_on_exit=False,
-                    echo=echo,
-                )
-            print()
 
     def quit(self, *, echo: Optional[bool] = None) -> str:
         """Abort active MCU modes and return to idle using `Q`.
@@ -1306,7 +1137,8 @@ class CoughMachine(PoFSerialDevice):
             log_dir = target_dir
             if separate_run_dirs:
                 run_number = idx if run_nr_start is None else run_nr_start + idx - 1
-                log_dir = target_dir / run_dir_name(run_number, len(normalized_logs))
+                log_dir = target_dir / \
+                    run_dir_name(run_number, len(normalized_logs))
             log_dir.mkdir(parents=True, exist_ok=True)
             filepath = log_dir / filename
             with open(filepath, "w", encoding="utf-8", newline="") as handle:

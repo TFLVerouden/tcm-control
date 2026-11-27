@@ -139,6 +139,19 @@ chronologically to run folders only if the counts agree and the timestamps
 are unambiguous. Otherwise, new measurements are saved in
 `spraytec_unmatched` in the experiment folder and a warning is printed.
 
+### Channel cleaning
+
+After each configured cleaning and drying sequence, close the displayed camera
+snapshot and confirm whether the channel is clean. Answering no repeats the
+entire sequence and takes another snapshot. Film and PIV runs use the configured
+camera; PIV connects it when cleaning or drying is enabled.
+
+For direct use, `clean_channel(tcm, camera=...)` displays snapshots; omit
+`camera` to inspect without one. Set `redo_on_request=False` to skip the
+confirmation. With both the cycle count and drying duration set to zero,
+cleaning and inspection are skipped. The standalone `scripts/clean_channel.py`
+uses the camera by default; set `USE_CAMERA = False` to disable snapshots.
+
 ### Optical particle sizer
 
 The TSI 3330 OPS uses TCP, including over USB via TSI's Windows NDIS driver.
